@@ -1,0 +1,25 @@
+__pycache__/
+*.pyc
+*.pyo
+.env
+.env.local
+.pytest_cache/
+
+# Runtime outputs — keep the folders, ignore the contents
+artifacts/*
+!artifacts/.gitkeep
+artifacts/screenshots/*
+!artifacts/screenshots/.gitkeep
+
+logs/*
+!logs/.gitkeep
+
+allure-results/*
+!allure-results/.gitkeep
+
+openlibrary/allure-results/*
+
+reports/*
+!reports/.gitkeep
+
+storage_state.json

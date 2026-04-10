@@ -1,0 +1,117 @@
+{
+  "test_id": "2026-04-10_13-10-33_ol_search_and_add_001",
+  "steps": [
+    {
+      "num": 1,
+      "description": "Ensure user is logged in",
+      "action": "ensure_login",
+      "status": "passed",
+      "confidence": 0.0,
+      "duration_ms": 81327.6,
+      "screenshots": [
+        "step_01_ensure_login.png"
+      ],
+      "error": ""
+    },
+    {
+      "num": 2,
+      "description": "Ensure user is logged in (subflow)",
+      "action": "run_workflow",
+      "status": "passed",
+      "confidence": 0.0,
+      "duration_ms": 81492.0,
+      "screenshots": [
+        "step_01_run_workflow.png"
+      ],
+      "error": ""
+    },
+    {
+      "num": 3,
+      "description": "Open want-to-read reading list",
+      "action": "navigate",
+      "status": "passed",
+      "confidence": 0.0,
+      "duration_ms": 20010.1,
+      "screenshots": [
+        "step_02_navigate.png"
+      ],
+      "error": ""
+    },
+    {
+      "num": 4,
+      "description": "Collect all existing book URLs from reading list",
+      "action": "extract_data",
+      "status": "passed",
+      "confidence": 0.0,
+      "duration_ms": 10018.1,
+      "screenshots": [
+        "step_03_extract_data.png"
+      ],
+      "error": ""
+    },
+    {
+      "num": 5,
+      "description": "Remove each existing book from shelf",
+      "action": "for_each_item",
+      "status": "passed",
+      "confidence": 0.0,
+      "duration_ms": 0.0,
+      "screenshots": [
+        "step_04_for_each_item.png"
+      ],
+      "error": ""
+    },
+    {
+      "num": 6,
+      "description": "Store reading list count (should be 0 after clear)",
+      "action": "store_count",
+      "status": "passed",
+      "confidence": 0.0,
+      "duration_ms": 9.8,
+      "screenshots": [
+        "step_05_store_count.png"
+      ],
+      "error": ""
+    },
+    {
+      "num": 7,
+      "description": "Search and collect 5 Dune books published before 1980",
+      "action": "ol_collect_books",
+      "status": "passed",
+      "confidence": 0.0,
+      "duration_ms": 29912.8,
+      "screenshots": [
+        "step_06_ol_collect_books.png"
+      ],
+      "error": ""
+    },
+    {
+      "num": 8,
+      "description": "Add each collected book to reading list + screenshot",
+      "action": "ol_add_to_shelf",
+      "status": "passed",
+      "confidence": 0.0,
+      "duration_ms": 125494.1,
+      "screenshots": [
+        "book_1.png",
+        "book_2.png",
+        "book_3.png",
+        "book_4.png",
+        "book_5.png"
+      ],
+      "error": ""
+    },
+    {
+      "num": 9,
+      "description": "Assert reading list count increased by 5",
+      "action": "ol_assert_count",
+      "status": "failed",
+      "confidence": 0.0,
+      "duration_ms": 22348.2,
+      "screenshots": [
+        "step_08_ol_assert_count.png"
+      ],
+      "error": "Reading list: expected 5 books, got 0"
+    }
+  ]
+}

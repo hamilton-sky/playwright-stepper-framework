@@ -1,0 +1,68 @@
+{
+  "name": "Clear reading list",
+  "description": "Remove all books from want-to-read so add-book tests start from a clean slate",
+  "steps": [
+    {
+      "action": "run_workflow",
+      "description": "Ensure user is logged in (subflow)",
+      "extra": { "path": "login.json" }
+    },
+    {
+      "action": "navigate",
+      "description": "Open want-to-read list",
+      "url": "https://openlibrary.org/account/books/want-to-read"
+    },
+    {
+      "action": "extract_data",
+      "description": "Collect all book URLs from reading list",
+      "extra": {
+        "selector": "ul.list-books li a[href*='/works/']",
+        "attrs": ["href"],
+        "context_key": "collected_items",
+        "url_prefix": "https://openlibrary.org",
+        "wait_for_state": "attached",
+        "limit": 500,
+        "allow_empty": true
+      }
+    },
+    {
+      "action": "for_each_item",
+      "description": "Navigate to each book and toggle it off the shelf",
+      "extra": {
+        "steps": [
+          {
+            "action": "navigate",
+            "description": "Open book {{index}}",
+            "url": "{{item_url}}"
+          },
+          {
+            "action": "click",
+            "description": "Open shelf dropdown",
+            "element": { "text": "Want to Read" }
+          },
+          {
+            "action": "click",
+            "description": "Click Remove From Shelf via JS (bypasses hidden class)",
+            "element": { "css": "button.remove-from-list" },
+            "js_click": true
+          },
+          {
+            "action": "screenshot",
+            "description": "Screenshot after removing book {{index}}",
+            "extra": { "filename": "removed_{{index}}.png" }
+          }
+        ]
+      }
+    },
+    {
+      "action": "navigate",
+      "description": "Return to reading list to verify empty",
+      "url": "https://openlibrary.org/account/books/want-to-read"
+    },
+    {
+      "action": "screenshot",
+      "description": "Screenshot empty reading list",
+      "extra": { "filename": "reading_list_cleared.png" }
+    }
+  ]
+}

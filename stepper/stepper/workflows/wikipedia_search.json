@@ -1,0 +1,69 @@
+{
+  "name": "Wikipedia article search and extract",
+  "description": "Different site scenario — search Wikipedia, open first result, extract article summary and take screenshots. No login needed.",
+  "steps": [
+    {
+      "action": "navigate",
+      "description": "Go to Wikipedia search",
+      "url": "https://en.wikipedia.org/w/index.php?search=Dune+novel&title=Special:Search"
+    },
+    {
+      "action": "screenshot",
+      "description": "Screenshot of search results",
+      "extra": { "filename": "wiki_search_results.png" }
+    },
+    {
+      "action": "extract_data",
+      "description": "Extract search result titles and links",
+      "extra": {
+        "selector": ".mw-search-result-heading a",
+        "attrs": ["innerText", "href"],
+        "context_key": "wiki_results",
+        "limit": 5,
+        "allow_empty": true
+      }
+    },
+    {
+      "action": "navigate",
+      "description": "Open first Wikipedia article",
+      "url": "https://en.wikipedia.org/wiki/Dune_(novel)"
+    },
+    {
+      "action": "screenshot",
+      "description": "Screenshot of article",
+      "extra": { "filename": "wiki_article.png" }
+    },
+    {
+      "action": "extract_data",
+      "description": "Extract infobox data (right-side facts panel)",
+      "extra": {
+        "selector": ".infobox tr",
+        "attrs": ["innerText"],
+        "context_key": "infobox_data",
+        "limit": 20
+      }
+    },
+    {
+      "action": "extract_data",
+      "description": "Extract all section headings",
+      "extra": {
+        "selector": "h2 .mw-headline, h2[id]",
+        "attrs": ["innerText"],
+        "context_key": "article_sections",
+        "limit": 30,
+        "allow_empty": true
+      }
+    },
+    {
+      "action": "click",
+      "description": "Click Contents / Table of contents",
+      "element": { "text": "Contents" },
+      "when": { "element_exists": "#toc" }
+    },
+    {
+      "action": "screenshot",
+      "description": "Final screenshot",
+      "extra": { "filename": "wiki_final.png" }
+    }
+  ]
+}

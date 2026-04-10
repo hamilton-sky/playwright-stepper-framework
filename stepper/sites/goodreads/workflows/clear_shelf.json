@@ -1,0 +1,73 @@
+{
+  "name": "Clear Goodreads want-to-read shelf",
+  "steps": [
+    {
+      "action": "ensure_login",
+      "description": "Ensure user is logged in",
+      "extra": {
+        "check_url": "https://www.goodreads.com/review/list?shelf=want-to-read",
+        "login_url_fragment": "/user/sign_in",
+        "logged_in_selector": "a[href='/user/sign_out']",
+        "login_steps": [
+          {
+            "action": "navigate",
+            "url": "https://www.goodreads.com/user/sign_in"
+          },
+          {
+            "action": "fill",
+            "element": { "id": "user_email" },
+            "input_value": "ENV:GOODREADS_EMAIL"
+          },
+          {
+            "action": "fill",
+            "element": { "id": "user_password" },
+            "input_value": "ENV:GOODREADS_PASSWORD"
+          },
+          {
+            "action": "click",
+            "element": { "css": "input[name='next']" }
+          }
+        ]
+      }
+    },
+    {
+      "action": "navigate",
+      "description": "Open want-to-read shelf",
+      "url": "https://www.goodreads.com/review/list?shelf=want-to-read"
+    },
+    {
+      "action": "extract_data",
+      "description": "Collect all book URLs on shelf",
+      "extra": {
+        "selector": "table#books tbody tr",
+        "attrs": ["data-resource-id"],
+        "context_key": "collected_items",
+        "allow_empty": true,
+        "limit": 500
+      }
+    },
+    {
+      "action": "for_each_item",
+      "description": "Remove each book from shelf",
+      "extra": {
+        "steps": [
+          {
+            "action": "click",
+            "description": "Open shelf dropdown for book {{index}}",
+            "element": { "css": "tr[data-resource-id='{{item}}'] .wantToRead" }
+          },
+          {
+            "action": "click",
+            "description": "Remove from shelf",
+            "element": { "css": "a.removeFromShelf" }
+          }
+        ]
+      }
+    },
+    {
+      "action": "screenshot",
+      "description": "Screenshot empty shelf",
+      "extra": { "filename": "gr_shelf_cleared.png" }
+    }
+  ]
+}

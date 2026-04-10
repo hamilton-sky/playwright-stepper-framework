@@ -1,0 +1,25 @@
+{
+  "name": "Edge case — limit exceeds available results",
+  "description": "Requests 10 books but year filter is very tight (1966 only). Should collect whatever is available without crashing.",
+  "steps": [
+    {
+      "action": "run_workflow",
+      "description": "Ensure user is logged in (subflow)",
+      "extra": { "path": "login.json" }
+    },
+    {
+      "action": "ol_collect_books",
+      "description": "Request 10 Dune books from a single year (1965 only) — fewer than limit exist",
+      "extra": {
+        "query": "Dune",
+        "filter": { "year_max": 1965 },
+        "limit": 10
+      }
+    },
+    {
+      "action": "screenshot",
+      "description": "Screenshot after collect — shows however many were found",
+      "extra": { "filename": "edge_limit_exceeds.png" }
+    }
+  ]
+}

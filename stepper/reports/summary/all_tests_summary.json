@@ -1,0 +1,21 @@
+{
+  "generated_at": "2026-04-10T13:15:36.677417",
+  "total_tests": 1,
+  "total_passed": 8,
+  "total_failed": 1,
+  "success_rate": 0.8888888888888888,
+  "tests": [
+    {
+      "suite": "sites/openlibrary/workflows/ol_search_and_add.json",
+      "started_at": "2026-04-10T13:10:33.958703",
+      "total_steps": 9,
+      "passed": 8,
+      "failed": 1,
+      "skipped": 0,
+      "total_duration_ms": 302702,
+      "success_rate": 0.8888888888888888,
+      "test_id": "2026-04-10_13-10-33_ol_search_and_add_001",
+      "finished_at": "2026-04-10T13:15:36.661965"
+    }
+  ]
+}

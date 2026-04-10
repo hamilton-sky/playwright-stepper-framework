@@ -1,0 +1,6 @@
+{
+    "python.analysis.extraPaths": [
+        "./stepper",
+        "./stepper/stepper"
+    ]
+}

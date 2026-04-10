@@ -1,0 +1,34 @@
+{
+  "name": "OpenLibrary — login (subflow)",
+  "steps": [
+    {
+      "action": "ensure_login",
+      "description": "Ensure user is logged in",
+      "extra": {
+        "check_url": "https://openlibrary.org/account/books/want-to-read",
+        "login_url_fragment": "/account/login",
+        "logged_in_selector": "a[href='/account/logout'], a[href^='/account/books'], a[href^='/account']",
+        "login_steps": [
+          {
+            "action": "navigate",
+            "description": "Open login page directly",
+            "url": "https://openlibrary.org/account/login?redirect=/account/books/want-to-read"
+          },
+          {
+            "action": "fill",
+            "description": "Fill username",
+            "element": { "css": "#username, input[name='username'], input[name='email'], input#email" },
+            "input_value": "ENV:OPENLIBRARY_USERNAME"
+          },
+          {
+            "action": "fill",
+            "description": "Fill password",
+            "element": { "css": "#password, input[name='password'], input[type='password']" },
+            "input_value": "ENV:OPENLIBRARY_PASSWORD",
+            "wait_for": "/account/books/want-to-read"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+[
+  {
+    "comment": "Exam example — Dune, broad era, matches exam spec default limit=5",
+    "query": "Dune",
+    "max_year": 1980,
+    "limit": 5,
+    "expected_count": 5
+  },
+  {
+    "comment": "Second case — Foundation, Asimov, enough editions exist before 1990",
+    "query": "Foundation",
+    "max_year": 1990,
+    "limit": 3,
+    "expected_count": 8
+  },
+   { "query": "1984", "max_year": 1950, "limit": 2, "expected_count": 2 }, 
+   { "query": "Pride and Prejudice", "max_year": 1820, "limit": 4, "expected_count": 4 }
+]

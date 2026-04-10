@@ -1,0 +1,30 @@
+{
+  "name": "Count reading list items with pagination",
+  "description": "Replaces assert_count hardcoding with paginate + extract to count all books across pages",
+  "steps": [
+    {
+      "action": "run_workflow",
+      "description": "Ensure user is logged in (subflow)",
+      "extra": { "path": "login.json" }
+    },
+    {
+      "action": "navigate",
+      "description": "Open reading list",
+      "url": "https://openlibrary.org/account/books/want-to-read"
+    },
+    {
+      "action": "paginate",
+      "description": "Collect all book items from reading list pagination",
+      "extra": {
+        "extract_config": {
+          "selector": "ul.list-books > li",
+          "attrs": ["innerText"],
+          "limit": 1000
+        },
+        "next_button_selector": "a[href*='page='].next",
+        "max_pages": 100,
+        "max_items": 10000
+      }
+    }
+  ]
+}

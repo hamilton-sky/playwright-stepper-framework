@@ -1,0 +1,164 @@
+13:10:34 | INFO | stepper.runner.step_runner | ▶ Step 1: Ensure user is logged in (subflow)
+13:10:34 | INFO | stepper.runner.step_runner | ▶ Step 1: Ensure user is logged in
+13:11:04 | WARNING | stepper.actions.strategies | ensure_login: protected page networkidle navigation failed (Page.goto: Timeout 30000ms exceeded.
+Call log:
+  - navigating to "https://openlibrary.org/account/books/want-to-read", waiting until "networkidle"
+), retrying domcontentloaded
+13:11:24 | INFO | stepper.actions.strategies | → ensure_login: running login steps
+13:11:24 | INFO | stepper.actions.strategies | → navigate: https://openlibrary.org/account/login?redirect=/account/books/want-to-read
+13:11:34 | INFO | stepper.resolvers.element_resolver | ✓ [css] found 1 element — confidence 75%
+13:11:34 | INFO | stepper.actions.strategies | ✓ fill 'shammaihamilton@gmail.com' via css
+13:11:34 | INFO | stepper.resolvers.element_resolver | ✓ [css] found 1 element — confidence 75%
+13:11:45 | INFO | stepper.actions.strategies | ✓ fill 'Abcd!2345' via css
+13:11:55 | INFO | stepper.reporter.test_report_manager | Copied screenshot: C:\Users\Yafit\automation\artifacts\screenshots\step_01_ensure_login.png → reports\2026-04-10_13-10-33_ol_search_and_add_001\screenshots\01_ensure_user_is_logged_in.png
+13:11:55 | INFO | stepper.reporter.test_report_reporter | Recorded step 1: ensure_login → passed
+13:11:55 | INFO | stepper.runner.step_runner | ✓ Step 1 → passed
+13:11:55 | INFO | stepper.reporter.test_report_manager | Copied screenshot: C:\Users\Yafit\automation\artifacts\screenshots\step_01_run_workflow.png → reports\2026-04-10_13-10-33_ol_search_and_add_001\screenshots\02_ensure_user_is_logged_in_(subflow).png
+13:11:55 | INFO | stepper.reporter.test_report_reporter | Recorded step 2: run_workflow → passed
+13:11:55 | INFO | stepper.runner.step_runner | ✓ Step 1 → passed
+13:11:55 | INFO | stepper.runner.step_runner | ▶ Step 2: Open want-to-read reading list
+13:11:55 | INFO | stepper.actions.strategies | → navigate: https://openlibrary.org/account/books/want-to-read
+13:12:28 | INFO | stepper.reporter.test_report_manager | Copied screenshot: C:\Users\Yafit\automation\artifacts\screenshots\step_02_navigate.png → reports\2026-04-10_13-10-33_ol_search_and_add_001\screenshots\03_open_want-to-read_reading_list.png
+13:12:28 | INFO | stepper.reporter.test_report_reporter | Recorded step 3: navigate → passed
+13:12:28 | INFO | stepper.runner.step_runner | ✓ Step 2 → passed
+13:12:28 | INFO | stepper.runner.step_runner | ▶ Step 3: Collect all existing book URLs from reading list
+13:12:38 | INFO | stepper.actions.strategies | ✓ extract_data: 0 items (allow_empty) from 'ul.list-books li a[href*='/works/']'
+13:12:38 | INFO | stepper.reporter.test_report_manager | Copied screenshot: C:\Users\Yafit\automation\artifacts\screenshots\step_03_extract_data.png → reports\2026-04-10_13-10-33_ol_search_and_add_001\screenshots\04_collect_all_existing_book_urls_from_reading_list.png
+13:12:38 | INFO | stepper.reporter.test_report_reporter | Recorded step 4: extract_data → passed
+13:12:38 | INFO | stepper.runner.step_runner | ✓ Step 3 → passed
+13:12:38 | INFO | stepper.runner.step_runner | ▶ Step 4: Remove each existing book from shelf
+13:12:38 | INFO | stepper.reporter.test_report_manager | Copied screenshot: C:\Users\Yafit\automation\artifacts\screenshots\step_04_for_each_item.png → reports\2026-04-10_13-10-33_ol_search_and_add_001\screenshots\05_remove_each_existing_book_from_shelf.png
+13:12:38 | INFO | stepper.reporter.test_report_reporter | Recorded step 5: for_each_item → passed
+13:12:38 | INFO | stepper.runner.step_runner | ✓ Step 4 → passed
+13:12:38 | INFO | stepper.runner.step_runner | ▶ Step 5: Store reading list count (should be 0 after clear)
+13:12:38 | INFO | stepper.actions.strategies | ✓ store_count: count_before=0
+13:12:38 | INFO | stepper.reporter.test_report_manager | Copied screenshot: C:\Users\Yafit\automation\artifacts\screenshots\step_05_store_count.png → reports\2026-04-10_13-10-33_ol_search_and_add_001\screenshots\06_store_reading_list_count_(should_be_0_after_clear).png
+13:12:38 | INFO | stepper.reporter.test_report_reporter | Recorded step 6: store_count → passed
+13:12:38 | INFO | stepper.runner.step_runner | ✓ Step 5 → passed
+13:12:38 | INFO | stepper.runner.step_runner | ▶ Step 6: Search and collect 5 Dune books published before 1980
+13:12:38 | INFO | shared_poms.pages.book_search_page | Navigating to search URL: https://openlibrary.org/search?q=Dune
+13:12:39 | INFO | shared_poms.pages.book_search_page | Navigation sent (commit strategy) in 886ms
+13:12:39 | INFO | shared_poms.pages.book_search_page | Polling for search results to load…
+13:12:49 | WARNING | shared_poms.pages.book_search_page | Search results did not appear after polling — proceeding with collection attempt
+13:12:49 | INFO | shared_poms.pages.book_search_page | Collecting up to 5 books published before 1980 (max 5 pages)
+13:12:49 | INFO | shared_poms.pages.book_search_page | Scanning page 1 — need 5 more book(s)
+13:12:49 | INFO | shared_poms.pages.book_search_page | Page 1: examining 0 result item(s)
+13:12:49 | INFO | shared_poms.pages.book_search_page | Page 1: found 0 qualifying book(s) — total so far: 0/5
+13:12:49 | INFO | shared_poms.pages.book_search_page | Paginating to page 2…
+13:13:07 | INFO | shared_poms.pages.book_search_page | Page 2 loaded in 16945ms
+13:13:08 | INFO | shared_poms.pages.book_search_page | Scanning page 2 — need 5 more book(s)
+13:13:08 | INFO | shared_poms.pages.book_search_page | Page 2: examining 20 result item(s)
+13:13:08 | INFO | shared_poms.pages.book_search_page |     Year text from resultDetails: 'First published in 1782\n242 editions, 20 ebooks'
+13:13:08 | INFO | shared_poms.pages.book_search_page |   [1/20] accepted — year [1782] — https://openlibrary.org/works/OL1157252W/Les_Liaisons_dangereuses?edition=key%3A/books/OL20845786M
+13:13:08 | INFO | shared_poms.pages.book_search_page |     Year text from resultDetails: 'First published in 1885\n517 editions, 20 ebooks'
+13:13:08 | INFO | shared_poms.pages.book_search_page |   [2/20] accepted — year [1885] — https://openlibrary.org/works/OL17761452W/Little_men?edition=key%3A/books/OL35075814M
+13:13:08 | INFO | shared_poms.pages.book_search_page |     Year text from resultDetails: 'First published in 1609\n646 editions, 112 ebooks'
+13:13:08 | INFO | shared_poms.pages.book_search_page |   [3/20] accepted — year [1609] — https://openlibrary.org/works/OL362706W/Sonnets?edition=key%3A/books/OL4982843M
+13:13:08 | INFO | shared_poms.pages.book_search_page |     Year text from resultDetails: 'First published in 1883\n431 editions, 72 ebooks'
+13:13:08 | INFO | shared_poms.pages.book_search_page |   [4/20] accepted — year [1883] — https://openlibrary.org/works/OL1527356W/Le_avventure_di_Pinocchio?edition=key%3A/books/OL31615621M
+13:13:08 | INFO | shared_poms.pages.book_search_page |     Year text from resultDetails: 'First published in 1934\n146 editions, 3 ebooks'
+13:13:08 | INFO | shared_poms.pages.book_search_page |   [5/20] accepted — year [1934] — https://openlibrary.org/works/OL1001044W/Henry_Moore?edition=key%3A/books/OL15239187M
+13:13:08 | INFO | shared_poms.pages.book_search_page | Page 2: found 5 qualifying book(s) — total so far: 5/5
+13:13:08 | INFO | shared_poms.pages.book_search_page | Collection complete: 5/5 books collected
+13:13:08 | INFO | sites.openlibrary.pages.search_page | collect_items → 5 books
+13:13:08 | INFO | stepper.reporter.test_report_manager | Copied screenshot: C:\Users\Yafit\automation\artifacts\screenshots\step_06_ol_collect_books.png → reports\2026-04-10_13-10-33_ol_search_and_add_001\screenshots\07_search_and_collect_5_dune_books_published_before_1980.png
+13:13:08 | INFO | stepper.reporter.test_report_reporter | Recorded step 7: ol_collect_books → passed
+13:13:08 | INFO | stepper.runner.step_runner | ✓ Step 6 → passed
+13:13:08 | INFO | stepper.runner.step_runner | ▶ Step 7: Add each collected book to reading list + screenshot
+13:13:09 | INFO | shared_poms.pages.book_detail_page | Waiting for shelf button on https://openlibrary.org/works/OL1157252W/Les_Liaisons_dangereuses?edition=key%3A/books/OL20845786M
+13:13:19 | WARNING | shared_poms.pages.book_detail_page | Shelf button not visible on https://openlibrary.org/works/OL1157252W/Les_Liaisons_dangereuses?edition=key%3A/books/OL20845786M — continuing
+13:13:19 | INFO | shared_poms.pages.book_detail_page | Adding to shelf: 'Want to Read'  url=https://openlibrary.org/works/OL1157252W/Les_Liaisons_dangereuses?edition=key%3A/books/OL20845786M
+13:13:19 | WARNING | stepper.resolvers.element_resolver | Deterministic cascade failed → visual AI fallback
+13:13:19 | WARNING | stepper.resolvers.element_resolver | Visual AI disabled — returning not-found
+13:13:19 | WARNING | shared_poms.pages.base_page | Resolver could not find element for click: {'role': 'button', 'name': 'Want to Read'}
+13:13:19 | WARNING | stepper.resolvers.element_resolver | Deterministic cascade failed → visual AI fallback
+13:13:19 | WARNING | stepper.resolvers.element_resolver | Visual AI disabled — returning not-found
+13:13:19 | WARNING | shared_poms.pages.base_page | Resolver could not find element for click: {'css': 'button.book-progress-btn.unactivated'}
+13:13:19 | WARNING | stepper.resolvers.element_resolver | Deterministic cascade failed → visual AI fallback
+13:13:19 | WARNING | stepper.resolvers.element_resolver | Visual AI disabled — returning not-found
+13:13:19 | WARNING | shared_poms.pages.base_page | Resolver could not find element for click: {'css': 'button.book-progress-btn.primary-action'}
+13:13:35 | WARNING | shared_poms.pages.book_detail_page | First pass failed on https://openlibrary.org/works/OL1157252W/Les_Liaisons_dangereuses?edition=key%3A/books/OL20845786M — reloading and retrying
+13:13:53 | INFO | shared_poms.pages.book_detail_page | Waiting for shelf button on https://openlibrary.org/works/OL1157252W/Les_Liaisons_dangereuses?edition=key%3A/books/OL20845786M
+13:13:54 | INFO | shared_poms.pages.book_detail_page | Shelf button ready
+13:13:54 | INFO | stepper.resolvers.element_resolver | ✓ [role] found 1 element — confidence 95%
+13:13:54 | INFO | shared_poms.pages.base_page | ✓ click via role (95%)
+13:13:54 | INFO | shared_poms.pages.book_detail_page | ✓ Added to shelf via role resolver: 'Want to Read'
+13:13:54 | INFO | sites.openlibrary.pages.detail_page | ol_add_to_shelf [1/5] → added
+13:14:07 | INFO | shared_poms.pages.book_detail_page | Waiting for shelf button on https://openlibrary.org/works/OL17761452W/Little_men?edition=key%3A/books/OL35075814M
+13:14:07 | INFO | shared_poms.pages.book_detail_page | Shelf button ready
+13:14:07 | INFO | shared_poms.pages.book_detail_page | Adding to shelf: 'Already Read'  url=https://openlibrary.org/works/OL17761452W/Little_men?edition=key%3A/books/OL35075814M
+13:14:07 | WARNING | stepper.resolvers.element_resolver | Deterministic cascade failed → visual AI fallback
+13:14:07 | WARNING | stepper.resolvers.element_resolver | Visual AI disabled — returning not-found
+13:14:07 | WARNING | shared_poms.pages.base_page | Resolver could not find element for click: {'role': 'button', 'name': 'Already Read'}
+13:14:07 | INFO | stepper.resolvers.element_resolver | ✓ [css] found 1 element — confidence 75%
+13:14:07 | WARNING | shared_poms.pages.base_page | Medium confidence 75% on click — proceeding
+13:14:07 | INFO | shared_poms.pages.base_page | ✓ click via css (75%)
+13:14:07 | INFO | shared_poms.pages.book_detail_page | ✓ Added to shelf via CSS resolver (priority list)
+13:14:07 | INFO | sites.openlibrary.pages.detail_page | ol_add_to_shelf [2/5] → added
+13:14:20 | INFO | shared_poms.pages.book_detail_page | Waiting for shelf button on https://openlibrary.org/works/OL362706W/Sonnets?edition=key%3A/books/OL4982843M
+13:14:20 | INFO | shared_poms.pages.book_detail_page | Shelf button ready
+13:14:20 | INFO | shared_poms.pages.book_detail_page | Adding to shelf: 'Want to Read'  url=https://openlibrary.org/works/OL362706W/Sonnets?edition=key%3A/books/OL4982843M
+13:14:20 | INFO | stepper.resolvers.element_resolver | ✓ [role] found 1 element — confidence 95%
+13:14:20 | INFO | shared_poms.pages.base_page | ✓ click via role (95%)
+13:14:20 | INFO | shared_poms.pages.book_detail_page | ✓ Added to shelf via role resolver: 'Want to Read'
+13:14:20 | INFO | sites.openlibrary.pages.detail_page | ol_add_to_shelf [3/5] → added
+13:14:34 | INFO | shared_poms.pages.book_detail_page | Waiting for shelf button on https://openlibrary.org/works/OL1527356W/Le_avventure_di_Pinocchio?edition=key%3A/books/OL31615621M
+13:14:34 | INFO | shared_poms.pages.book_detail_page | Shelf button ready
+13:14:34 | INFO | shared_poms.pages.book_detail_page | Adding to shelf: 'Already Read'  url=https://openlibrary.org/works/OL1527356W/Le_avventure_di_Pinocchio?edition=key%3A/books/OL31615621M
+13:14:34 | WARNING | stepper.resolvers.element_resolver | Deterministic cascade failed → visual AI fallback
+13:14:34 | WARNING | stepper.resolvers.element_resolver | Visual AI disabled — returning not-found
+13:14:34 | WARNING | shared_poms.pages.base_page | Resolver could not find element for click: {'role': 'button', 'name': 'Already Read'}
+13:14:34 | INFO | stepper.resolvers.element_resolver | ✓ [css] found 1 element — confidence 75%
+13:14:34 | WARNING | shared_poms.pages.base_page | Medium confidence 75% on click — proceeding
+13:14:34 | INFO | shared_poms.pages.base_page | ✓ click via css (75%)
+13:14:34 | INFO | shared_poms.pages.book_detail_page | ✓ Added to shelf via CSS resolver (priority list)
+13:14:34 | INFO | sites.openlibrary.pages.detail_page | ol_add_to_shelf [4/5] → added
+13:14:35 | INFO | shared_poms.pages.book_detail_page | Waiting for shelf button on https://openlibrary.org/works/OL1001044W/Henry_Moore?edition=key%3A/books/OL15239187M
+13:14:45 | WARNING | shared_poms.pages.book_detail_page | Shelf button not visible on https://openlibrary.org/works/OL1001044W/Henry_Moore?edition=key%3A/books/OL15239187M — continuing
+13:14:45 | INFO | shared_poms.pages.book_detail_page | Adding to shelf: 'Already Read'  url=https://openlibrary.org/works/OL1001044W/Henry_Moore?edition=key%3A/books/OL15239187M
+13:14:45 | WARNING | stepper.resolvers.element_resolver | Deterministic cascade failed → visual AI fallback
+13:14:45 | WARNING | stepper.resolvers.element_resolver | Visual AI disabled — returning not-found
+13:14:45 | WARNING | shared_poms.pages.base_page | Resolver could not find element for click: {'role': 'button', 'name': 'Already Read'}
+13:14:45 | WARNING | stepper.resolvers.element_resolver | Deterministic cascade failed → visual AI fallback
+13:14:45 | WARNING | stepper.resolvers.element_resolver | Visual AI disabled — returning not-found
+13:14:45 | WARNING | shared_poms.pages.base_page | Resolver could not find element for click: {'css': 'button.book-progress-btn.unactivated'}
+13:14:45 | WARNING | stepper.resolvers.element_resolver | Deterministic cascade failed → visual AI fallback
+13:14:45 | WARNING | stepper.resolvers.element_resolver | Visual AI disabled — returning not-found
+13:14:45 | WARNING | shared_poms.pages.base_page | Resolver could not find element for click: {'css': 'button.book-progress-btn.primary-action'}
+13:15:00 | WARNING | shared_poms.pages.book_detail_page | First pass failed on https://openlibrary.org/works/OL1001044W/Henry_Moore?edition=key%3A/books/OL15239187M — reloading and retrying
+13:15:13 | INFO | shared_poms.pages.book_detail_page | Waiting for shelf button on https://openlibrary.org/works/OL1001044W/Henry_Moore?edition=key%3A/books/OL15239187M
+13:15:13 | INFO | shared_poms.pages.book_detail_page | Shelf button ready
+13:15:13 | WARNING | stepper.resolvers.element_resolver | Deterministic cascade failed → visual AI fallback
+13:15:13 | WARNING | stepper.resolvers.element_resolver | Visual AI disabled — returning not-found
+13:15:13 | WARNING | shared_poms.pages.base_page | Resolver could not find element for click: {'role': 'button', 'name': 'Already Read'}
+13:15:13 | INFO | stepper.resolvers.element_resolver | ✓ [css] found 1 element — confidence 75%
+13:15:13 | WARNING | shared_poms.pages.base_page | Medium confidence 75% on click — proceeding
+13:15:13 | INFO | shared_poms.pages.base_page | ✓ click via css (75%)
+13:15:14 | INFO | shared_poms.pages.book_detail_page | ✓ Added to shelf via CSS resolver (priority list)
+13:15:14 | INFO | sites.openlibrary.pages.detail_page | ol_add_to_shelf [5/5] → added
+13:15:14 | INFO | stepper.reporter.test_report_manager | Copied screenshot: C:\Users\Yafit\automation\artifacts\screenshots\book_1.png → reports\2026-04-10_13-10-33_ol_search_and_add_001\screenshots\08_add_each_collected_book_to_reading_list_+_screenshot_book_1.png
+13:15:14 | INFO | stepper.reporter.test_report_manager | Copied screenshot: C:\Users\Yafit\automation\artifacts\screenshots\book_2.png → reports\2026-04-10_13-10-33_ol_search_and_add_001\screenshots\08_add_each_collected_book_to_reading_list_+_screenshot_book_2.png
+13:15:14 | INFO | stepper.reporter.test_report_manager | Copied screenshot: C:\Users\Yafit\automation\artifacts\screenshots\book_3.png → reports\2026-04-10_13-10-33_ol_search_and_add_001\screenshots\08_add_each_collected_book_to_reading_list_+_screenshot_book_3.png
+13:15:14 | INFO | stepper.reporter.test_report_manager | Copied screenshot: C:\Users\Yafit\automation\artifacts\screenshots\book_4.png → reports\2026-04-10_13-10-33_ol_search_and_add_001\screenshots\08_add_each_collected_book_to_reading_list_+_screenshot_book_4.png
+13:15:14 | INFO | stepper.reporter.test_report_manager | Copied screenshot: C:\Users\Yafit\automation\artifacts\screenshots\book_5.png → reports\2026-04-10_13-10-33_ol_search_and_add_001\screenshots\08_add_each_collected_book_to_reading_list_+_screenshot_book_5.png
+13:15:14 | INFO | stepper.reporter.test_report_reporter | Recorded step 8: ol_add_to_shelf → passed
+13:15:14 | INFO | stepper.runner.step_runner | ✓ Step 7 → passed
+13:15:14 | INFO | stepper.runner.step_runner | ▶ Step 8: Assert reading list count increased by 5
+13:15:17 | WARNING | stepper.resolvers.element_resolver | Deterministic cascade failed → visual AI fallback
+13:15:17 | WARNING | stepper.resolvers.element_resolver | Visual AI disabled — returning not-found
+13:15:17 | WARNING | shared_poms.pages.base_page | Resolver could not find element for click: {'css': "a.next-page, a[rel='next']"}
+13:15:36 | WARNING | stepper.resolvers.element_resolver | Deterministic cascade failed → visual AI fallback
+13:15:36 | WARNING | stepper.resolvers.element_resolver | Visual AI disabled — returning not-found
+13:15:36 | WARNING | shared_poms.pages.base_page | Resolver could not find element for click: {'css': "a.next-page, a[rel='next']"}
+13:15:36 | INFO | stepper.reporter.test_report_manager | Copied screenshot: C:\Users\Yafit\automation\artifacts\screenshots\step_08_ol_assert_count.png → reports\2026-04-10_13-10-33_ol_search_and_add_001\screenshots\09_assert_reading_list_count_increased_by_5.png
+13:15:36 | INFO | stepper.reporter.test_report_reporter | Recorded step 9: ol_assert_count → failed
+13:15:36 | INFO | stepper.runner.step_runner | ✗ Step 8 → failed
+13:15:36 | ERROR | stepper.runner.step_runner | ✗ Hard stop at step 8: Reading list: expected 5 books, got 0
+13:15:36 | INFO | stepper.reporter.reporters | Report written: report.json
+13:15:36 | INFO | stepper.reporter.test_report_manager | Saved metadata: reports\2026-04-10_13-10-33_ol_search_and_add_001\metadata.json
+13:15:36 | INFO | stepper.reporter.test_report_manager | Saved summary: reports\2026-04-10_13-10-33_ol_search_and_add_001\summary.json
+13:15:36 | INFO | stepper.reporter.test_report_manager | Saved results: reports\2026-04-10_13-10-33_ol_search_and_add_001\results.json
+13:15:36 | INFO | stepper.reporter.test_report_manager | Saved performance metrics: reports\2026-04-10_13-10-33_ol_search_and_add_001\performance.json
+13:15:36 | INFO | stepper.reporter.test_report_manager | Generated cross-test summary: reports\summary\all_tests_summary.json
+13:15:36 | INFO | stepper.reporter.test_report_reporter | Test suite completed: 8/9 passed → reports\2026-04-10_13-10-33_ol_search_and_add_001
+13:15:36 | INFO | stepper.reporter.reporters | Allure result written: reports\allure-results\e3b5d1c4-34c0-4911-b0ff-e3b22ff2b78e-result.json

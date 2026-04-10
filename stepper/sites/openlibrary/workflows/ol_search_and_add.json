@@ -1,0 +1,76 @@
+{
+  "name": "OpenLibrary — clear, search, add to shelf, assert (page module workflow)",
+  "steps": [
+    {
+      "action": "run_workflow",
+      "description": "Ensure user is logged in (subflow)",
+      "extra": { "path": "login.json" }
+    },
+    {
+      "action": "navigate",
+      "description": "Open want-to-read reading list",
+      "url": "https://openlibrary.org/account/books/want-to-read"
+    },
+    {
+      "action": "extract_data",
+      "description": "Collect all existing book URLs from reading list",
+      "extra": {
+        "selector": "ul.list-books li a[href*='/works/']",
+        "attrs": ["href"],
+        "dedupe": true,
+        "context_key": "collected_items",
+        "url_prefix": "https://openlibrary.org",
+        "limit": 500,
+        "allow_empty": true
+      }
+    },
+    {
+      "action": "for_each_item",
+      "description": "Remove each existing book from shelf",
+      "extra": {
+        "steps": [
+          { "action": "navigate", "description": "Open book {{index}}", "url": "{{item_url}}" },
+          {
+            "action": "click",
+            "description": "Open shelf dropdown",
+            "element": { "role": "button", "name": "Want to Read" }
+          },
+          {
+            "action": "click",
+            "description": "Remove from shelf",
+            "element": { "css": "button.remove-from-list" },
+            "js_click": true
+          }
+        ]
+      }
+    },
+    {
+      "action": "store_count",
+      "description": "Store reading list count (should be 0 after clear)",
+      "extra": {
+        "selectors": ["ul.list-books > li"],
+        "context_key": "count_before"
+      }
+    },
+    {
+      "action": "ol_collect_books",
+      "description": "Search and collect 5 Dune books published before 1980",
+      "extra": {
+        "query": "Dune",
+        "filter": { "year_max": 1980 },
+        "limit": 5
+      }
+    },
+    {
+      "action": "ol_add_to_shelf",
+      "description": "Add each collected book to reading list + screenshot"
+    },
+    {
+      "action": "ol_assert_count",
+      "description": "Assert reading list count increased by 5",
+      "extra": {
+        "delta": 5
+      }
+    }
+  ]
+}
