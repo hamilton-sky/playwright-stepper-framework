@@ -141,7 +141,7 @@ def load_settings(
 
 def load_test_data(path: str | Path | None = None) -> list[dict]:
     if path is None:
-        path = _OPENLIBRARY_DIR / "data" / "testdata.json"
+        path = _SHARED_POMS_DIR / "data" / "testdata.json"
     p = Path(path)
     if not p.exists():
         raise FileNotFoundError(f"Test data file not found: {p}")

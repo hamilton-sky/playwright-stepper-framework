@@ -1,0 +1,49 @@
+{
+  "name": "OpenLibrary — multi-author search and add",
+  "description": "Showcases: sequential composition — the same collect+add action pair is chained twice with different queries. context.collected_items is safely overwritten between batches. expected_count = limit_a (3) + limit_b (2) = 5.",
+  "variables": {
+    "query_a": "Dune",    "year_a": 1980, "limit_a": 3,
+    "query_b": "Tolkien", "year_b": 1970, "limit_b": 2
+  },
+  "steps": [
+    {
+      "action": "ol_ensure_login",
+      "description": "Ensure user is logged in"
+    },
+    {
+      "action": "ol_clear_reading_list",
+      "description": "Clear shelf so both batches start from zero"
+    },
+    {
+      "action": "ol_collect_books",
+      "description": "Batch 1 — collect {{limit_a}} {{query_a}} books published before {{year_a}}",
+      "extra": {
+        "query":  "{{query_a}}",
+        "filter": { "year_max": "{{year_a}}" },
+        "limit":  "{{limit_a}}"
+      }
+    },
+    {
+      "action": "ol_add_to_shelf",
+      "description": "Batch 1 — add Dune books to shelf"
+    },
+    {
+      "action": "ol_collect_books",
+      "description": "Batch 2 — collect {{limit_b}} {{query_b}} books published before {{year_b}} (overwrites collected_items safely)",
+      "extra": {
+        "query":  "{{query_b}}",
+        "filter": { "year_max": "{{year_b}}" },
+        "limit":  "{{limit_b}}"
+      }
+    },
+    {
+      "action": "ol_add_to_shelf",
+      "description": "Batch 2 — add Tolkien books to shelf"
+    },
+    {
+      "action": "ol_assert_count",
+      "description": "Assert total = {{limit_a}} Dune + {{limit_b}} Tolkien = 5 books",
+      "extra": { "expected_count": 5 }
+    }
+  ]
+}

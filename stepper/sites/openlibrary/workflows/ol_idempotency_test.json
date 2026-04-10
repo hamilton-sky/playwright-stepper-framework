@@ -1,0 +1,55 @@
+{
+  "name": "OpenLibrary — idempotency test (add twice, count stays the same)",
+  "description": "Showcases: idempotency — adding the same books a second time is a no-op. The shelf count must be {{limit}} after both add passes, not {{limit}}*2. Books already on the shelf are silently skipped by ol_add_to_shelf. Also demonstrates that re-running ol_collect_books with the same query safely refreshes context.collected_items.",
+  "variables": {
+    "query":   "Dune",
+    "max_year": 1980,
+    "limit":    3
+  },
+  "steps": [
+    {
+      "action": "ol_ensure_login",
+      "description": "Ensure user is logged in"
+    },
+    {
+      "action": "ol_clear_reading_list",
+      "description": "Start from a clean shelf"
+    },
+    {
+      "action": "ol_collect_books",
+      "description": "First pass: collect {{limit}} {{query}} books published before {{max_year}}",
+      "extra": {
+        "query":  "{{query}}",
+        "filter": { "year_max": "{{max_year}}" },
+        "limit":  "{{limit}}"
+      }
+    },
+    {
+      "action": "ol_add_to_shelf",
+      "description": "First add — all {{limit}} books shelved for the first time"
+    },
+    {
+      "action": "ol_assert_count",
+      "description": "After first add: assert exactly {{limit}} books on shelf",
+      "extra": { "expected_count": "{{limit}}" }
+    },
+    {
+      "action": "ol_collect_books",
+      "description": "Second pass: collect the exact same {{limit}} {{query}} books (context.collected_items refreshed)",
+      "extra": {
+        "query":  "{{query}}",
+        "filter": { "year_max": "{{max_year}}" },
+        "limit":  "{{limit}}"
+      }
+    },
+    {
+      "action": "ol_add_to_shelf",
+      "description": "Second add — every book already on shelf → all silently skipped"
+    },
+    {
+      "action": "ol_assert_count",
+      "description": "After second add: count must STILL be {{limit}}, not {{limit}}*2 — idempotency confirmed",
+      "extra": { "expected_count": "{{limit}}" }
+    }
+  ]
+}

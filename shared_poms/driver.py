@@ -80,7 +80,7 @@ class PlaywrightDriver(IBrowserDriver):
         await self._page.wait_for_load_state(state)
 
     async def screenshot(self, path: str) -> None:
-        await self._page.screenshot(path=path)
+        await self._page.screenshot(path=path, animations="disabled", timeout=10_000)
 
     async def evaluate(self, js_code: str):
         return await self._page.evaluate(js_code)

@@ -1,0 +1,24 @@
+{
+  "name": "OpenLibrary — ensure reading list has exactly N books (top-up)",
+  "description": "Check current reading list count. If already at or above target, do nothing. Otherwise collect and add only the gap needed to reach the target.",
+  "variables": {
+    "target_count": 5,
+    "query":        "Dune",
+    "max_year":     1980
+  },
+  "steps": [
+    {
+      "action": "ol_ensure_login",
+      "description": "Ensure user is logged in"
+    },
+    {
+      "action": "ol_ensure_count",
+      "description": "Top up reading list to {{target_count}} books",
+      "extra": {
+        "target_count": "{{target_count}}",
+        "query":        "{{query}}",
+        "filter":       { "year_max": "{{max_year}}" }
+      }
+    }
+  ]
+}

@@ -193,12 +193,16 @@ class SemanticResolver(ResolverStrategy):
         try:
             from sentence_transformers import SentenceTransformer
             import numpy as np
-            self._model = SentenceTransformer("all-MiniLM-L6-v2")
+            import pathlib
+            _model_path = pathlib.Path(__file__).parents[2] / "models" / "all-MiniLM-L6-v2"
+            self._model = SentenceTransformer(str(_model_path))
             self._np = np
             self._use_embeddings = True
-            logger.info("[SemanticResolver] sentence-transformers loaded")
+            logger.info("[SemanticResolver] sentence-transformers loaded from %s", _model_path)
         except ImportError:
             logger.debug("[SemanticResolver] sentence-transformers not installed — using Jaccard fallback")
+        except Exception as exc:
+            logger.warning("[SemanticResolver] could not load sentence-transformers model (%s) — using Jaccard fallback", exc)
 
     def score(self, query: str, text: str) -> float:
         """

@@ -1,0 +1,34 @@
+{
+  "name": "OpenLibrary — search and add books (no clear, append only)",
+  "description": "Collect books and add them to the existing reading list without clearing first. Books already on a shelf are skipped automatically (idempotent).",
+  "variables": {
+    "query":          "Dune",
+    "max_year":       1980,
+    "limit":          5,
+    "expected_count": 5
+  },
+  "steps": [
+    {
+      "action": "ol_ensure_login",
+      "description": "Ensure user is logged in"
+    },
+    {
+      "action": "ol_collect_books",
+      "description": "Search and collect {{limit}} {{query}} books published before {{max_year}}",
+      "extra": {
+        "query":  "{{query}}",
+        "filter": { "year_max": "{{max_year}}" },
+        "limit":  "{{limit}}"
+      }
+    },
+    {
+      "action": "ol_add_to_shelf",
+      "description": "Add each collected book to reading list (skips already-shelved books)"
+    },
+    {
+      "action": "ol_assert_count",
+      "description": "Assert reading list has {{expected_count}} books",
+      "extra": { "expected_count": "{{expected_count}}" }
+    }
+  ]
+}

@@ -1,0 +1,49 @@
+{
+  "name": "OpenLibrary — parallel performance benchmark",
+  "description": "Showcases: parallel action (concurrent browser tabs) and measure_performance. All three measure_performance calls run simultaneously in separate tabs — each is read_only=True so the safety gate lets them through. Results written to separate JSON files.",
+  "variables": {
+    "threshold_ms": 5000
+  },
+  "steps": [
+    {
+      "action": "ol_ensure_login",
+      "description": "Ensure user is logged in (session shared across all parallel tabs)"
+    },
+    {
+      "action": "parallel",
+      "description": "Benchmark homepage, search results, and a book detail page — all three concurrently",
+      "extra": {
+        "mode": "tabs",
+        "steps": [
+          {
+            "action": "measure_performance",
+            "description": "Homepage load time",
+            "url": "https://openlibrary.org",
+            "extra": {
+              "threshold_ms": "{{threshold_ms}}",
+              "output_path": "artifacts/perf_home.json"
+            }
+          },
+          {
+            "action": "measure_performance",
+            "description": "Search results page for 'Dune'",
+            "url": "https://openlibrary.org/search?q=Dune",
+            "extra": {
+              "threshold_ms": "{{threshold_ms}}",
+              "output_path": "artifacts/perf_search.json"
+            }
+          },
+          {
+            "action": "measure_performance",
+            "description": "Book detail page (Dune, 1965 first edition)",
+            "url": "https://openlibrary.org/works/OL18020194W",
+            "extra": {
+              "threshold_ms": "{{threshold_ms}}",
+              "output_path": "artifacts/perf_detail.json"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

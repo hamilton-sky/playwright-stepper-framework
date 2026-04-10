@@ -1,0 +1,51 @@
+{
+  "name": "OpenLibrary — full regression roundtrip",
+  "description": "Showcases: full lifecycle, context passing (store → delta assert), and two assertion modes (delta and absolute). Clear → store baseline → add → assert delta → clear again → assert absolute 0.",
+  "variables": {
+    "query":   "Tolkien",
+    "max_year": 1970,
+    "limit":    3
+  },
+  "steps": [
+    {
+      "action": "ol_ensure_login",
+      "description": "Ensure user is logged in"
+    },
+    {
+      "action": "ol_clear_reading_list",
+      "description": "Step 1: Wipe shelf to a known-zero state"
+    },
+    {
+      "action": "ol_store_count",
+      "description": "Step 2: Store baseline — must be 0 after clear",
+      "extra": { "context_key": "count_before" }
+    },
+    {
+      "action": "ol_collect_books",
+      "description": "Step 3: Search {{limit}} {{query}} books published before {{max_year}}",
+      "extra": {
+        "query":  "{{query}}",
+        "filter": { "year_max": "{{max_year}}" },
+        "limit":  "{{limit}}"
+      }
+    },
+    {
+      "action": "ol_add_to_shelf",
+      "description": "Step 4: Add all collected books to want-to-read shelf"
+    },
+    {
+      "action": "ol_assert_count",
+      "description": "Step 5: Assert shelf grew by {{limit}} from baseline (delta mode — uses stored count_before)",
+      "extra": { "delta": "{{limit}}" }
+    },
+    {
+      "action": "ol_clear_reading_list",
+      "description": "Step 6: Wipe shelf again — second clear to test idempotent teardown"
+    },
+    {
+      "action": "ol_assert_count",
+      "description": "Step 7: Assert shelf is back to exactly 0 (absolute mode — no context lookup needed)",
+      "extra": { "expected_count": 0 }
+    }
+  ]
+}

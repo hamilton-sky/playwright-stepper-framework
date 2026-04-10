@@ -1,1 +1,0 @@
-# Goodreads starter module
