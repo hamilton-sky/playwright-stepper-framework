@@ -19,13 +19,12 @@ playwright-stepper-framework/
 │
 ├── stepper/                      # The Automation Engine
 │   ├── main.py                   # Entry point — wires everything together
-│   ├── conftest.py               # Pytest fixtures (browser, auth, page)
-│   ├── pytest.ini
+│   ├── pytest.ini                # asyncio_mode = auto, alluredir, log_cli settings
 │   ├── stepper/                  # Core framework modules
 │   │   ├── interfaces.py         # Strategy/Observer abstractions + StepConfig
 │   │   ├── actions/
 │   │   │   ├── factory.py        # ActionRegistry (factory + registry pattern)
-│   │   │   └── strategies.py     # Navigate, Click, Fill, ForEach, etc.
+│   │   │   └── strategies.py     # Navigate, Click, Fill, ForEach, Parallel, etc.
 │   │   ├── resolvers/
 │   │   │   ├── element_resolver.py   # Cascade orchestrator (det → semantic → AI)
 │   │   │   ├── strategies.py         # 7 deterministic resolver strategies
@@ -48,23 +47,33 @@ playwright-stepper-framework/
 │   ├── sites/openlibrary/        # Site-specific action layer
 │   │   ├── pages/
 │   │   │   ├── search_page.py        # Registers ol_collect_books
-│   │   │   ├── detail_page.py
-│   │   │   ├── login_action.py
-│   │   │   └── reading_list_action.py
+│   │   │   ├── detail_page.py        # Registers ol_add_to_shelf
+│   │   │   ├── login_action.py       # Registers ol_ensure_login
+│   │   │   └── reading_list_action.py  # Registers ol_clear_reading_list,
+│   │   │                               #   ol_store_count, ol_assert_count, ol_ensure_count
 │   │   └── workflows/
-│   │       └── ol_search_and_add.json
+│   │       ├── ol_search_and_add.json
+│   │       ├── ol_smoke_test.json
+│   │       ├── ol_parallel_perf.json
+│   │       └── … (9 workflows total)
 │   │
-│   └── models/
-│       └── all-MiniLM-L6-v2/    # Pre-trained semantic embedding model
+│   ├── tests/                    # Stepper engine test suite
+│   │   ├── conftest.py           # --headed flag registration
+│   │   └── test_workflow.py      # Workflow integration tests
+│   │
+│   ├── models/
+│   │   └── all-MiniLM-L6-v2/    # Pre-trained semantic embedding model
+│   ├── artifacts/                # Runtime cache (storage_state.json, screenshots)
+│   └── reports/                  # Output: allure-results/, per-run folders
 │
-├── exam/                         # Test layer
+├── exam/                         # Exam test layer
 │   ├── conftest.py
 │   ├── flows.py                  # Orchestrate POMs into test flows
+│   ├── pytest.ini
 │   └── tests/
 │       └── test_openlibrary_exam.py
 │
-└── config/
-    └── config.yaml               # Base configuration
+└── requirements.txt              # All dependencies (install from repo root)
 ```
 
 ---
@@ -232,12 +241,13 @@ playwright-stepper-framework/
 
   SITE-SPECIFIC ACTIONS (OpenLibrary)
   ────────────────────────────────────
-  ol_collect_books    → BookSearchPage.collect_books()
-  ol_add_to_shelf     → ReadingListPage.add_to_shelf()
-  ol_clear_shelf      → ReadingListPage.clear()
-  ol_store_count      → ReadingListPage.count()
-  ol_ensure_login     → auth flow
-  ol_measure_perf     → performance metrics
+  ol_ensure_login       → auth flow (skips if already logged in)
+  ol_collect_books      → BookSearchPage.collect_books() → context.collected_items
+  ol_add_to_shelf       → BookDetailPage.add_to_reading_list() per collected item
+  ol_clear_reading_list → ReadingListPage.clear() (removes all books)
+  ol_store_count        → ReadingListPage.count() → context[context_key]
+  ol_assert_count       → assert context count == expected (delta or absolute)
+  ol_ensure_count       → top-up: add only the gap to reach target_count
 ```
 
 ---
@@ -248,7 +258,7 @@ playwright-stepper-framework/
   DEFAULTS (hardcoded in config.py)
          │
          ▼  override
-  config/config.yaml
+  config.yaml  (optional — falls back to defaults if absent)
          │
          ▼  override
   Environment variables  (OPENLIBRARY_*)

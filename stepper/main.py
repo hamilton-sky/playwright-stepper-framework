@@ -18,20 +18,24 @@ import os
 from pathlib import Path
 
 
-def _load_env(path: str = ".env") -> None:
-    """Load key=value pairs from a .env file into os.environ."""
-    p = Path(path)
-    if not p.exists():
-        return
-    for line in p.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
+def _load_env() -> None:
+    """Load key=value pairs from a .env file into os.environ.
+    Looks in project root first, then stepper/ as fallback.
+    """
+    _here = Path(__file__).resolve().parent
+    for candidate in (_here.parent / ".env", _here / ".env"):
+        if not candidate.exists():
             continue
-        key, _, value = line.partition("=")
-        key = key.strip()
-        value = value.strip()
-        if key and key not in os.environ:   # don't override real env vars
-            os.environ[key] = value
+        for line in candidate.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            key = key.strip()
+            value = value.strip()
+            if key and key not in os.environ:   # don't override real env vars
+                os.environ[key] = value
+        break  # stop after first found
 
 
 _load_env()
@@ -40,7 +44,7 @@ _load_env()
 import sys
 _root_path   = str(Path(__file__).parent)
 _src_path    = str(Path(__file__).parent / "src")
-_parent_path = str(Path(__file__).parent.parent)  # automation/ — where openlibrary/ lives
+_parent_path = str(Path(__file__).parent.parent)  # repo root — where shared_poms/ lives
 for _p in (_parent_path, _root_path, _src_path):
     if _p not in sys.path:
         sys.path.insert(0, _p)
@@ -61,6 +65,10 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 logger = logging.getLogger(__name__)
+
+# Absolute path to stepper/ — all output paths are anchored here so the tool
+# produces identical folder structure regardless of which directory it is run from.
+_stepper_root = Path(__file__).resolve().parent
 
 
 async def run(
@@ -88,17 +96,17 @@ async def run(
     # ── 2. Infrastructure ─────────────────────────────────────────────────────
     try:
         settings = load_settings()
-        use_visual_ai   = settings.use_visual_ai
-        slow_mo         = settings.slow_mo_ms
-        cfg_browser     = settings.browser
-        cfg_headless    = not headless   # headless arg = show browser, settings = headless flag
-        screenshots_dir = settings.screenshots_dir
+        use_visual_ai      = settings.use_visual_ai
+        slow_mo            = settings.slow_mo_ms
+        cfg_browser        = settings.browser
+        cfg_headless       = not headless
+        storage_state_path = settings.storage_state_path
     except Exception:
-        use_visual_ai   = False
-        slow_mo         = 300
-        cfg_browser     = "chromium"
-        cfg_headless    = not headless
-        screenshots_dir = Path("artifacts/screenshots")
+        use_visual_ai      = False
+        slow_mo            = 300
+        cfg_browser        = "chromium"
+        cfg_headless       = not headless
+        storage_state_path = None
 
     ai_client = None
     if use_visual_ai:
@@ -112,45 +120,31 @@ async def run(
         use_visual_ai=use_visual_ai,
     )
 
-    action_registry = build_default_registry(screenshots_dir=screenshots_dir)
-
-    # ── Page Modules (site-specific actions) ─────────────────────────────────
-    # Each module registers its ol_* actions into the shared registry.
-    # Adding a new site = add two lines here. Zero other changes. (OCP)
-    from sites.openlibrary.pages.search_page import OLSearchPage
-    from sites.openlibrary.pages.detail_page import OLDetailPage
-    from sites.openlibrary.pages.reading_list_action import OLReadingListPage
-    from sites.openlibrary.pages.login_action import OLLoginPage
-    OLSearchPage.register(action_registry)
-    OLDetailPage.register(action_registry)
-    OLReadingListPage.register(action_registry)
-    OLLoginPage.register(action_registry)
-
+    # ── 3. Reporters — absolute paths so output is always inside stepper/ ─────
     run_label = Path(workflow_path).stem if workflow_path else "task"
     reporters = [
         ConsoleReporter(),
-        JsonReporter("report.json"),
+        JsonReporter(str(_stepper_root / "report.json")),
         TestReportReporter(
-            reports_base="reports",
+            reports_base=str(_stepper_root / "reports"),
             test_name=run_label,
             browser=cfg_browser,
             headless=cfg_headless,
         ),
-        AllureReporter("reports/allure-results"),   # always on — like logs
+        AllureReporter(str(_stepper_root / "reports" / "allure-results")),
     ]
     reporter = CompositeReporter(reporters)
 
-    # ── 3. Run ───────────────────────────────────────────────────────────────
+    # ── 4. Run ───────────────────────────────────────────────────────────────
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(headless=headless, slow_mo=slow_mo)
-        storage_state_path = settings.storage_state_path if 'settings' in dir() else None
 
-        # Start suite first so TestReportReporter creates the test directory
-        suite_name   = workflow_path or task or "automation"
+        # Start suite first — TestReportReporter creates the run directory here.
+        suite_name    = workflow_path or task or "automation"
         test_reporter = next((r for r in reporters if isinstance(r, TestReportReporter)), None)
         reporter.start_suite(suite_name)
 
-        # Wire terminal log → test-*/logs/run.log
+        # Wire terminal log → reports/{run}/logs/run.log
         log_handler = None
         if test_reporter and test_reporter.manager.current_test_dir:
             log_path = test_reporter.manager.current_test_dir / "logs" / "run.log"
@@ -160,8 +154,30 @@ async def run(
             ))
             logging.getLogger().addHandler(log_handler)
 
+        # Screenshots go directly into the run directory — no separate temp folder.
+        # Actions write here; TestReportReporter records the paths without copying.
+        if test_reporter and test_reporter.manager.current_test_dir:
+            screenshots_dir = test_reporter.manager.get_screenshots_dir()
+        else:
+            screenshots_dir = _stepper_root / "artifacts" / "screenshots"
+            screenshots_dir.mkdir(parents=True, exist_ok=True)
+
+        # Build action registry now that we have the run-specific screenshots dir.
+        action_registry = build_default_registry(screenshots_dir=screenshots_dir)
+
+        # Each site registers its custom actions into the shared registry.
+        # Adding a new site = add two lines here. Zero other changes. (OCP)
+        from sites.openlibrary.pages.search_page import OLSearchPage
+        from sites.openlibrary.pages.detail_page import OLDetailPage
+        from sites.openlibrary.pages.reading_list_action import OLReadingListPage
+        from sites.openlibrary.pages.login_action import OLLoginPage
+        OLSearchPage.register(action_registry)
+        OLDetailPage.register(action_registry)
+        OLReadingListPage.register(action_registry)
+        OLLoginPage.register(action_registry)
+
         context_kwargs: dict = {"viewport": {"width": 1280, "height": 800}}
-        if storage_state_path and storage_state_path.exists():
+        if storage_state_path and Path(str(storage_state_path)).exists():
             context_kwargs["storage_state"] = str(storage_state_path)
             logger.info(f"Loaded session from {storage_state_path}")
         if record_video and test_reporter and test_reporter.manager.current_test_dir:
@@ -195,7 +211,7 @@ async def run(
             log_handler.close()
 
         if storage_state_path:
-            storage_state_path.parent.mkdir(parents=True, exist_ok=True)
+            Path(str(storage_state_path)).parent.mkdir(parents=True, exist_ok=True)
             await context.storage_state(path=str(storage_state_path))
             logger.info(f"Session saved to {storage_state_path}")
 
@@ -203,8 +219,8 @@ async def run(
 
     if allure_serve:
         import subprocess
-        logger.info("Launching: allure serve reports/allure-results")
-        subprocess.run(["allure", "serve", "reports/allure-results"])
+        logger.info(f"Launching: allure serve {_stepper_root / 'reports' / 'allure-results'}")
+        subprocess.run(["allure", "serve", str(_stepper_root / "reports" / "allure-results")])
 
     return results
 
@@ -257,7 +273,7 @@ def main():
 
         if args.allure_serve:
             import subprocess
-            subprocess.run(["allure", "serve", "reports/allure-results"])
+            subprocess.run(["allure", "serve", str(_stepper_root / "reports" / "allure-results")])
         return
 
     # Single run (no --data)

@@ -52,8 +52,6 @@ class TestReportReporter(ReporterStrategy):
         self._start_time: datetime | None = None
         self._metadata: dict[str, Any] = {}
         self._step_num = 0
-        self._screenshots_dir = Path("artifacts/screenshots")
-        self._existing_screenshots: set[Path] = set()
 
     def start_suite(self, name: str):
         """Initialize test report directory."""
@@ -61,12 +59,6 @@ class TestReportReporter(ReporterStrategy):
         self._results.clear()
         self._start_time = datetime.now()
         self._step_num = 0
-
-        # Snapshot existing screenshots so we can detect new ones at finish
-        if self._screenshots_dir.exists():
-            self._existing_screenshots = set(self._screenshots_dir.glob("*.png"))
-        else:
-            self._existing_screenshots = set()
 
         # Create test directory
         test_dir = self.manager.create_test_report_dir(
@@ -78,28 +70,10 @@ class TestReportReporter(ReporterStrategy):
         return test_dir
 
     def record_step(self, result: StepResult):
-        """Record step result and save screenshot(s)."""
+        """Record step result. Screenshots are already written directly to the
+        run's reports/screenshots/ directory by the action — no copy needed."""
         self._results.append(result)
         self._step_num += 1
-
-        step_desc = result.step.description or result.step.action
-
-        # Multi-shot action (e.g. ol_add_to_shelf): copy each individually
-        if result.screenshots:
-            for i, shot in enumerate(result.screenshots, start=1):
-                if Path(shot).exists():
-                    self.manager.copy_screenshot(
-                        source_path=Path(shot),
-                        step_name=f"{step_desc}_book_{i}",
-                        step_num=self._step_num,
-                    )
-        elif result.screenshot and Path(result.screenshot).exists():
-            self.manager.copy_screenshot(
-                source_path=Path(result.screenshot),
-                step_name=step_desc,
-                step_num=self._step_num,
-            )
-
         logger.info(
             f"Recorded step {self._step_num}: "
             f"{result.step.action} → {result.status}"

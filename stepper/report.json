@@ -1,56 +1,56 @@
 {
-  "suite": "sites/openlibrary/workflows/ol_search_and_add.json",
-  "started": "2026-04-10T16:55:45.352392",
-  "finished": "2026-04-10T16:58:23.534426",
+  "suite": "C:\\Code\\playwright-stepper-framework\\stepper\\sites\\openlibrary\\workflows\\ol_smoke_test.json",
+  "started": "2026-04-12T00:02:08.396523",
+  "finished": "2026-04-12T00:02:35.941631",
   "passed": 6,
   "failed": 0,
   "steps": [
     {
-      "description": "Ensure user is logged in",
+      "description": "Smoke: verify authentication works",
       "action": "ol_ensure_login",
       "status": "passed",
       "confidence": 0.0,
-      "screenshot": "C:\\Code\\playwright-stepper-framework\\artifacts\\screenshots\\step_01_ol_ensure_login.png",
+      "screenshot": "C:\\Code\\playwright-stepper-framework\\stepper\\reports\\2026-04-12_00-02-08_ol_smoke_test_001\\screenshots\\step_01_ol_ensure_login.png",
       "error": ""
     },
     {
-      "description": "Remove all books from want-to-read shelf",
-      "action": "ol_clear_reading_list",
-      "status": "passed",
-      "confidence": 0.0,
-      "screenshot": "C:\\Code\\playwright-stepper-framework\\artifacts\\screenshots\\step_02_ol_clear_reading_list.png",
-      "error": ""
-    },
-    {
-      "description": "Store reading list count (should be 0 after clear)",
+      "description": "Baseline: record current shelf count before any actions (must remain unchanged at the end)",
       "action": "ol_store_count",
       "status": "passed",
       "confidence": 0.0,
-      "screenshot": "C:\\Code\\playwright-stepper-framework\\artifacts\\screenshots\\step_03_ol_store_count.png",
+      "screenshot": "C:\\Code\\playwright-stepper-framework\\stepper\\reports\\2026-04-12_00-02-08_ol_smoke_test_001\\screenshots\\step_02_ol_store_count.png",
       "error": ""
     },
     {
-      "description": "Search and collect 5 Dune books published before 1980",
+      "description": "Smoke: verify search API returns at least 1 result for 'Dune' (no add \u2014 collect only)",
       "action": "ol_collect_books",
       "status": "passed",
       "confidence": 0.0,
-      "screenshot": "C:\\Code\\playwright-stepper-framework\\artifacts\\screenshots\\step_04_ol_collect_books.png",
+      "screenshot": "C:\\Code\\playwright-stepper-framework\\stepper\\reports\\2026-04-12_00-02-08_ol_smoke_test_001\\screenshots\\step_03_ol_collect_books.png",
       "error": ""
     },
     {
-      "description": "Add each collected book to reading list + screenshot",
-      "action": "ol_add_to_shelf",
+      "description": "Capture search results \u2014 only runs when search actually returned books (when guard demo)",
+      "action": "screenshot",
       "status": "passed",
       "confidence": 0.0,
-      "screenshot": "C:\\Code\\playwright-stepper-framework\\artifacts\\screenshots\\book_5.png",
+      "screenshot": "C:\\Code\\playwright-stepper-framework\\stepper\\reports\\2026-04-12_00-02-08_ol_smoke_test_001\\screenshots\\smoke_search_results.png",
       "error": ""
     },
     {
-      "description": "Assert reading list count increased by 5",
+      "description": "Measure search page load time (threshold: 5000ms)",
+      "action": "measure_performance",
+      "status": "passed",
+      "confidence": 0.0,
+      "screenshot": "C:\\Code\\playwright-stepper-framework\\stepper\\reports\\2026-04-12_00-02-08_ol_smoke_test_001\\screenshots\\step_05_measure_performance.png",
+      "error": ""
+    },
+    {
+      "description": "Proof the shelf was never mutated \u2014 count must equal baseline (delta=0)",
       "action": "ol_assert_count",
       "status": "passed",
       "confidence": 0.0,
-      "screenshot": "C:\\Code\\playwright-stepper-framework\\artifacts\\screenshots\\step_06_ol_assert_count.png",
+      "screenshot": "C:\\Code\\playwright-stepper-framework\\stepper\\reports\\2026-04-12_00-02-08_ol_smoke_test_001\\screenshots\\step_06_ol_assert_count.png",
       "error": ""
     }
   ]

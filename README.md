@@ -3,6 +3,8 @@
 End-to-end automation suite for [openlibrary.org](https://openlibrary.org) built with Playwright + Python.
 Demonstrates **POM**, **OOP**, **SOLID**, **Data-Driven** design, and **Smart Locators** as required by the exam spec.
 
+> **Examiner**: see [SUBMISSION.md](SUBMISSION.md) for the two run options, a SOLID walkthrough with file references, and an architectural patterns guide.
+
 ---
 
 ## Architecture in One Diagram
@@ -67,6 +69,8 @@ playwright-stepper-framework/
 │       └── test_openlibrary_exam.py  # TestOpenLibraryExam: search → add → assert → perf
 │
 ├── stepper/                        # Stepper framework + site integrations
+│   ├── main.py                     # DIP root — wires registry, resolver, runner, reporter
+│   ├── pytest.ini                  # asyncio_mode = auto, alluredir, log_cli settings
 │   ├── stepper/                    # Core engine (site-agnostic)
 │   │   ├── interfaces.py           # StepConfig, StepResult, ExecutionContext,
 │   │   │                           #   ActionStrategy, ResolverStrategy (all abstract)
@@ -99,7 +103,7 @@ playwright-stepper-framework/
 │   ├── sites/openlibrary/          # OpenLibrary integration (site module pattern)
 │   │   ├── pages/                  # Stepper ↔ shared_poms glue (thin adapters)
 │   │   │   ├── login_action.py     # ol_ensure_login
-│   │   │   ├── search_page.py      # ol_collect_books  (alias: collect_items)
+│   │   │   ├── search_page.py      # ol_collect_books
 │   │   │   ├── detail_page.py      # ol_add_to_shelf
 │   │   │   └── reading_list_action.py  # ol_clear_reading_list, ol_store_count,
 │   │   │                               #   ol_assert_count, ol_ensure_count
@@ -114,10 +118,16 @@ playwright-stepper-framework/
 │   │       ├── ol_idempotency_test.json      # Add twice → count stays same
 │   │       └── login.json                    # Generic login subflow (reusable)
 │   │
-│   └── main.py                     # DIP root — wires registry, resolver, runner, reporter
+│   ├── tests/                      # Stepper engine test suite
+│   │   ├── conftest.py             # --headed flag registration
+│   │   └── test_workflow.py        # Workflow integration tests
+│   │
+│   ├── models/
+│   │   └── all-MiniLM-L6-v2/      # Pre-trained sentence embeddings (semantic resolver)
+│   ├── artifacts/                  # Runtime cache (storage_state.json, screenshots)
+│   └── reports/                    # Output: allure-results/, per-run folders
 │
-└── config/
-    └── config.yaml                 # Runtime settings (optional — falls back to defaults if absent)
+└── requirements.txt                # All dependencies (install from repo root)
 ```
 
 ---
@@ -209,7 +219,7 @@ python main.py --workflow sites/openlibrary/workflows/ol_regression_roundtrip.js
   --vars '{"query":"Asimov","max_year":1960,"limit":2}'
 
 # Run in headed mode to watch the browser
-python main.py --workflow sites/openlibrary/workflows/ol_parallel_perf.json --headed
+python main.py --workflow sites/openlibrary/workflows/ol_parallel_perf.json --show
 ```
 
 ---
@@ -270,7 +280,7 @@ allure serve reports/allure-results
 ### 1. Install dependencies
 
 ```bash
-cd stepper
+# from the repo root
 pip install -r requirements.txt
 playwright install chromium
 ```
@@ -300,7 +310,7 @@ pytest tests/ -v
 
 **Option C — headed browser (for debugging):**
 ```bash
-python main.py --workflow sites/openlibrary/workflows/ol_search_and_add.json --headed
+python main.py --workflow sites/openlibrary/workflows/ol_search_and_add.json --show
 ```
 
 ---

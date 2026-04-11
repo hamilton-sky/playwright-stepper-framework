@@ -17,10 +17,10 @@ import sys
 from pathlib import Path
 
 # ── Load .env file before anything else ──────────────────────────────────────
-# Looks in exam/ first, then falls back to stepper/ (where .env typically lives).
+# Looks in project root first, then exam/, then stepper/ as fallback.
 def _load_env() -> None:
     _here = Path(__file__).resolve().parent
-    for candidate in (_here / ".env", _here.parent / "stepper" / ".env"):
+    for candidate in (_here.parent / ".env", _here / ".env", _here.parent / "stepper" / ".env"):
         if not candidate.exists():
             continue
         for line in candidate.read_text(encoding="utf-8").splitlines():
@@ -34,6 +34,8 @@ def _load_env() -> None:
         break  # stop after first found
 
 _load_env()
+
+import argparse
 
 import pytest
 import pytest_asyncio
@@ -62,12 +64,21 @@ requires_auth = pytest.mark.skipif(
 
 
 def pytest_addoption(parser):
-    parser.addoption("--headed", action="store_true", default=False,
-                     help="Run browser in headed (visible) mode")
-    parser.addoption("--case", type=int, default=0,
-                     help="Index of the test case in testdata.json to run (default: 0)")
-    parser.addoption("--all-cases", action="store_true", default=False,
-                     help="Run all test cases from testdata.json")
+    try:
+        parser.addoption("--headed", action="store_true", default=False,
+                         help="Run browser in headed (visible) mode")
+    except (ValueError, argparse.ArgumentError):
+        pass  # already registered by stepper/conftest.py or pytest-playwright
+    try:
+        parser.addoption("--case", type=int, default=0,
+                         help="Index of the test case in testdata.json to run (default: 0)")
+    except (ValueError, argparse.ArgumentError):
+        pass
+    try:
+        parser.addoption("--all-cases", action="store_true", default=False,
+                         help="Run all test cases from testdata.json")
+    except (ValueError, argparse.ArgumentError):
+        pass
 
 
 def pytest_generate_tests(metafunc):

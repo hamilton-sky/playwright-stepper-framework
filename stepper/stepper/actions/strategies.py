@@ -17,6 +17,10 @@ import os
 from datetime import datetime
 from pathlib import Path
 
+# Absolute path to stepper/ — used to resolve relative output paths in workflow
+# JSON files so files always land inside stepper/ regardless of cwd.
+_stepper_root = Path(__file__).resolve().parent.parent.parent  # stepper/stepper/actions/ → stepper/
+
 from stepper.interfaces import (
     ActionStrategy, StepConfig, StepResult, ExecutionContext,
     CONFIDENCE_AUTO, CONFIDENCE_WARN,
@@ -523,7 +527,8 @@ class MeasurePerformanceAction(ActionStrategy):
         if metrics["load_time_ms"] > threshold:
             logger.warning(f"Performance threshold exceeded: {metrics['load_time_ms']}ms > {threshold}ms")
 
-        output_path = Path(step.extra.get("output_path", "artifacts/performance.json"))
+        raw_path = Path(step.extra.get("output_path", "artifacts/performance.json"))
+        output_path = raw_path if raw_path.is_absolute() else _stepper_root / raw_path
         output_path.parent.mkdir(parents=True, exist_ok=True)
         with open(output_path, "w") as f:
             json.dump(report, f, indent=2)
@@ -1000,7 +1005,7 @@ class ParallelAction(ActionStrategy):
         async def run_one(sub_step: StepConfig) -> StepResult:
             async with async_playwright() as pw:
                 browser = await pw.chromium.launch(headless=True)
-                storage = Path("artifacts/storage_state.json")
+                storage = _stepper_root / "artifacts" / "storage_state.json"
                 ctx_kwargs = {}
                 if storage.exists():
                     ctx_kwargs["storage_state"] = str(storage)
