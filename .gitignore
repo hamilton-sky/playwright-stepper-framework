@@ -22,4 +22,7 @@ openlibrary/allure-results/*
 reports/*
 !reports/.gitkeep
 
+# Runtime report written to stepper/ root after each run
+stepper/report.json
+
 storage_state.json

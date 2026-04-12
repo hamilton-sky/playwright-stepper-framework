@@ -50,7 +50,7 @@ for _p in (_repo_root, _exam_dir):
 
 from shared_poms.driver import PlaywrightDriver
 from shared_poms.config import load_settings, load_test_data
-from shared_poms.auth import ensure_logged_in
+from shared_poms.pages.login_page import LoginPage
 
 
 def _has_credentials() -> bool:
@@ -136,12 +136,12 @@ async def _authed_storage_state(browser, settings):
     context = await browser.new_context(viewport={"width": 1280, "height": 800})
     page = await context.new_page()
     driver = PlaywrightDriver(page)
-    await ensure_logged_in(
-        driver,
-        os.environ["OPENLIBRARY_USERNAME"],
-        os.environ["OPENLIBRARY_PASSWORD"],
-        settings.base_url,
-    )
+    login_page = LoginPage(driver, settings.base_url, settings.delays)
+    if not await login_page.is_session_live():
+        await login_page.open()
+        await login_page.fill_username(os.environ["OPENLIBRARY_USERNAME"])
+        await login_page.fill_password(os.environ["OPENLIBRARY_PASSWORD"])
+        await login_page.submit()
     await asyncio.sleep(1)
     await driver.goto(
         f"{settings.base_url}/account/books/want-to-read",

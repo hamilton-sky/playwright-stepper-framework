@@ -40,7 +40,6 @@ playwright-stepper-framework/
 ├── shared_poms/                    # Pure POMs — zero framework imports, reusable anywhere
 │   ├── interfaces.py               # IBrowserDriver, IElementHandle, Delays (DIP contracts)
 │   ├── driver.py                   # PlaywrightDriver — implements IBrowserDriver
-│   ├── auth.py                     # Legacy login helpers — used by exam/ only
 │   ├── config.py                   # 3-tier settings: defaults → config.yaml → ENV
 │   ├── performance.py              # measure_page_performance() — raw timing via JS API
 │   ├── pages/
