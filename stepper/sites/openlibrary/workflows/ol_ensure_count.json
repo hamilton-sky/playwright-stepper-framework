@@ -20,11 +20,12 @@
     },
     {
       "action": "ol_collect_books",
-      "description": "Collect exactly gap books (limit read from context)",
-      "when": { "context_key_exists": "gap" },
+      "description": "Collect exactly gap books",
+      "when": { "context_greater_than": { "key": "gap", "value": 0 } },
       "extra": {
         "query":  "{{query}}",
-        "filter": { "year_max": "{{max_year}}" }
+        "filter": { "year_max": "{{max_year}}" },
+        "limit":  "{{gap}}"
       }
     },
     {
@@ -35,7 +36,7 @@
     {
       "action": "ol_assert_count",
       "description": "Verify shelf count equals target after top-up",
-      "when": { "context_key_exists": "gap" },
+      "when": { "context_greater_than": { "key": "gap", "value": 0 } },
       "extra": {
         "expected_count": "{{target_count}}"
       }

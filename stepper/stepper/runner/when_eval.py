@@ -7,13 +7,16 @@ is skipped with status="skipped".
 
 Supported condition types
 --------------------------
-{ "context_equals":    { "key": "count_before", "value": 0 } }
-{ "context_key_exists": "collected_items" }
-{ "url_contains":      "/account/login" }
-{ "element_exists":    "input[name='username']" }
-{ "not":               <any condition> }
-{ "all":               [ <condition>, ... ] }
-{ "any":               [ <condition>, ... ] }
+{ "context_equals":        { "key": "count_before", "value": 0 } }
+{ "context_key_exists":    "collected_items" }
+{ "context_greater_than":  { "key": "gap", "value": 0 } }
+{ "context_less_than":     { "key": "count", "value": 10 } }
+{ "context_between":       { "key": "count", "min": 2, "max": 8 } }
+{ "url_contains":          "/account/login" }
+{ "element_exists":        "input[name='username']" }
+{ "not":                   <any condition> }
+{ "all":                   [ <condition>, ... ] }
+{ "any":                   [ <condition>, ... ] }
 
 Examples in workflow JSON
 --------------------------
@@ -67,6 +70,38 @@ async def evaluate_when(condition: dict, context: ExecutionContext, page) -> boo
         # Exists AND is non-empty (None, [], "" are all falsy → skip)
         result = bool(val)
         logger.debug(f"when.context_key_exists({key!r}) → {result}")
+        return result
+
+    # ── context_greater_than ──────────────────────────────────────────────────
+    if "context_greater_than" in condition:
+        spec  = condition["context_greater_than"]
+        key   = spec.get("key", "")
+        value = spec.get("value", 0)
+        actual = context.get(key, 0)
+        result = (actual if actual is not None else 0) > value
+        logger.debug(f"when.context_greater_than({key!r} > {value}) → {result}")
+        return result
+
+    # ── context_less_than ─────────────────────────────────────────────────────
+    if "context_less_than" in condition:
+        spec  = condition["context_less_than"]
+        key   = spec.get("key", "")
+        value = spec.get("value", 0)
+        actual = context.get(key, 0)
+        result = (actual if actual is not None else 0) < value
+        logger.debug(f"when.context_less_than({key!r} < {value}) → {result}")
+        return result
+
+    # ── context_between ───────────────────────────────────────────────────────
+    if "context_between" in condition:
+        spec   = condition["context_between"]
+        key    = spec.get("key", "")
+        lo     = spec.get("min", 0)
+        hi     = spec.get("max", 0)
+        actual = context.get(key, 0)
+        actual = actual if actual is not None else 0
+        result = lo <= actual <= hi
+        logger.debug(f"when.context_between({key!r} in [{lo}, {hi}]) → {result}")
         return result
 
     # ── url_contains ──────────────────────────────────────────────────────────

@@ -17,6 +17,9 @@ import logging
 import time
 from pathlib import Path
 
+import copy
+import dataclasses
+
 from stepper.interfaces import (
     StepConfig, StepResult, StepObserver,
     ActionFactory, ReporterStrategy, ExecutionContext
@@ -80,6 +83,11 @@ class StepRunner:
                     self._notify_done(idx, result)
                     results.append(result)
                     continue
+
+            # Resolve any remaining {{key}} placeholders against runtime context.
+            # Plan-time substitution covers variables{}; this covers context.counts
+            # so JSON can write "limit": "{{gap}}" and get the runtime value.
+            step = _resolve_context_vars(step, ctx)
 
             t0 = time.monotonic()
             max_attempts = 1 + max(0, step.retry)
@@ -153,6 +161,43 @@ class StepRunner:
                 obs.on_log(msg, level)
             except Exception:
                 pass
+
+
+# ── Runtime context variable resolution ──────────────────────────────────────
+
+def _resolve_context_vars(step: StepConfig, ctx: ExecutionContext) -> StepConfig:
+    """
+    Resolve any remaining {{key}} placeholders against runtime context.
+
+    Plan-time substitution (JsonFilePlanner) handles the variables{} block.
+    This pass handles context.counts values set by earlier steps at runtime
+    — e.g. "limit": "{{gap}}" resolves to the integer stored by ol_ensure_count.
+
+    Returns a new StepConfig if any substitution occurred; the original otherwise.
+    Type preservation: a pure "{{key}}" reference returns the typed value (int/bool).
+    """
+    if not ctx.counts:
+        return step
+
+    def _sub(obj):
+        if isinstance(obj, str):
+            if obj.startswith("{{") and obj.endswith("}}"):
+                key = obj[2:-2].strip()
+                if key in ctx.counts:
+                    return ctx.counts[key]   # preserves int type
+            for k, v in ctx.counts.items():
+                obj = obj.replace(f"{{{{{k}}}}}", str(v))
+            return obj
+        if isinstance(obj, dict):
+            return {k: _sub(v) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [_sub(item) for item in obj]
+        return obj
+
+    resolved_extra = _sub(copy.deepcopy(step.extra))
+    if resolved_extra == step.extra:
+        return step
+    return dataclasses.replace(step, extra=resolved_extra)
 
 
 # ── Built-in Observers ────────────────────────────────────────────────────────
