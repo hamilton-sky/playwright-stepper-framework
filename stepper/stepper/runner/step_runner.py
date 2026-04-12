@@ -118,10 +118,16 @@ class StepRunner:
             self._notify_done(idx, result)
             results.append(result)
 
-            # Hard stop on assertion failure
+            # Hard stop on failure — unless step opts out with continue_on_failure
             if result.status == "failed":
-                self._notify_log(f"✗ Hard stop at step {idx+1}: {result.error}", "error")
-                break
+                if step.continue_on_failure:
+                    self._notify_log(
+                        f"⚠ Step {idx+1} failed but continue_on_failure=true — proceeding",
+                        "warning",
+                    )
+                else:
+                    self._notify_log(f"✗ Hard stop at step {idx+1}: {result.error}", "error")
+                    break
 
         return results, ctx
 

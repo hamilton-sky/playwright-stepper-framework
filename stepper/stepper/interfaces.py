@@ -49,6 +49,7 @@ class StepConfig:
     when: dict | None = None                    # optional condition — None means always run
     retry: int = 0                              # number of retries on failure (0 = no retry)
     retry_delay_ms: int = 1000                  # delay between retries in milliseconds
+    continue_on_failure: bool = False           # if True, flow continues even when step fails
 
 
 @dataclass

@@ -28,12 +28,14 @@
       "action": "screenshot",
       "description": "Capture search results — only runs when search actually returned books (when guard demo)",
       "when": { "context_key_exists": "collected_items" },
+      "continue_on_failure": true,
       "extra": { "filename": "smoke_search_results.png" }
     },
     {
       "action": "measure_performance",
       "description": "Measure search page load time (threshold: {{threshold_ms}}ms)",
       "url": "https://openlibrary.org/search?q={{query}}",
+      "continue_on_failure": true,
       "extra": {
         "threshold_ms": "{{threshold_ms}}",
         "output_path":  "artifacts/perf_smoke.json"

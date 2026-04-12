@@ -27,7 +27,7 @@ def dict_to_step_config(d: dict) -> StepConfig:
         _top_level = {
             "action", "description", "url", "element",
             "input_value", "wait_for", "value",
-            "when", "retry", "retry_delay_ms",
+            "when", "retry", "retry_delay_ms", "continue_on_failure",
         }
         extra_data = {k: v for k, v in d.items() if k not in _top_level}
 
@@ -42,4 +42,5 @@ def dict_to_step_config(d: dict) -> StepConfig:
         when=d.get("when") or None,
         retry=int(d.get("retry", 0)),
         retry_delay_ms=int(d.get("retry_delay_ms", 1000)),
+        continue_on_failure=bool(d.get("continue_on_failure", False)),
     )
