@@ -206,9 +206,36 @@ Nine ready-to-run JSON workflows demonstrating every architectural capability:
 | `ol_regression_roundtrip.json` | Full lifecycle + two assert modes (delta & absolute 0) | `python main.py --workflow sites/openlibrary/workflows/ol_regression_roundtrip.json` |
 | `ol_multi_author.json` | Two-query sequential composition (Dune + Tolkien) | `python main.py --workflow sites/openlibrary/workflows/ol_multi_author.json` |
 | `ol_parallel_perf.json` | Three pages benchmarked concurrently in separate tabs | `python main.py --workflow sites/openlibrary/workflows/ol_parallel_perf.json` |
-| `ol_smoke_test.json` | `when`-guarded non-mutating health check | `python main.py --workflow sites/openlibrary/workflows/ol_smoke_test.json` |
+| `ol_smoke_test.json` | `when`-guarded + `continue_on_failure` flow-level soft-fail | `python main.py --workflow sites/openlibrary/workflows/ol_smoke_test.json` |
 | `ol_idempotency_test.json` | Add same books twice → count must not grow | `python main.py --workflow sites/openlibrary/workflows/ol_idempotency_test.json` |
 | `login.json` | Generic reusable login subflow | `python main.py --workflow sites/openlibrary/workflows/login.json` |
+
+## Step Controls
+
+Every step supports these optional fields — resolved at plan time, no runner changes needed:
+
+| Field | Default | Effect |
+|---|---|---|
+| `when` | — | Skip step if condition is false (`context_key_exists`, `url_contains`, `not`, `all`, `any`, …) |
+| `retry` | `0` | Retry on failure up to N times |
+| `retry_delay_ms` | `1000` | Milliseconds between retries |
+| `continue_on_failure` | `false` | `true` → warn and continue; `false` → hard-stop |
+
+Flow-level defaults (declared once at the top, inherited by all steps):
+
+```json
+{
+  "continue_on_failure": true,
+  "steps": [
+    { "action": "ol_ensure_login", "continue_on_failure": false },
+    { "action": "screenshot" }
+  ]
+}
+```
+
+Step always wins over flow. `ol_ensure_login` hard-stops; `screenshot` soft-fails.
+
+---
 
 Override any variable at runtime without touching the JSON:
 

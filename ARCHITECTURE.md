@@ -115,7 +115,9 @@ playwright-stepper-framework/
                        │       └▶ action.execute()        │
                        │    4. Notify observers           │
                        │    5. Record StepResult          │
-                       │    6. Hard-stop on failure       │
+                       │    6. continue_on_failure?       │
+                       │       yes → warn + continue      │
+                       │       no  → hard-stop            │
                        └──────┬───────────────────────────┘
                               │
            ┌──────────────────┼──────────────────┐
@@ -251,6 +253,18 @@ playwright-stepper-framework/
   ol_assert_count       → assert context count == expected (delta or absolute)
   ol_ensure_count       → count shelf, store gap in context if top-up needed
                           flow controls collect / add / assert via when-guards
+
+  STEP-LEVEL CONTROLS (resolved at plan time by JsonFilePlanner)
+  ──────────────────────────────────────────────────────────────
+  when:                  skip step if condition is false
+  retry: N               retry on failure up to N times (retry_delay_ms between)
+  continue_on_failure:   true  → warn + continue on failure
+                         false → hard-stop on failure (default)
+
+  FLOW-LEVEL DEFAULTS (pass down to all steps, step always wins)
+  ──────────────────────────────────────────────────────────────
+  continue_on_failure: true   → all steps soft-fail unless they override to false
+  variables: {}               → substituted into all step values at plan time
 
   THREE-LAYER CONTRACT
   ─────────────────────
