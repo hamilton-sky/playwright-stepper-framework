@@ -40,11 +40,12 @@ playwright-stepper-framework/
 ├── shared_poms/                    # Pure POMs — zero framework imports, reusable anywhere
 │   ├── interfaces.py               # IBrowserDriver, IElementHandle, Delays (DIP contracts)
 │   ├── driver.py                   # PlaywrightDriver — implements IBrowserDriver
-│   ├── auth.py                     # Login flow: is_login_required(), login(), ensure_logged_in()
+│   ├── auth.py                     # Legacy login helpers — used by exam/ only
 │   ├── config.py                   # 3-tier settings: defaults → config.yaml → ENV
 │   ├── performance.py              # measure_page_performance() — raw timing via JS API
 │   ├── pages/
 │   │   ├── base_page.py            # BasePage: open(), navigate(), delay helpers
+│   │   ├── login_page.py           # LoginPage: selectors + is_session_live()
 │   │   ├── book_search_page.py     # search(), collect_books_under_year() + pagination
 │   │   ├── book_detail_page.py     # add_to_reading_list(), remove_from_shelf()
 │   │   └── reading_list_page.py    # get_book_count(), collect_all_book_urls()
@@ -347,13 +348,13 @@ ENV variables override `config.yaml` which overrides defaults — full 3-tier co
 
 | Action | Description |
 |---|---|
-| `ol_ensure_login` | Authenticate session (skips if already logged in) |
-| `ol_collect_books` | Search + filter by year + paginate → fills `context.collected_items` |
+| `ol_ensure_login` | `LoginPage.is_session_live()` → fill + submit if needed |
+| `ol_collect_books` | Search + filter by year + paginate → fills `context.collected_items`; limit from `extra` or `context.counts["gap"]` |
 | `ol_add_to_shelf` | Add each collected book to a reading shelf + screenshot |
 | `ol_clear_reading_list` | Remove all books from want-to-read shelf |
 | `ol_store_count` | Count books across both shelves → stores in `context` |
 | `ol_assert_count` | Assert count equals `expected_count` or `count_before + delta` |
-| `ol_ensure_count` | Top-up: add only the gap needed to reach `target_count` |
+| `ol_ensure_count` | Count shelf, store `gap` in context if top-up needed — flow controls collect/add/assert via `when` guards |
 | `navigate` | Go to URL |
 | `click` | Click element (with Smart Locator cascade) |
 | `fill` | Type into input + press Enter |
