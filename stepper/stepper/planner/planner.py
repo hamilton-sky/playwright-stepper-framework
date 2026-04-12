@@ -132,6 +132,14 @@ class JsonFilePlanner(PlannerStrategy):
         if variables:
             steps_raw = _substitute(steps_raw, variables)
 
+        # Flow-level continue_on_failure — passes down to every step that
+        # does not already declare its own value. Step always wins over flow.
+        flow_continue = data.get("continue_on_failure", False) if isinstance(data, dict) else False
+        if flow_continue:
+            for step in steps_raw:
+                if "continue_on_failure" not in step:
+                    step["continue_on_failure"] = flow_continue
+
         return [_dict_to_step(s) for s in steps_raw]
 
 

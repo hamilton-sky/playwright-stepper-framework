@@ -1,6 +1,7 @@
 {
   "name": "OpenLibrary — smoke test (non-mutating health check)",
   "description": "Showcases: 'when' conditional guards and a lightweight read-only health check. Verifies login, search, and performance without mutating the shelf. The screenshot step only fires when search actually returned books (when: context_key_exists). The final assert proves the shelf count was unchanged throughout.",
+  "continue_on_failure": true,
   "variables": {
     "query":        "Dune",
     "threshold_ms": 5000
@@ -8,7 +9,8 @@
   "steps": [
     {
       "action": "ol_ensure_login",
-      "description": "Smoke: verify authentication works"
+      "description": "Smoke: verify authentication works",
+      "continue_on_failure": false
     },
     {
       "action": "ol_store_count",
@@ -28,14 +30,12 @@
       "action": "screenshot",
       "description": "Capture search results — only runs when search actually returned books (when guard demo)",
       "when": { "context_key_exists": "collected_items" },
-      "continue_on_failure": true,
       "extra": { "filename": "smoke_search_results.png" }
     },
     {
       "action": "measure_performance",
       "description": "Measure search page load time (threshold: {{threshold_ms}}ms)",
       "url": "https://openlibrary.org/search?q={{query}}",
-      "continue_on_failure": true,
       "extra": {
         "threshold_ms": "{{threshold_ms}}",
         "output_path":  "artifacts/perf_smoke.json"
@@ -44,6 +44,7 @@
     {
       "action": "ol_assert_count",
       "description": "Proof the shelf was never mutated — count must equal baseline (delta=0)",
+      "continue_on_failure": false,
       "extra": { "delta": 0 }
     }
   ]
