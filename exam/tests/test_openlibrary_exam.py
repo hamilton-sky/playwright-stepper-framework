@@ -110,8 +110,9 @@ class TestOpenLibraryExam:
     @allure.story("Measure page performance -- book detail")
     @pytest.mark.asyncio
     async def test_measure_performance_detail(self, page):
+        # A known stable Dune edition detail page
         result = await measure_page_performance(
-            page, f"{BASE_URL}/search?q=Dune", threshold_ms=2500,
+            page, f"{BASE_URL}/works/OL18020194W/Dune", threshold_ms=2500,
         )
         assert "metrics" in result
 
