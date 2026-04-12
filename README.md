@@ -216,12 +216,43 @@ Every step supports these optional fields — resolved at plan time, no runner c
 
 | Field | Default | Effect |
 |---|---|---|
-| `when` | — | Skip step if condition is false (`context_key_exists`, `url_contains`, `not`, `all`, `any`, …) |
+| `when` | — | Skip step if condition is false — see full condition reference below |
 | `retry` | `0` | Retry on failure up to N times |
 | `retry_delay_ms` | `1000` | Milliseconds between retries |
 | `continue_on_failure` | `false` | `true` → warn and continue; `false` → hard-stop |
 
-Flow-level defaults (declared once at the top, inherited by all steps):
+### `when` condition reference
+
+| Condition | Syntax | Notes |
+|---|---|---|
+| `context_equals` | `{ "key": "k", "value": 0 }` | Exact match |
+| `context_key_exists` | `"key_name"` | True if key is set and non-empty |
+| `context_greater_than` | `{ "key": "gap", "value": 0 }` | Numeric `>` |
+| `context_less_than` | `{ "key": "count", "value": 10 }` | Numeric `<` |
+| `context_between` | `{ "key": "count", "min": 2, "max": 8 }` | Inclusive range |
+| `url_contains` | `"/account/login"` | Current page URL |
+| `element_exists` | `"input[name='q']"` | Live DOM check |
+| `not` | `<any condition>` | Invert |
+| `all` | `[<cond>, ...]` | AND short-circuit |
+| `any` | `[<cond>, ...]` | OR short-circuit |
+
+### Runtime variable resolution
+
+`variables{}` in the JSON are substituted at **plan time** by `JsonFilePlanner`.  
+Context values set by earlier steps are substituted at **runtime** by `StepRunner` — this means `{{gap}}` in a step's `extra` resolves to the integer stored by `ol_ensure_count` at the moment the step runs:
+
+```json
+{ "action": "ol_collect_books",
+  "when": { "context_greater_than": { "key": "gap", "value": 0 } },
+  "extra": { "limit": "{{gap}}" }
+}
+```
+
+A pure `"{{key}}"` reference preserves the original type (int, bool). Mixed strings like `"page_{{n}}"` are string-substituted.
+
+---
+
+### Flow-level defaults (declared once at the top, inherited by all steps):
 
 ```json
 {
@@ -376,7 +407,7 @@ ENV variables override `config.yaml` which overrides defaults — full 3-tier co
 | Action | Description |
 |---|---|
 | `ol_ensure_login` | `LoginPage.is_session_live()` → fill + submit if needed |
-| `ol_collect_books` | Search + filter by year + paginate → fills `context.collected_items`; limit from `extra` or `context.counts["gap"]` |
+| `ol_collect_books` | Search + filter by year + paginate → fills `context.collected_items`; `limit` from `extra` (supports `"{{gap}}"` runtime resolution) |
 | `ol_add_to_shelf` | Add each collected book to a reading shelf + screenshot |
 | `ol_clear_reading_list` | Remove all books from want-to-read shelf |
 | `ol_store_count` | Count books across both shelves → stores in `context` |

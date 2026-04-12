@@ -48,9 +48,34 @@ Playwright Page
 
 **Context as the signal between steps**
 ```
-ol_ensure_count  →  context.counts["gap"] = N     (set when top-up needed)
-ol_collect_books →  reads gap from context as limit fallback
-                    when: context_key_exists: gap  (skipped if already at target)
-ol_add_to_shelf  →  when: context_key_exists: collected_items
-ol_assert_count  →  when: context_key_exists: gap
+ol_ensure_count  →  context.counts["gap"] = N          (set when top-up needed)
+
+ol_collect_books →  when: { context_greater_than: { key: gap, value: 0 } }
+                    extra.limit = "{{gap}}"             (resolved at runtime by StepRunner)
+
+ol_add_to_shelf  →  when: { context_key_exists: collected_items }
+
+ol_assert_count  →  when: { context_greater_than: { key: gap, value: 0 } }
+```
+
+**Two-phase variable resolution**
+```
+Plan time  — JsonFilePlanner substitutes variables{} into all step fields
+             e.g.  "{{target_count}}" → 5  before StepRunner ever sees the step
+
+Runtime    — StepRunner._resolve_context_vars() substitutes context.counts keys
+             e.g.  "{{gap}}" → 3  right before executing each step
+             Pure "{{key}}" references preserve the original type (int/bool).
+```
+
+**when condition operators (full set)**
+```
+context_equals        { key, value }          exact equality
+context_key_exists    "key_name"              set + non-empty
+context_greater_than  { key, value }          numeric >
+context_less_than     { key, value }          numeric <
+context_between       { key, min, max }       inclusive range
+url_contains          "fragment"              current page URL
+element_exists        "css selector"          live DOM check
+not / all / any       composable              invert / AND / OR
 ```
