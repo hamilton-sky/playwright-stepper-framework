@@ -157,9 +157,8 @@ class OLReadingListPage(PageModule):
 
                 await reading_list.open()
 
-                # Wait for books to load/persist after navigation
                 import asyncio
-                await asyncio.sleep(2)
+                await asyncio.sleep(settings.delays.page_load_wait_ms / 1000)
                 actual = await reading_list.get_book_count()
 
                 if "expected_count" in step.extra:
@@ -183,24 +182,21 @@ class OLReadingListPage(PageModule):
 
     class OLEnsureCountAction(ActionStrategy):
         """
-        Ensure the reading list has at least `target_count` books.
+        Check the shelf count and store the gap in context if top-up is needed.
 
-        Counts current books across both shelves. If the count is already at
-        or above the target, passes immediately without adding anything.
-        Otherwise calculates the gap, collects exactly that many books, adds
-        them, then asserts the final count equals the target.
+        Single responsibility: decide whether top-up is needed and by how much.
+        The flow JSON controls what happens next — collect, add, assert are
+        separate steps guarded by `when: context_key_exists: gap`.
 
-        All selector knowledge stays in the POMs — this action never touches CSS.
+        If already at or above target → passes immediately, gap NOT stored
+        (downstream when-guards skip collect / add / assert automatically).
+
+        If below target → stores gap in context.counts["gap"] and passes.
+        The flow then runs ol_collect_books (reads gap as limit), ol_add_to_shelf,
+        and ol_assert_count.
 
         JSON usage:
-          {
-            "action": "ol_ensure_count",
-            "extra": {
-              "target_count": 5,
-              "query": "Dune",
-              "filter": { "year_max": 1980 }
-            }
-          }
+          { "action": "ol_ensure_count", "extra": { "target_count": 5 } }
         """
         action_name = "ol_ensure_count"
 
@@ -212,8 +208,6 @@ class OLReadingListPage(PageModule):
                 from shared_poms.config import load_settings
                 from shared_poms.driver import PlaywrightDriver
                 from shared_poms.pages.reading_list_page import ReadingListPage
-                from sites.openlibrary.pages.search_page import OLSearchPage
-                from sites.openlibrary.pages.detail_page import OLDetailPage
 
                 settings     = load_settings()
                 driver       = PlaywrightDriver(page)
@@ -222,67 +216,26 @@ class OLReadingListPage(PageModule):
                     page=page, resolver=resolver,
                 )
 
-                # 1. Count what is already on the shelves
                 current = await reading_list.get_book_count()
                 target  = int(step.extra["target_count"])
 
-                # 2. Already at or above target — nothing to do
                 if current >= target:
                     logger.info(
-                        f"ol_ensure_count ✓ — already at {current}/{target}, no adds needed"
+                        "ol_ensure_count ✓ — already at %d/%d, skipping top-up",
+                        current, target,
                     )
                     return StepResult(step=step, status="passed")
 
-                # 3. Calculate how many are missing
                 gap = target - current
+                context.set_count("gap", gap)
                 logger.info(
-                    f"ol_ensure_count — shelf has {current}/{target}, need {gap} more"
+                    "ol_ensure_count — shelf has %d/%d, gap=%d stored in context",
+                    current, target, gap,
                 )
-
-                # 4. Collect exactly `gap` books using the existing collect action
-                collect_step = StepConfig(
-                    action="ol_collect_books",
-                    description=f"Collect {gap} books to top up to {target}",
-                    extra={
-                        "query":  step.extra.get("query", ""),
-                        "filter": step.extra.get("filter", {}),
-                        "limit":  gap,
-                    },
-                )
-                collect_result = await OLSearchPage.OLCollectBooksAction()._execute(
-                    page, collect_step, resolver, context
-                )
-                if collect_result.status != "passed":
-                    return StepResult(step=step, status="failed",
-                                      error=f"ol_ensure_count: collect step failed — {collect_result.error}")
-
-                # 5. Add collected books to the shelf using the existing add action
-                add_step = StepConfig(
-                    action="ol_add_to_shelf",
-                    description="Add top-up books to shelf",
-                )
-                add_result = await OLDetailPage.OLAddToShelfAction()._execute(
-                    page, add_step, resolver, context
-                )
-                if add_result.status == "failed":
-                    return StepResult(step=step, status="failed",
-                                      error=f"ol_ensure_count: add step failed — {add_result.error}")
-
-                # 6. Verify final count matches target
-                import asyncio
-                await asyncio.sleep(2)
-                final = await reading_list.get_book_count()
-                if final != target:
-                    return StepResult(
-                        step=step, status="failed",
-                        error=f"ol_ensure_count: expected {target} books after top-up, got {final}",
-                    )
-
-                logger.info(f"ol_ensure_count ✓ — reading list now at {final}/{target}")
                 return StepResult(step=step, status="passed")
 
             except Exception as e:
-                logger.error(f"ol_ensure_count failed: {e}")
+                logger.error("ol_ensure_count failed: %s", e)
                 return StepResult(step=step, status="failed", error=str(e))
 
     @classmethod

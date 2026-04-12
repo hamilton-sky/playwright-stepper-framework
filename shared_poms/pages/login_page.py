@@ -19,10 +19,11 @@ logger = logging.getLogger(__name__)
 
 class LoginPage(BasePage):
     # ── Selectors — the ONLY place in the codebase that knows login form CSS ──
-    USERNAME  = "#username"
-    PASSWORD  = "#password"
-    SUBMIT    = ".cta-btn--primary"
-    LOGGED_IN = "a[href='/account']"
+    USERNAME       = "#username"
+    PASSWORD       = "#password"
+    SUBMIT         = ".cta-btn--primary"
+    LOGGED_IN      = "a[href='/account']"
+    PROTECTED_PATH = "/account/books/want-to-read"
 
     @property
     def url(self) -> str:
@@ -39,6 +40,12 @@ class LoginPage(BasePage):
             return await self._driver.locator_count(self.LOGGED_IN) > 0
         except Exception:
             return False
+
+    async def is_session_live(self) -> bool:
+        """Navigate to a protected page and check login state via redirect detection."""
+        protected = f"{self.base_url.rstrip('/')}{self.PROTECTED_PATH}"
+        await self._driver.goto(protected, wait_until="domcontentloaded")
+        return await self.is_logged_in()
 
     async def fill_username(self, value: str) -> None:
         await self._driver.fill(self.USERNAME, value)

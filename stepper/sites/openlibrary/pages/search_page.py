@@ -54,7 +54,8 @@ class OLSearchPage(PageModule):
 
                 query    = step.extra.get("query", "")
                 max_year = step.extra.get("filter", {}).get("year_max", 9999)
-                limit    = step.extra.get("limit", 5)
+                # limit: explicit in extra → context gap (set by ol_ensure_count) → default
+                limit    = step.extra.get("limit") or context.get_count("gap") or 5
 
                 await search_page.open()
                 await search_page.search(query)

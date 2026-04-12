@@ -49,12 +49,7 @@ class OLLoginPage(PageModule):
                 driver     = PlaywrightDriver(page)
                 login_page = LoginPage(driver, settings.base_url, settings.delays)
 
-                # Navigate to a protected page — if the session is alive we
-                # land there; if not we get redirected to /account/login.
-                protected = f"{settings.base_url.rstrip('/')}/account/books/want-to-read"
-                await driver.goto(protected, wait_until="domcontentloaded")
-
-                if await login_page.is_logged_in():
+                if await login_page.is_session_live():
                     logger.info("ol_ensure_login ✓ — session already active")
                     return StepResult(step=step, status="passed")
 

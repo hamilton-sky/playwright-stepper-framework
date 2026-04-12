@@ -1,6 +1,6 @@
 {
   "name": "OpenLibrary — ensure reading list has exactly N books (top-up)",
-  "description": "Check current reading list count. If already at or above target, do nothing. Otherwise collect and add only the gap needed to reach the target.",
+  "description": "Check current count. If already at target, all downstream steps skip automatically via when-guards. Otherwise collect exactly the gap, add to shelf, and verify.",
   "variables": {
     "target_count": 5,
     "query":        "Dune",
@@ -13,11 +13,31 @@
     },
     {
       "action": "ol_ensure_count",
-      "description": "Top up reading list to {{target_count}} books",
+      "description": "Check shelf count — store gap in context if top-up needed",
       "extra": {
-        "target_count": "{{target_count}}",
-        "query":        "{{query}}",
-        "filter":       { "year_max": "{{max_year}}" }
+        "target_count": "{{target_count}}"
+      }
+    },
+    {
+      "action": "ol_collect_books",
+      "description": "Collect exactly gap books (limit read from context)",
+      "when": { "context_key_exists": "gap" },
+      "extra": {
+        "query":  "{{query}}",
+        "filter": { "year_max": "{{max_year}}" }
+      }
+    },
+    {
+      "action": "ol_add_to_shelf",
+      "description": "Add collected books to shelf",
+      "when": { "context_key_exists": "collected_items" }
+    },
+    {
+      "action": "ol_assert_count",
+      "description": "Verify shelf count equals target after top-up",
+      "when": { "context_key_exists": "gap" },
+      "extra": {
+        "expected_count": "{{target_count}}"
       }
     }
   ]

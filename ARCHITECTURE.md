@@ -9,10 +9,11 @@ playwright-stepper-framework/
 │   ├── config.py                 # Settings loader (YAML + env vars)
 │   ├── driver.py                 # Playwright adapter (IBrowserDriver impl)
 │   ├── interfaces.py             # POM contracts (IBrowserDriver, IElementHandle)
-│   ├── auth.py                   # Login flows
+│   ├── auth.py                   # Legacy login helpers (used by exam/ only)
 │   ├── performance.py            # Performance metrics
-│   └── pages/                    # Pure POMs (no framework coupling)
+│   └── pages/                    # Pure POMs — selectors live here and nowhere else
 │       ├── base_page.py
+│       ├── login_page.py         # Login form selectors + is_session_live()
 │       ├── book_search_page.py
 │       ├── book_detail_page.py
 │       └── reading_list_page.py
@@ -241,13 +242,21 @@ playwright-stepper-framework/
 
   SITE-SPECIFIC ACTIONS (OpenLibrary)
   ────────────────────────────────────
-  ol_ensure_login       → auth flow (skips if already logged in)
+  ol_ensure_login       → LoginPage.is_session_live() → fill + submit if needed
   ol_collect_books      → BookSearchPage.collect_books() → context.collected_items
+                          limit: step.extra["limit"] or context.counts["gap"] or 5
   ol_add_to_shelf       → BookDetailPage.add_to_reading_list() per collected item
   ol_clear_reading_list → ReadingListPage.clear() (removes all books)
   ol_store_count        → ReadingListPage.count() → context[context_key]
   ol_assert_count       → assert context count == expected (delta or absolute)
-  ol_ensure_count       → top-up: add only the gap to reach target_count
+  ol_ensure_count       → count shelf, store gap in context if top-up needed
+                          flow controls collect / add / assert via when-guards
+
+  THREE-LAYER CONTRACT
+  ─────────────────────
+  POM   (shared_poms/pages/)     owns selectors + raw page interactions
+  Glue  (sites/*/pages/)         wraps POM into named behavior — one action, one job
+  Flow  (workflows/*.json)       controls order, conditions, variables — no selectors
 ```
 
 ---
@@ -329,7 +338,8 @@ playwright-stepper-framework/
   Variables: query="Dune"  max_year=1980  limit=5
 
   Step 1  ol_ensure_login
-          └─▶ OLLoginPage → auth flow → session cached
+          └─▶ LoginPage.is_session_live() → already logged in, skip
+              or  LoginPage.open() → fill_username → fill_password → submit
 
   Step 2  ol_clear_reading_list
           └─▶ ReadingListPage.clear() → shelf is empty
@@ -346,9 +356,7 @@ playwright-stepper-framework/
 
   Step 5  ol_add_to_shelf
           └─▶ for url in context.collected_items:
-                  navigate(url)
-                  click("Want to Read")
-                  screenshot()
+                  navigate(url) → click("Want to Read") → screenshot()
 
   Step 6  ol_assert_count
           extra: { delta: 5 }
@@ -361,6 +369,37 @@ playwright-stepper-framework/
   report.json    structured step results
   test-<label>/  index.html + logs + screenshots
   allure-results allure serve
+```
+
+---
+
+## Workflow Example: "Top-Up" with Context-Driven when-guards
+
+```
+  ol_ensure_count.json
+  ────────────────────
+  Variables: target_count=5  query="Dune"  max_year=1980
+
+  Step 1  ol_ensure_login        → always runs
+
+  Step 2  ol_ensure_count
+          extra: { target_count: 5 }
+          IF current >= 5  → pass, gap NOT stored → steps 3-5 skip
+          IF current < 5   → gap = 5 - current stored in context.counts["gap"]
+
+  Step 3  ol_collect_books       when: context_key_exists: gap
+          limit read from context.counts["gap"] (no limit in extra)
+          └─▶ context.collected_items = [url1 … urlN]
+
+  Step 4  ol_add_to_shelf        when: context_key_exists: collected_items
+          └─▶ adds collected books to shelf
+
+  Step 5  ol_assert_count        when: context_key_exists: gap
+          extra: { expected_count: 5 }
+          └─▶ verifies final count == target
+
+  Context as signal: ol_ensure_count produces "gap", when-guards consume it.
+  Flow controls everything. No action calls another action.
 ```
 
 ---
