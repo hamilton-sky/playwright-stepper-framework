@@ -3,7 +3,10 @@
   "description": "Showcases: sequential composition — the same collect+add action pair is chained twice with different queries. context.collected_items is safely overwritten between batches. expected_count = limit_a (3) + limit_b (2) = 5.",
   "variables": {
     "query_a": "Dune",    "year_a": 1980, "limit_a": 3,
-    "query_b": "Tolkien", "year_b": 1970, "limit_b": 2
+    "expected_count_a": 3,
+    "query_b": "Tolkien", "year_b": 1970, "limit_b": 2,
+    "expected_count_b": 2,
+    "expected_count": 5
   },
   "steps": [
     {

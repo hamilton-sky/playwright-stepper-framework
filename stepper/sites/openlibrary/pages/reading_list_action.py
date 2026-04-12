@@ -146,7 +146,6 @@ class OLReadingListPage(PageModule):
             try:
                 from shared_poms.config import load_settings
                 from shared_poms.driver import PlaywrightDriver
-                from shared_poms.auth import is_login_required, login
                 from shared_poms.pages.reading_list_page import ReadingListPage
 
                 settings     = load_settings()
@@ -157,10 +156,6 @@ class OLReadingListPage(PageModule):
                 )
 
                 await reading_list.open()
-                if await is_login_required(driver):
-                    if settings.username and settings.password:
-                        await login(driver, settings.username, settings.password)
-                        await reading_list.open()
 
                 # Wait for books to load/persist after navigation
                 import asyncio

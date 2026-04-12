@@ -1,14 +1,12 @@
 """
-sites/openlibrary/pages/login_action.py — Stepper action module for OL login.
+sites/openlibrary/pages/login_action.py — Stepper glue for OL login.
 
-Wraps shared_poms.auth.ensure_logged_in() into a named Stepper action so
-JSON workflows never need to contain CSS selectors for the login form.
+Wraps LoginPage POM interactions into the named behavior "ol_ensure_login".
+No selectors live here — they belong to LoginPage.
+No flow logic lives in the POM — it belongs here (check → navigate → fill → submit).
 
 JSON usage:
   { "action": "ol_ensure_login" }
-
-Dependency direction: sites.openlibrary → stepper  (correct)
-                      sites.openlibrary → shared_poms  (correct)
 """
 
 from __future__ import annotations
@@ -27,12 +25,13 @@ class OLLoginPage(PageModule):
         """
         Ensure the browser session is authenticated with OpenLibrary.
 
-        Delegates entirely to shared_poms.auth.ensure_logged_in(), which owns
-        all credential-form selectors (#username, #password, .cta-btn--primary).
-        JSON callers need only name the action — no CSS knowledge required.
+        Behavior:
+          1. Navigate to a protected page to detect whether a redirect occurs.
+          2. Ask LoginPage.is_logged_in() — a positive selector check.
+          3. If not logged in: open the login page, fill credentials, submit.
 
-        JSON usage:
-          { "action": "ol_ensure_login" }
+        All selectors are owned by LoginPage. Credentials come from Settings
+        (env vars / config.yaml). JSON callers need only name the action.
         """
         action_name = "ol_ensure_login"
         read_only   = True
@@ -44,23 +43,47 @@ class OLLoginPage(PageModule):
             try:
                 from shared_poms.config import load_settings
                 from shared_poms.driver import PlaywrightDriver
-                from shared_poms.auth import ensure_logged_in
+                from shared_poms.pages.login_page import LoginPage
 
-                settings = load_settings()
-                driver   = PlaywrightDriver(page)
+                settings   = load_settings()
+                driver     = PlaywrightDriver(page)
+                login_page = LoginPage(driver, settings.base_url, settings.delays)
 
-                await ensure_logged_in(
-                    driver,
-                    settings.username,
-                    settings.password,
-                    settings.base_url,
-                )
+                # Navigate to a protected page — if the session is alive we
+                # land there; if not we get redirected to /account/login.
+                protected = f"{settings.base_url.rstrip('/')}/account/books/want-to-read"
+                await driver.goto(protected, wait_until="domcontentloaded")
 
-                logger.info("ol_ensure_login ✓ — session authenticated")
+                if await login_page.is_logged_in():
+                    logger.info("ol_ensure_login ✓ — session already active")
+                    return StepResult(step=step, status="passed")
+
+                if not settings.username or not settings.password:
+                    return StepResult(
+                        step=step, status="failed",
+                        error=(
+                            "Login required but OPENLIBRARY_USERNAME / "
+                            "OPENLIBRARY_PASSWORD are not set."
+                        ),
+                    )
+
+                logger.info("ol_ensure_login — session expired, logging in as %s", settings.username)
+                await login_page.open()            # navigate + wait_for_ready
+                await login_page.fill_username(settings.username)
+                await login_page.fill_password(settings.password)
+                await login_page.submit()
+
+                if not await login_page.is_logged_in():
+                    return StepResult(
+                        step=step, status="failed",
+                        error="ol_ensure_login: still not logged in after submit",
+                    )
+
+                logger.info("ol_ensure_login ✓ — authenticated")
                 return StepResult(step=step, status="passed")
 
             except Exception as e:
-                logger.error(f"ol_ensure_login failed: {e}")
+                logger.error("ol_ensure_login failed: %s", e)
                 return StepResult(step=step, status="failed", error=str(e))
 
     @classmethod
@@ -72,4 +95,4 @@ class OLLoginPage(PageModule):
                 f"'{cls.site}_', got '{action.action_name}'"
             )
         registry.register(action)
-        logger.debug(f"Registered page action: {action.action_name}")
+        logger.debug("Registered page action: %s", action.action_name)

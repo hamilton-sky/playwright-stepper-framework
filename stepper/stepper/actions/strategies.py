@@ -17,6 +17,8 @@ import os
 from datetime import datetime
 from pathlib import Path
 
+from playwright.async_api import async_playwright
+
 # Absolute path to stepper/ — used to resolve relative output paths in workflow
 # JSON files so files always land inside stepper/ regardless of cwd.
 _stepper_root = Path(__file__).resolve().parent.parent.parent  # stepper/stepper/actions/ → stepper/
