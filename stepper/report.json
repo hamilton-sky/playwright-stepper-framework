@@ -1,7 +1,7 @@
 {
-  "suite": "C:\\Code\\playwright-stepper-framework\\stepper\\sites\\openlibrary\\workflows\\ol_smoke_test.json",
-  "started": "2026-04-12T00:02:08.396523",
-  "finished": "2026-04-12T00:02:35.941631",
+  "suite": "C:\\Users\\Yafit\\playwright-stepper-framework\\stepper\\sites\\openlibrary\\workflows\\ol_smoke_test.json",
+  "started": "2026-04-13T00:58:40.514382",
+  "finished": "2026-04-13T00:59:05.175812",
   "passed": 6,
   "failed": 0,
   "steps": [
@@ -10,7 +10,7 @@
       "action": "ol_ensure_login",
       "status": "passed",
       "confidence": 0.0,
-      "screenshot": "C:\\Code\\playwright-stepper-framework\\stepper\\reports\\2026-04-12_00-02-08_ol_smoke_test_001\\screenshots\\step_01_ol_ensure_login.png",
+      "screenshot": "C:\\Users\\Yafit\\playwright-stepper-framework\\stepper\\reports\\2026-04-13_00-58-40_ol_smoke_test_001\\screenshots\\step_01_ol_ensure_login.png",
       "error": ""
     },
     {
@@ -18,7 +18,7 @@
       "action": "ol_store_count",
       "status": "passed",
       "confidence": 0.0,
-      "screenshot": "C:\\Code\\playwright-stepper-framework\\stepper\\reports\\2026-04-12_00-02-08_ol_smoke_test_001\\screenshots\\step_02_ol_store_count.png",
+      "screenshot": "C:\\Users\\Yafit\\playwright-stepper-framework\\stepper\\reports\\2026-04-13_00-58-40_ol_smoke_test_001\\screenshots\\step_02_ol_store_count.png",
       "error": ""
     },
     {
@@ -26,7 +26,7 @@
       "action": "ol_collect_books",
       "status": "passed",
       "confidence": 0.0,
-      "screenshot": "C:\\Code\\playwright-stepper-framework\\stepper\\reports\\2026-04-12_00-02-08_ol_smoke_test_001\\screenshots\\step_03_ol_collect_books.png",
+      "screenshot": "C:\\Users\\Yafit\\playwright-stepper-framework\\stepper\\reports\\2026-04-13_00-58-40_ol_smoke_test_001\\screenshots\\step_03_ol_collect_books.png",
       "error": ""
     },
     {
@@ -34,7 +34,7 @@
       "action": "screenshot",
       "status": "passed",
       "confidence": 0.0,
-      "screenshot": "C:\\Code\\playwright-stepper-framework\\stepper\\reports\\2026-04-12_00-02-08_ol_smoke_test_001\\screenshots\\smoke_search_results.png",
+      "screenshot": "C:\\Users\\Yafit\\playwright-stepper-framework\\stepper\\reports\\2026-04-13_00-58-40_ol_smoke_test_001\\screenshots\\smoke_search_results.png",
       "error": ""
     },
     {
@@ -42,7 +42,7 @@
       "action": "measure_performance",
       "status": "passed",
       "confidence": 0.0,
-      "screenshot": "C:\\Code\\playwright-stepper-framework\\stepper\\reports\\2026-04-12_00-02-08_ol_smoke_test_001\\screenshots\\step_05_measure_performance.png",
+      "screenshot": "C:\\Users\\Yafit\\playwright-stepper-framework\\stepper\\reports\\2026-04-13_00-58-40_ol_smoke_test_001\\screenshots\\step_05_measure_performance.png",
       "error": ""
     },
     {
@@ -50,7 +50,7 @@
       "action": "ol_assert_count",
       "status": "passed",
       "confidence": 0.0,
-      "screenshot": "C:\\Code\\playwright-stepper-framework\\stepper\\reports\\2026-04-12_00-02-08_ol_smoke_test_001\\screenshots\\step_06_ol_assert_count.png",
+      "screenshot": "C:\\Users\\Yafit\\playwright-stepper-framework\\stepper\\reports\\2026-04-13_00-58-40_ol_smoke_test_001\\screenshots\\step_06_ol_assert_count.png",
       "error": ""
     }
   ]
