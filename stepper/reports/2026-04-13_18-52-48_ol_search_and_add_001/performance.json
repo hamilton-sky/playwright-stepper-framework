@@ -1,0 +1,38 @@
+{
+  "total_duration_ms": 122671,
+  "avg_step_duration_ms": 20445.166666666668,
+  "steps": [
+    {
+      "num": 1,
+      "name": "Ensure user is logged in",
+      "duration_ms": 24079.5
+    },
+    {
+      "num": 2,
+      "name": "Remove all books from want-to-read shelf",
+      "duration_ms": 50755.0
+    },
+    {
+      "num": 3,
+      "name": "Store reading list count (should be 0 after clear)",
+      "duration_ms": 5640.5
+    },
+    {
+      "num": 4,
+      "name": "Search and collect 5 Dune books published before 1980",
+      "duration_ms": 3970.2
+    },
+    {
+      "num": 5,
+      "name": "Add each collected book to reading list + screenshot",
+      "duration_ms": 22870.8
+    },
+    {
+      "num": 6,
+      "name": "Assert reading list count increased by 5",
+      "duration_ms": 13557.8
+    }
+  ],
+  "test_id": "2026-04-13_18-52-48_ol_search_and_add_001",
+  "recorded_at": "2026-04-13T18:54:51.587438"
+}

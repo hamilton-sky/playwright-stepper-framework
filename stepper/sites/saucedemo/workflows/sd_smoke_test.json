@@ -1,0 +1,38 @@
+{
+  "name": "SauceDemo — smoke test (non-mutating health check)",
+  "description": "Quick sanity check: login works, inventory loads, performance is acceptable. Does NOT add to cart or checkout — read-only.",
+  "continue_on_failure": true,
+  "variables": {
+    "threshold_ms": 3000
+  },
+  "steps": [
+    {
+      "action": "sd_login",
+      "description": "Smoke: verify login succeeds",
+      "continue_on_failure": false
+    },
+    {
+      "action": "sd_sort_products",
+      "description": "Smoke: verify sort dropdown works (price low→high)",
+      "extra": { "sort": "lohi" }
+    },
+    {
+      "action": "screenshot",
+      "description": "Capture sorted inventory — visual proof the page loaded",
+      "extra": { "filename": "smoke_inventory.png" }
+    },
+    {
+      "action": "measure_performance",
+      "description": "Measure inventory page load time (threshold: {{threshold_ms}}ms)",
+      "url": "https://www.saucedemo.com/inventory.html",
+      "extra": {
+        "threshold_ms": "{{threshold_ms}}",
+        "output_path": "artifacts/saucedemo/perf_smoke.json"
+      }
+    },
+    {
+      "action": "sd_view_cart",
+      "description": "Smoke: navigate to cart — must be reachable and empty at start of test"
+    }
+  ]
+}

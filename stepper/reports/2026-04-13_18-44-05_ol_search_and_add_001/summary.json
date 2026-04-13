@@ -1,0 +1,12 @@
+{
+  "suite": "C:\\Users\\Yafit\\playwright-stepper-framework\\stepper\\sites\\openlibrary\\workflows\\ol_search_and_add.json",
+  "started_at": "2026-04-13T18:44:05.004068",
+  "total_steps": 6,
+  "passed": 6,
+  "failed": 0,
+  "skipped": 0,
+  "total_duration_ms": 115321,
+  "success_rate": 1.0,
+  "test_id": "2026-04-13_18-44-05_ol_search_and_add_001",
+  "finished_at": "2026-04-13T18:46:00.326194"
+}

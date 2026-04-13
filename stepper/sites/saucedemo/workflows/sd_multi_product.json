@@ -1,0 +1,64 @@
+{
+  "name": "SauceDemo — multi-product checkout with sort validation",
+  "description": "Adds multiple products after sorting by price (low→high), verifies cart count matches, then completes checkout. Demonstrates sort + multi-item cart + context.counts assertion.",
+  "variables": {
+    "first_name": "Jane",
+    "last_name":  "Doe",
+    "zip":        "90210"
+  },
+  "steps": [
+    {
+      "action": "sd_login",
+      "description": "Log in with standard_user credentials",
+      "continue_on_failure": false
+    },
+    {
+      "action": "sd_sort_products",
+      "description": "Sort products by price — low to high — before adding to cart",
+      "extra": { "sort": "lohi" }
+    },
+    {
+      "action": "sd_add_to_cart",
+      "description": "Add three products to the cart",
+      "extra": {
+        "products": [
+          "Sauce Labs Bike Light",
+          "Sauce Labs Onesie",
+          "Sauce Labs Bolt T-Shirt"
+        ]
+      }
+    },
+    {
+      "action": "sd_view_cart",
+      "description": "Navigate to cart — store item count in context for assertion",
+      "continue_on_failure": false
+    },
+    {
+      "action": "assert_count",
+      "description": "Assert cart contains exactly 3 items",
+      "extra": {
+        "context_key": "cart_item_count",
+        "expected":    3
+      }
+    },
+    {
+      "action": "screenshot",
+      "description": "Capture cart with 3 items",
+      "extra": { "filename": "multi_product_cart.png" }
+    },
+    {
+      "action": "sd_checkout",
+      "description": "Complete checkout → verify order confirmation",
+      "extra": {
+        "first_name": "{{first_name}}",
+        "last_name":  "{{last_name}}",
+        "zip":        "{{zip}}"
+      }
+    },
+    {
+      "action": "screenshot",
+      "description": "Capture order confirmation screen",
+      "extra": { "filename": "multi_product_confirmation.png" }
+    }
+  ]
+}

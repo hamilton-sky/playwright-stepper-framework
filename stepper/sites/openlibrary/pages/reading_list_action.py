@@ -11,7 +11,7 @@ Actions registered here:
 All CSS selectors live in the POMs. JSON workflows need only action names.
 
 Dependency direction: sites.openlibrary → stepper  (correct)
-                      sites.openlibrary → shared_poms  (correct)
+                      sites.openlibrary → openLibrary  (correct)
 """
 
 from __future__ import annotations
@@ -45,10 +45,10 @@ class OLReadingListPage(PageModule):
             resolver, context: ExecutionContext,
         ) -> StepResult:
             try:
-                from shared_poms.config import load_settings
-                from shared_poms.driver import PlaywrightDriver
-                from shared_poms.pages.reading_list_page import ReadingListPage
-                from shared_poms.pages.book_detail_page import BookDetailPage
+                from poms.openLibrary.config import load_settings
+                from poms.shared.driver import PlaywrightDriver
+                from poms.openLibrary.pages.reading_list_page import ReadingListPage
+                from poms.openLibrary.pages.book_detail_page import BookDetailPage
 
                 settings     = load_settings()
                 driver       = PlaywrightDriver(page)
@@ -104,9 +104,9 @@ class OLReadingListPage(PageModule):
             resolver, context: ExecutionContext,
         ) -> StepResult:
             try:
-                from shared_poms.config import load_settings
-                from shared_poms.driver import PlaywrightDriver
-                from shared_poms.pages.reading_list_page import ReadingListPage
+                from poms.openLibrary.config import load_settings
+                from poms.shared.driver import PlaywrightDriver
+                from poms.openLibrary.pages.reading_list_page import ReadingListPage
 
                 settings     = load_settings()
                 driver       = PlaywrightDriver(page)
@@ -144,9 +144,9 @@ class OLReadingListPage(PageModule):
         async def _execute(self, page, step: StepConfig,
                            resolver, context: ExecutionContext) -> StepResult:
             try:
-                from shared_poms.config import load_settings
-                from shared_poms.driver import PlaywrightDriver
-                from shared_poms.pages.reading_list_page import ReadingListPage
+                from poms.openLibrary.config import load_settings
+                from poms.shared.driver import PlaywrightDriver
+                from poms.openLibrary.pages.reading_list_page import ReadingListPage
 
                 settings     = load_settings()
                 driver       = PlaywrightDriver(page)
@@ -205,9 +205,9 @@ class OLReadingListPage(PageModule):
             resolver, context: ExecutionContext,
         ) -> StepResult:
             try:
-                from shared_poms.config import load_settings
-                from shared_poms.driver import PlaywrightDriver
-                from shared_poms.pages.reading_list_page import ReadingListPage
+                from poms.openLibrary.config import load_settings
+                from poms.shared.driver import PlaywrightDriver
+                from poms.openLibrary.pages.reading_list_page import ReadingListPage
 
                 settings     = load_settings()
                 driver       = PlaywrightDriver(page)

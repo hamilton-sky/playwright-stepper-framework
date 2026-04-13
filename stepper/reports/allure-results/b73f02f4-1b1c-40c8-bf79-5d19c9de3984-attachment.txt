@@ -1,0 +1,100 @@
+[32mINFO    [0m main:main.py:94 Planned 6 steps
+[32mINFO    [0m sentence_transformers.base.model:model.py:177 No device provided, using cpu
+[32mINFO    [0m sentence_transformers.base.model:model.py:968 Loading SentenceTransformer model from C:\Users\Yafit\playwright-stepper-framework\stepper\models\all-MiniLM-L6-v2.
+[32mINFO    [0m stepper.resolvers.strategies:strategies.py:201 [SemanticResolver] sentence-transformers loaded from C:\Users\Yafit\playwright-stepper-framework\stepper\models\all-MiniLM-L6-v2
+[32mINFO    [0m sentence_transformers.base.model:model.py:177 No device provided, using cpu
+[32mINFO    [0m sentence_transformers.base.model:model.py:968 Loading SentenceTransformer model from C:\Users\Yafit\playwright-stepper-framework\stepper\models\all-MiniLM-L6-v2.
+[32mINFO    [0m stepper.resolvers.strategies:strategies.py:201 [SemanticResolver] sentence-transformers loaded from C:\Users\Yafit\playwright-stepper-framework\stepper\models\all-MiniLM-L6-v2
+[32mINFO    [0m stepper.reporter.test_report_manager:test_report_manager.py:79 Created test report directory: C:\Users\Yafit\playwright-stepper-framework\stepper\reports\2026-04-13_18-54-53_ol_smoke_test_001
+[32mINFO    [0m stepper.reporter.test_report_reporter:test_report_reporter.py:69 Started test suite: C:\Users\Yafit\playwright-stepper-framework\stepper\sites\openlibrary\workflows\ol_smoke_test.json → C:\Users\Yafit\playwright-stepper-framework\stepper\reports\2026-04-13_18-54-53_ol_smoke_test_001
+[32mINFO    [0m main:main.py:182 Loaded session from C:\Users\Yafit\playwright-stepper-framework\poms\artifacts\storage_state.json
+[32mINFO    [0m stepper.runner.step_runner:step_runner.py:209 ▶ Step 1: Smoke: verify authentication works
+[32mINFO    [0m sites.openlibrary.pages.login_action:login_action.py:66 ol_ensure_login — session expired, logging in as shammaihamilton@gmail.com
+[33mWARNING [0m stepper.resolvers.element_resolver:element_resolver.py:113 Deterministic cascade failed → visual AI fallback
+[33mWARNING [0m stepper.resolvers.element_resolver:element_resolver.py:193 Visual AI disabled — returning not-found
+[33mWARNING [0m poms.shared.base_page:base_page.py:95 Resolver could not find element for fill: {'label': 'Username'}
+[33mWARNING [0m stepper.resolvers.element_resolver:element_resolver.py:113 Deterministic cascade failed → visual AI fallback
+[33mWARNING [0m stepper.resolvers.element_resolver:element_resolver.py:193 Visual AI disabled — returning not-found
+[33mWARNING [0m poms.shared.base_page:base_page.py:95 Resolver could not find element for fill: {'placeholder': 'Username'}
+[33mWARNING [0m stepper.resolvers.element_resolver:element_resolver.py:113 Deterministic cascade failed → visual AI fallback
+[33mWARNING [0m stepper.resolvers.element_resolver:element_resolver.py:193 Visual AI disabled — returning not-found
+[33mWARNING [0m poms.shared.base_page:base_page.py:95 Resolver could not find element for fill: {'id': 'username'}
+[33mWARNING [0m stepper.resolvers.element_resolver:element_resolver.py:113 Deterministic cascade failed → visual AI fallback
+[33mWARNING [0m stepper.resolvers.element_resolver:element_resolver.py:193 Visual AI disabled — returning not-found
+[33mWARNING [0m poms.shared.base_page:base_page.py:95 Resolver could not find element for fill: {'css': '#username'}
+[33mWARNING [0m stepper.resolvers.element_resolver:element_resolver.py:113 Deterministic cascade failed → visual AI fallback
+[33mWARNING [0m stepper.resolvers.element_resolver:element_resolver.py:193 Visual AI disabled — returning not-found
+[33mWARNING [0m poms.shared.base_page:base_page.py:95 Resolver could not find element for fill: {'label': 'Password'}
+[33mWARNING [0m stepper.resolvers.element_resolver:element_resolver.py:113 Deterministic cascade failed → visual AI fallback
+[33mWARNING [0m stepper.resolvers.element_resolver:element_resolver.py:193 Visual AI disabled — returning not-found
+[33mWARNING [0m poms.shared.base_page:base_page.py:95 Resolver could not find element for fill: {'placeholder': 'Password'}
+[33mWARNING [0m stepper.resolvers.element_resolver:element_resolver.py:113 Deterministic cascade failed → visual AI fallback
+[33mWARNING [0m stepper.resolvers.element_resolver:element_resolver.py:193 Visual AI disabled — returning not-found
+[33mWARNING [0m poms.shared.base_page:base_page.py:95 Resolver could not find element for fill: {'id': 'password'}
+[33mWARNING [0m stepper.resolvers.element_resolver:element_resolver.py:113 Deterministic cascade failed → visual AI fallback
+[33mWARNING [0m stepper.resolvers.element_resolver:element_resolver.py:193 Visual AI disabled — returning not-found
+[33mWARNING [0m poms.shared.base_page:base_page.py:95 Resolver could not find element for fill: {'css': '#password'}
+[33mWARNING [0m stepper.resolvers.element_resolver:element_resolver.py:113 Deterministic cascade failed → visual AI fallback
+[33mWARNING [0m stepper.resolvers.element_resolver:element_resolver.py:193 Visual AI disabled — returning not-found
+[33mWARNING [0m poms.shared.base_page:base_page.py:136 Resolver could not find element for click: {'role': 'button', 'name': 'Log in'}
+[33mWARNING [0m stepper.resolvers.element_resolver:element_resolver.py:113 Deterministic cascade failed → visual AI fallback
+[33mWARNING [0m stepper.resolvers.element_resolver:element_resolver.py:193 Visual AI disabled — returning not-found
+[33mWARNING [0m poms.shared.base_page:base_page.py:136 Resolver could not find element for click: {'role': 'button', 'name': 'Sign in'}
+[33mWARNING [0m stepper.resolvers.element_resolver:element_resolver.py:113 Deterministic cascade failed → visual AI fallback
+[33mWARNING [0m stepper.resolvers.element_resolver:element_resolver.py:193 Visual AI disabled — returning not-found
+[33mWARNING [0m poms.shared.base_page:base_page.py:136 Resolver could not find element for click: {'css': '.cta-btn--primary'}
+[32mINFO    [0m sites.openlibrary.pages.login_action:login_action.py:87 ol_ensure_login ✓ — authenticated
+[32mINFO    [0m stepper.reporter.test_report_reporter:test_report_reporter.py:77 Recorded step 1: ol_ensure_login → passed
+[32mINFO    [0m stepper.runner.step_runner:step_runner.py:215 ✓ Step 1 → passed
+[32mINFO    [0m stepper.runner.step_runner:step_runner.py:209 ▶ Step 2: Baseline: record current shelf count before any actions (must remain unchanged at the end)
+[33mWARNING [0m stepper.resolvers.element_resolver:element_resolver.py:113 Deterministic cascade failed → visual AI fallback
+[33mWARNING [0m stepper.resolvers.element_resolver:element_resolver.py:193 Visual AI disabled — returning not-found
+[33mWARNING [0m poms.shared.base_page:base_page.py:136 Resolver could not find element for click: {'role': 'link', 'name': 'Next', 'css': "a.next-page, a[rel='next']"}
+[33mWARNING [0m stepper.resolvers.element_resolver:element_resolver.py:113 Deterministic cascade failed → visual AI fallback
+[33mWARNING [0m stepper.resolvers.element_resolver:element_resolver.py:193 Visual AI disabled — returning not-found
+[33mWARNING [0m poms.shared.base_page:base_page.py:136 Resolver could not find element for click: {'role': 'link', 'name': 'Next', 'css': "a.next-page, a[rel='next']"}
+[32mINFO    [0m sites.openlibrary.pages.reading_list_action:reading_list_action.py:122 ol_store_count ✓ — count_before=5
+[32mINFO    [0m stepper.reporter.test_report_reporter:test_report_reporter.py:77 Recorded step 2: ol_store_count → passed
+[32mINFO    [0m stepper.runner.step_runner:step_runner.py:215 ✓ Step 2 → passed
+[32mINFO    [0m stepper.runner.step_runner:step_runner.py:209 ▶ Step 3: Smoke: verify search API returns at least 1 result for 'Dune' (no add — collect only)
+[32mINFO    [0m poms.openLibrary.pages.book_search_page:book_search_page.py:111 Navigating to search URL: https://openlibrary.org/search?q=Dune
+[32mINFO    [0m poms.openLibrary.pages.book_search_page:book_search_page.py:118 Navigation sent (commit strategy) in 4297ms
+[32mINFO    [0m poms.openLibrary.pages.book_search_page:book_search_page.py:123 Polling for search results to load…
+[32mINFO    [0m poms.openLibrary.pages.book_search_page:book_search_page.py:130 Search results loaded in 4450ms (after 1 polling attempts)
+[32mINFO    [0m poms.openLibrary.pages.book_search_page:book_search_page.py:153 Collecting up to 1 books published before 9999 (max 5 pages)
+[32mINFO    [0m poms.openLibrary.pages.book_search_page:book_search_page.py:158 Scanning page 1 — need 1 more book(s)
+[32mINFO    [0m poms.openLibrary.pages.book_search_page:book_search_page.py:236 Page 1: examining 20 result item(s)
+[32mINFO    [0m poms.openLibrary.pages.book_search_page:book_search_page.py:252     Year text from resultDetails: 'First published in 1965\n120 editions, 15 ebooks'
+[32mINFO    [0m poms.openLibrary.pages.book_search_page:book_search_page.py:272   [1/20] accepted — year [1965] — https://openlibrary.org/works/OL893415W/Dune?edition=key%3A/books/OL26242482M
+[32mINFO    [0m poms.openLibrary.pages.book_search_page:book_search_page.py:161 Page 1: found 1 qualifying book(s) — total so far: 1/1
+[32mINFO    [0m poms.openLibrary.pages.book_search_page:book_search_page.py:207 Collection complete: 1/1 books collected
+[32mINFO    [0m sites.openlibrary.pages.search_page:search_page.py:65 collect_items → 1 books
+[32mINFO    [0m stepper.reporter.test_report_reporter:test_report_reporter.py:77 Recorded step 3: ol_collect_books → passed
+[32mINFO    [0m stepper.runner.step_runner:step_runner.py:215 ✓ Step 3 → passed
+[32mINFO    [0m stepper.runner.step_runner:step_runner.py:209 ▶ Step 4: Capture search results — only runs when search actually returned books (when guard demo)
+[32mINFO    [0m stepper.actions.strategies:strategies.py:240 📸 screenshot: C:\Users\Yafit\playwright-stepper-framework\stepper\reports\2026-04-13_18-54-53_ol_smoke_test_001\screenshots\smoke_search_results.png
+[32mINFO    [0m stepper.reporter.test_report_reporter:test_report_reporter.py:77 Recorded step 4: screenshot → passed
+[32mINFO    [0m stepper.runner.step_runner:step_runner.py:215 ✓ Step 4 → passed
+[32mINFO    [0m stepper.runner.step_runner:step_runner.py:209 ▶ Step 5: Measure search page load time (threshold: 5000ms)
+[32mINFO    [0m stepper.actions.strategies:strategies.py:538 performance: {'load_time_ms': 4236, 'dom_content_loaded_ms': 4181, 'first_paint_ms': 4088} → C:\Users\Yafit\playwright-stepper-framework\stepper\artifacts\perf_smoke.json
+[32mINFO    [0m stepper.reporter.test_report_reporter:test_report_reporter.py:77 Recorded step 5: measure_performance → passed
+[32mINFO    [0m stepper.runner.step_runner:step_runner.py:215 ✓ Step 5 → passed
+[32mINFO    [0m stepper.runner.step_runner:step_runner.py:209 ▶ Step 6: Proof the shelf was never mutated — count must equal baseline (delta=0)
+[33mWARNING [0m stepper.resolvers.element_resolver:element_resolver.py:113 Deterministic cascade failed → visual AI fallback
+[33mWARNING [0m stepper.resolvers.element_resolver:element_resolver.py:193 Visual AI disabled — returning not-found
+[33mWARNING [0m poms.shared.base_page:base_page.py:136 Resolver could not find element for click: {'role': 'link', 'name': 'Next', 'css': "a.next-page, a[rel='next']"}
+[33mWARNING [0m stepper.resolvers.element_resolver:element_resolver.py:113 Deterministic cascade failed → visual AI fallback
+[33mWARNING [0m stepper.resolvers.element_resolver:element_resolver.py:193 Visual AI disabled — returning not-found
+[33mWARNING [0m poms.shared.base_page:base_page.py:136 Resolver could not find element for click: {'role': 'link', 'name': 'Next', 'css': "a.next-page, a[rel='next']"}
+[32mINFO    [0m sites.openlibrary.pages.reading_list_action:reading_list_action.py:176 ol_assert_count ✓ — 5 books == 5
+[32mINFO    [0m stepper.reporter.test_report_reporter:test_report_reporter.py:77 Recorded step 6: ol_assert_count → passed
+[32mINFO    [0m stepper.runner.step_runner:step_runner.py:215 ✓ Step 6 → passed
+[32mINFO    [0m stepper.reporter.reporters:reporters.py:96 Report written: C:\Users\Yafit\playwright-stepper-framework\stepper\report.json
+[32mINFO    [0m stepper.reporter.test_report_manager:test_report_manager.py:113 Saved metadata: C:\Users\Yafit\playwright-stepper-framework\stepper\reports\2026-04-13_18-54-53_ol_smoke_test_001\metadata.json
+[32mINFO    [0m stepper.reporter.test_report_manager:test_report_manager.py:133 Saved summary: C:\Users\Yafit\playwright-stepper-framework\stepper\reports\2026-04-13_18-54-53_ol_smoke_test_001\summary.json
+[32mINFO    [0m stepper.reporter.test_report_manager:test_report_manager.py:155 Saved results: C:\Users\Yafit\playwright-stepper-framework\stepper\reports\2026-04-13_18-54-53_ol_smoke_test_001\results.json
+[32mINFO    [0m stepper.reporter.test_report_manager:test_report_manager.py:175 Saved performance metrics: C:\Users\Yafit\playwright-stepper-framework\stepper\reports\2026-04-13_18-54-53_ol_smoke_test_001\performance.json
+[32mINFO    [0m stepper.reporter.test_report_manager:test_report_manager.py:266 Generated cross-test summary: C:\Users\Yafit\playwright-stepper-framework\stepper\reports\summary\all_tests_summary.json
+[32mINFO    [0m stepper.reporter.test_report_reporter:test_report_reporter.py:162 Test suite completed: 6/6 passed → C:\Users\Yafit\playwright-stepper-framework\stepper\reports\2026-04-13_18-54-53_ol_smoke_test_001
+[32mINFO    [0m stepper.reporter.reporters:reporters.py:185 Allure result written: C:\Users\Yafit\playwright-stepper-framework\stepper\reports\allure-results\01afe1b9-1a6e-49ba-bfcf-d7e85b61fd37-result.json
+[32mINFO    [0m main:main.py:216 Session saved to C:\Users\Yafit\playwright-stepper-framework\poms\artifacts\storage_state.json

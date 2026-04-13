@@ -1,0 +1,41 @@
+{
+  "uuid": "31bd6331-6aae-4696-ba6a-e68e35f2c0e3",
+  "name": "C:\\Users\\Yafit\\playwright-stepper-framework\\stepper\\sites\\openlibrary\\workflows\\ol_smoke_test.json",
+  "status": "failed",
+  "start": 1776094551539,
+  "stop": 1776094592324,
+  "stage": "finished",
+  "steps": [
+    {
+      "name": "Smoke: verify authentication works",
+      "status": "failed",
+      "start": 1776094551539,
+      "stop": 1776094592324,
+      "stage": "finished",
+      "statusDetails": {
+        "message": "Page.fill: Timeout 15000ms exceeded.\nCall log:\n  - waiting for locator(\"#username\")\n"
+      },
+      "attachments": [
+        {
+          "name": "screenshot",
+          "source": "step_01_ol_ensure_login.png",
+          "type": "image/png"
+        }
+      ]
+    }
+  ],
+  "labels": [
+    {
+      "name": "suite",
+      "value": "C:\\Users\\Yafit\\playwright-stepper-framework\\stepper\\sites\\openlibrary\\workflows\\ol_smoke_test.json"
+    },
+    {
+      "name": "framework",
+      "value": "stepper"
+    },
+    {
+      "name": "language",
+      "value": "python"
+    }
+  ]
+}

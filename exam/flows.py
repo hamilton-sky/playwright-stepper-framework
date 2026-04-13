@@ -2,10 +2,10 @@
 flows.py -- The 4 exact exam function signatures (OpenLibrary).
 
 Each function orchestrates one end-to-end flow by delegating to
-shared_poms POM classes. No direct Playwright calls here.
+openLibrary POM classes. No direct Playwright calls here.
 
 Layer position in the architecture:
-    shared_poms/pages/   <- interact with a single page        (POM layer)
+    openLibrary/pages/   <- interact with a single page        (POM layer)
     exam/flows.py        <- orchestrate pages into flows       <- THIS FILE
     exam/tests/          <- call flows and assert outcomes     (test layer)
 
@@ -22,13 +22,13 @@ from __future__ import annotations
 import logging
 import re
 
-from shared_poms.interfaces import IBrowserDriver
-from shared_poms.config import Settings
-from shared_poms.pages.book_search_page import BookSearchPage
-from shared_poms.pages.book_detail_page import BookDetailPage
-from shared_poms.pages.reading_list_page import ReadingListPage
-from shared_poms.performance import measure_page_performance as _measure_perf
-from shared_poms.utils.screenshot import ScreenshotManager
+from poms.shared.interfaces import IBrowserDriver
+from poms.openLibrary.config import Settings
+from poms.openLibrary.pages.book_search_page import BookSearchPage
+from poms.openLibrary.pages.book_detail_page import BookDetailPage
+from poms.openLibrary.pages.reading_list_page import ReadingListPage
+from poms.shared.performance import measure_page_performance as _measure_perf
+from poms.openLibrary.utils.screenshot import ScreenshotManager
 
 logger = logging.getLogger(__name__)
 

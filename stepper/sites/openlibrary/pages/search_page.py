@@ -44,13 +44,14 @@ class OLSearchPage(PageModule):
             resolver, context: ExecutionContext,
         ) -> StepResult:
             try:
-                from shared_poms.config import load_settings
-                from shared_poms.driver import PlaywrightDriver
-                from shared_poms.pages.book_search_page import BookSearchPage
+                from poms.openLibrary.config import load_settings
+                from poms.shared.driver import PlaywrightDriver
+                from poms.openLibrary.pages.book_search_page import BookSearchPage
 
                 settings    = load_settings()
                 driver      = PlaywrightDriver(page)
-                search_page = BookSearchPage(driver, settings.base_url, settings.delays)
+                search_page = BookSearchPage(driver, settings.base_url, settings.delays,
+                                            page=page, resolver=resolver)
 
                 query    = step.extra.get("query", "")
                 max_year = step.extra.get("filter", {}).get("year_max", 9999)

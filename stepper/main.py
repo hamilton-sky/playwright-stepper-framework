@@ -44,14 +44,14 @@ _load_env()
 import sys
 _root_path   = str(Path(__file__).parent)
 _src_path    = str(Path(__file__).parent / "src")
-_parent_path = str(Path(__file__).parent.parent)  # repo root — where shared_poms/ lives
+_parent_path = str(Path(__file__).parent.parent)  # repo root — where openLibrary/ lives
 for _p in (_parent_path, _root_path, _src_path):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
 from playwright.async_api import async_playwright
 
-from shared_poms.config import load_settings
+from poms.openLibrary.config import load_settings
 
 from stepper.resolvers.element_resolver import ElementResolver, DefaultResolverFactory
 from stepper.actions.factory import build_default_registry

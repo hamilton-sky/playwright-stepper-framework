@@ -1,0 +1,12 @@
+{
+  "suite": "C:\\Users\\Yafit\\playwright-stepper-framework\\stepper\\sites\\openlibrary\\workflows\\ol_smoke_test.json",
+  "started_at": "2026-04-13T18:35:51.525698",
+  "total_steps": 1,
+  "passed": 0,
+  "failed": 1,
+  "skipped": 0,
+  "total_duration_ms": 40771,
+  "success_rate": 0.0,
+  "test_id": "2026-04-13_18-35-51_ol_smoke_test_001",
+  "finished_at": "2026-04-13T18:36:32.298483"
+}

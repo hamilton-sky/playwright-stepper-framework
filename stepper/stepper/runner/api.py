@@ -62,7 +62,7 @@ class StepperSession:
     async def __aenter__(self) -> "StepperSession":
         from playwright.async_api import async_playwright
 
-        from shared_poms.config import load_settings
+        from poms.openLibrary.config import load_settings
         from stepper.resolvers.element_resolver import ElementResolver, DefaultResolverFactory
         from stepper.actions.factory import build_default_registry
         from stepper.runner.step_runner import StepRunner, LoggingObserver
@@ -70,6 +70,10 @@ class StepperSession:
         from sites.openlibrary.pages.search_page import OLSearchPage
         from sites.openlibrary.pages.detail_page import OLDetailPage
         from sites.openlibrary.pages.reading_list_action import OLReadingListPage
+        from sites.saucedemo.pages.login_action import SDLoginPage
+        from sites.saucedemo.pages.inventory_action import SDInventoryPage
+        from sites.saucedemo.pages.cart_action import SDCartPage
+        from sites.saucedemo.pages.checkout_action import SDCheckoutPage
 
         self._settings = load_settings()
 
@@ -81,6 +85,10 @@ class StepperSession:
         OLSearchPage.register(registry)
         OLDetailPage.register(registry)
         OLReadingListPage.register(registry)
+        SDLoginPage.register(registry)
+        SDInventoryPage.register(registry)
+        SDCartPage.register(registry)
+        SDCheckoutPage.register(registry)
 
         self._reporter = CompositeReporter([
             ConsoleReporter(),

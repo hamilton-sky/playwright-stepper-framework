@@ -1,0 +1,90 @@
+18:46:01 | INFO | main | Loaded session from C:\Users\Yafit\playwright-stepper-framework\poms\artifacts\storage_state.json
+18:46:01 | INFO | stepper.runner.step_runner | ▶ Step 1: Smoke: verify authentication works
+18:46:04 | INFO | sites.openlibrary.pages.login_action | ol_ensure_login — session expired, logging in as shammaihamilton@gmail.com
+18:46:23 | WARNING | stepper.resolvers.element_resolver | Deterministic cascade failed → visual AI fallback
+18:46:23 | WARNING | stepper.resolvers.element_resolver | Visual AI disabled — returning not-found
+18:46:23 | WARNING | poms.shared.base_page | Resolver could not find element for fill: {'label': 'Username'}
+18:46:23 | WARNING | stepper.resolvers.element_resolver | Deterministic cascade failed → visual AI fallback
+18:46:23 | WARNING | stepper.resolvers.element_resolver | Visual AI disabled — returning not-found
+18:46:23 | WARNING | poms.shared.base_page | Resolver could not find element for fill: {'placeholder': 'Username'}
+18:46:23 | WARNING | stepper.resolvers.element_resolver | Deterministic cascade failed → visual AI fallback
+18:46:23 | WARNING | stepper.resolvers.element_resolver | Visual AI disabled — returning not-found
+18:46:23 | WARNING | poms.shared.base_page | Resolver could not find element for fill: {'id': 'username'}
+18:46:23 | WARNING | stepper.resolvers.element_resolver | Deterministic cascade failed → visual AI fallback
+18:46:23 | WARNING | stepper.resolvers.element_resolver | Visual AI disabled — returning not-found
+18:46:23 | WARNING | poms.shared.base_page | Resolver could not find element for fill: {'css': '#username'}
+18:46:23 | WARNING | stepper.resolvers.element_resolver | Deterministic cascade failed → visual AI fallback
+18:46:23 | WARNING | stepper.resolvers.element_resolver | Visual AI disabled — returning not-found
+18:46:23 | WARNING | poms.shared.base_page | Resolver could not find element for fill: {'label': 'Password'}
+18:46:23 | WARNING | stepper.resolvers.element_resolver | Deterministic cascade failed → visual AI fallback
+18:46:23 | WARNING | stepper.resolvers.element_resolver | Visual AI disabled — returning not-found
+18:46:23 | WARNING | poms.shared.base_page | Resolver could not find element for fill: {'placeholder': 'Password'}
+18:46:23 | WARNING | stepper.resolvers.element_resolver | Deterministic cascade failed → visual AI fallback
+18:46:23 | WARNING | stepper.resolvers.element_resolver | Visual AI disabled — returning not-found
+18:46:23 | WARNING | poms.shared.base_page | Resolver could not find element for fill: {'id': 'password'}
+18:46:23 | WARNING | stepper.resolvers.element_resolver | Deterministic cascade failed → visual AI fallback
+18:46:23 | WARNING | stepper.resolvers.element_resolver | Visual AI disabled — returning not-found
+18:46:23 | WARNING | poms.shared.base_page | Resolver could not find element for fill: {'css': '#password'}
+18:46:23 | WARNING | stepper.resolvers.element_resolver | Deterministic cascade failed → visual AI fallback
+18:46:23 | WARNING | stepper.resolvers.element_resolver | Visual AI disabled — returning not-found
+18:46:23 | WARNING | poms.shared.base_page | Resolver could not find element for click: {'role': 'button', 'name': 'Log in'}
+18:46:23 | WARNING | stepper.resolvers.element_resolver | Deterministic cascade failed → visual AI fallback
+18:46:23 | WARNING | stepper.resolvers.element_resolver | Visual AI disabled — returning not-found
+18:46:23 | WARNING | poms.shared.base_page | Resolver could not find element for click: {'role': 'button', 'name': 'Sign in'}
+18:46:23 | WARNING | stepper.resolvers.element_resolver | Deterministic cascade failed → visual AI fallback
+18:46:23 | WARNING | stepper.resolvers.element_resolver | Visual AI disabled — returning not-found
+18:46:23 | WARNING | poms.shared.base_page | Resolver could not find element for click: {'css': '.cta-btn--primary'}
+18:46:23 | INFO | sites.openlibrary.pages.login_action | ol_ensure_login ✓ — authenticated
+18:46:23 | INFO | stepper.reporter.test_report_reporter | Recorded step 1: ol_ensure_login → passed
+18:46:23 | INFO | stepper.runner.step_runner | ✓ Step 1 → passed
+18:46:23 | INFO | stepper.runner.step_runner | ▶ Step 2: Baseline: record current shelf count before any actions (must remain unchanged at the end)
+18:46:28 | WARNING | stepper.resolvers.element_resolver | Deterministic cascade failed → visual AI fallback
+18:46:28 | WARNING | stepper.resolvers.element_resolver | Visual AI disabled — returning not-found
+18:46:28 | WARNING | poms.shared.base_page | Resolver could not find element for click: {'role': 'link', 'name': 'Next', 'css': "a.next-page, a[rel='next']"}
+18:46:33 | WARNING | stepper.resolvers.element_resolver | Deterministic cascade failed → visual AI fallback
+18:46:33 | WARNING | stepper.resolvers.element_resolver | Visual AI disabled — returning not-found
+18:46:33 | WARNING | poms.shared.base_page | Resolver could not find element for click: {'role': 'link', 'name': 'Next', 'css': "a.next-page, a[rel='next']"}
+18:46:33 | INFO | sites.openlibrary.pages.reading_list_action | ol_store_count ✓ — count_before=5
+18:46:34 | INFO | stepper.reporter.test_report_reporter | Recorded step 2: ol_store_count → passed
+18:46:34 | INFO | stepper.runner.step_runner | ✓ Step 2 → passed
+18:46:34 | INFO | stepper.runner.step_runner | ▶ Step 3: Smoke: verify search API returns at least 1 result for 'Dune' (no add — collect only)
+18:46:34 | INFO | poms.openLibrary.pages.book_search_page | Navigating to search URL: https://openlibrary.org/search?q=Dune
+18:46:40 | INFO | poms.openLibrary.pages.book_search_page | Navigation sent (commit strategy) in 6206ms
+18:46:40 | INFO | poms.openLibrary.pages.book_search_page | Polling for search results to load…
+18:46:40 | INFO | poms.openLibrary.pages.book_search_page | Search results loaded in 6385ms (after 1 polling attempts)
+18:46:40 | INFO | poms.openLibrary.pages.book_search_page | Collecting up to 1 books published before 9999 (max 5 pages)
+18:46:40 | INFO | poms.openLibrary.pages.book_search_page | Scanning page 1 — need 1 more book(s)
+18:46:40 | INFO | poms.openLibrary.pages.book_search_page | Page 1: examining 20 result item(s)
+18:46:40 | INFO | poms.openLibrary.pages.book_search_page |     Year text from resultDetails: 'First published in 1965\n120 editions, 15 ebooks'
+18:46:40 | INFO | poms.openLibrary.pages.book_search_page |   [1/20] accepted — year [1965] — https://openlibrary.org/works/OL893415W/Dune?edition=key%3A/books/OL26242482M
+18:46:40 | INFO | poms.openLibrary.pages.book_search_page | Page 1: found 1 qualifying book(s) — total so far: 1/1
+18:46:40 | INFO | poms.openLibrary.pages.book_search_page | Collection complete: 1/1 books collected
+18:46:40 | INFO | sites.openlibrary.pages.search_page | collect_items → 1 books
+18:46:42 | INFO | stepper.reporter.test_report_reporter | Recorded step 3: ol_collect_books → passed
+18:46:42 | INFO | stepper.runner.step_runner | ✓ Step 3 → passed
+18:46:42 | INFO | stepper.runner.step_runner | ▶ Step 4: Capture search results — only runs when search actually returned books (when guard demo)
+18:46:42 | INFO | stepper.actions.strategies | 📸 screenshot: C:\Users\Yafit\playwright-stepper-framework\stepper\reports\2026-04-13_18-46-01_ol_smoke_test_001\screenshots\smoke_search_results.png
+18:46:42 | INFO | stepper.reporter.test_report_reporter | Recorded step 4: screenshot → passed
+18:46:42 | INFO | stepper.runner.step_runner | ✓ Step 4 → passed
+18:46:42 | INFO | stepper.runner.step_runner | ▶ Step 5: Measure search page load time (threshold: 5000ms)
+18:47:06 | INFO | stepper.actions.strategies | performance: {'load_time_ms': 4389, 'dom_content_loaded_ms': 4334, 'first_paint_ms': 4232} → C:\Users\Yafit\playwright-stepper-framework\stepper\artifacts\perf_smoke.json
+18:47:06 | INFO | stepper.reporter.test_report_reporter | Recorded step 5: measure_performance → passed
+18:47:06 | INFO | stepper.runner.step_runner | ✓ Step 5 → passed
+18:47:06 | INFO | stepper.runner.step_runner | ▶ Step 6: Proof the shelf was never mutated — count must equal baseline (delta=0)
+18:47:14 | WARNING | stepper.resolvers.element_resolver | Deterministic cascade failed → visual AI fallback
+18:47:14 | WARNING | stepper.resolvers.element_resolver | Visual AI disabled — returning not-found
+18:47:14 | WARNING | poms.shared.base_page | Resolver could not find element for click: {'role': 'link', 'name': 'Next', 'css': "a.next-page, a[rel='next']"}
+18:47:18 | WARNING | stepper.resolvers.element_resolver | Deterministic cascade failed → visual AI fallback
+18:47:18 | WARNING | stepper.resolvers.element_resolver | Visual AI disabled — returning not-found
+18:47:18 | WARNING | poms.shared.base_page | Resolver could not find element for click: {'role': 'link', 'name': 'Next', 'css': "a.next-page, a[rel='next']"}
+18:47:18 | INFO | sites.openlibrary.pages.reading_list_action | ol_assert_count ✓ — 5 books == 5
+18:47:18 | INFO | stepper.reporter.test_report_reporter | Recorded step 6: ol_assert_count → passed
+18:47:18 | INFO | stepper.runner.step_runner | ✓ Step 6 → passed
+18:47:18 | INFO | stepper.reporter.reporters | Report written: C:\Users\Yafit\playwright-stepper-framework\stepper\report.json
+18:47:18 | INFO | stepper.reporter.test_report_manager | Saved metadata: C:\Users\Yafit\playwright-stepper-framework\stepper\reports\2026-04-13_18-46-01_ol_smoke_test_001\metadata.json
+18:47:18 | INFO | stepper.reporter.test_report_manager | Saved summary: C:\Users\Yafit\playwright-stepper-framework\stepper\reports\2026-04-13_18-46-01_ol_smoke_test_001\summary.json
+18:47:18 | INFO | stepper.reporter.test_report_manager | Saved results: C:\Users\Yafit\playwright-stepper-framework\stepper\reports\2026-04-13_18-46-01_ol_smoke_test_001\results.json
+18:47:18 | INFO | stepper.reporter.test_report_manager | Saved performance metrics: C:\Users\Yafit\playwright-stepper-framework\stepper\reports\2026-04-13_18-46-01_ol_smoke_test_001\performance.json
+18:47:18 | INFO | stepper.reporter.test_report_manager | Generated cross-test summary: C:\Users\Yafit\playwright-stepper-framework\stepper\reports\summary\all_tests_summary.json
+18:47:18 | INFO | stepper.reporter.test_report_reporter | Test suite completed: 6/6 passed → C:\Users\Yafit\playwright-stepper-framework\stepper\reports\2026-04-13_18-46-01_ol_smoke_test_001
+18:47:18 | INFO | stepper.reporter.reporters | Allure result written: C:\Users\Yafit\playwright-stepper-framework\stepper\reports\allure-results\31d4f624-b3dc-4c8d-a802-4fed88ff7f11-result.json

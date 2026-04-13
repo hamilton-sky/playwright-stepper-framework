@@ -1,0 +1,17 @@
+{
+  "test_id": "2026-04-13_18-35-51_ol_smoke_test_001",
+  "steps": [
+    {
+      "num": 1,
+      "description": "Smoke: verify authentication works",
+      "action": "ol_ensure_login",
+      "status": "failed",
+      "confidence": 0.0,
+      "duration_ms": 40341.3,
+      "screenshots": [
+        "step_01_ol_ensure_login.png"
+      ],
+      "error": "Page.fill: Timeout 15000ms exceeded.\nCall log:\n  - waiting for locator(\"#username\")\n"
+    }
+  ]
+}

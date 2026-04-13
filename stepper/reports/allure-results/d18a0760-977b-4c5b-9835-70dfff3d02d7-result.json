@@ -1,0 +1,114 @@
+{
+  "uuid": "d18a0760-977b-4c5b-9835-70dfff3d02d7",
+  "name": "C:\\Users\\Yafit\\playwright-stepper-framework\\stepper\\sites\\openlibrary\\workflows\\ol_search_and_add.json",
+  "status": "passed",
+  "start": 1776095045009,
+  "stop": 1776095160361,
+  "stage": "finished",
+  "steps": [
+    {
+      "name": "Ensure user is logged in",
+      "status": "passed",
+      "start": 1776095045009,
+      "stop": 1776095064234,
+      "stage": "finished",
+      "statusDetails": {},
+      "attachments": [
+        {
+          "name": "screenshot",
+          "source": "step_01_ol_ensure_login.png",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Remove all books from want-to-read shelf",
+      "status": "passed",
+      "start": 1776095064234,
+      "stop": 1776095083459,
+      "stage": "finished",
+      "statusDetails": {},
+      "attachments": [
+        {
+          "name": "screenshot",
+          "source": "step_02_ol_clear_reading_list.png",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Store reading list count (should be 0 after clear)",
+      "status": "passed",
+      "start": 1776095083459,
+      "stop": 1776095102684,
+      "stage": "finished",
+      "statusDetails": {},
+      "attachments": [
+        {
+          "name": "screenshot",
+          "source": "step_03_ol_store_count.png",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Search and collect 5 Dune books published before 1980",
+      "status": "passed",
+      "start": 1776095102684,
+      "stop": 1776095121909,
+      "stage": "finished",
+      "statusDetails": {},
+      "attachments": [
+        {
+          "name": "screenshot",
+          "source": "step_04_ol_collect_books.png",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Add each collected book to reading list + screenshot",
+      "status": "passed",
+      "start": 1776095121909,
+      "stop": 1776095141134,
+      "stage": "finished",
+      "statusDetails": {},
+      "attachments": [
+        {
+          "name": "screenshot",
+          "source": "book_5.png",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Assert reading list count increased by 5",
+      "status": "passed",
+      "start": 1776095141134,
+      "stop": 1776095160359,
+      "stage": "finished",
+      "statusDetails": {},
+      "attachments": [
+        {
+          "name": "screenshot",
+          "source": "step_06_ol_assert_count.png",
+          "type": "image/png"
+        }
+      ]
+    }
+  ],
+  "labels": [
+    {
+      "name": "suite",
+      "value": "C:\\Users\\Yafit\\playwright-stepper-framework\\stepper\\sites\\openlibrary\\workflows\\ol_search_and_add.json"
+    },
+    {
+      "name": "framework",
+      "value": "stepper"
+    },
+    {
+      "name": "language",
+      "value": "python"
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "suite": "C:\\Users\\Yafit\\playwright-stepper-framework\\stepper\\sites\\openlibrary\\workflows\\ol_smoke_test.json",
+  "started": "2026-04-13T18:35:51.525676",
+  "finished": "2026-04-13T18:36:32.295095",
+  "passed": 0,
+  "failed": 1,
+  "steps": [
+    {
+      "description": "Smoke: verify authentication works",
+      "action": "ol_ensure_login",
+      "status": "failed",
+      "confidence": 0.0,
+      "screenshot": "C:\\Users\\Yafit\\playwright-stepper-framework\\stepper\\reports\\2026-04-13_18-35-51_ol_smoke_test_001\\screenshots\\step_01_ol_ensure_login.png",
+      "error": "Page.fill: Timeout 15000ms exceeded.\nCall log:\n  - waiting for locator(\"#username\")\n"
+    }
+  ]
+}

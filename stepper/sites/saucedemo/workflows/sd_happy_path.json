@@ -1,0 +1,47 @@
+{
+  "name": "SauceDemo — happy path (login → add → checkout)",
+  "description": "Full end-to-end purchase flow with a single product. Verifies login, inventory, cart, checkout form, order confirmation.",
+  "variables": {
+    "product":    "Sauce Labs Backpack",
+    "first_name": "Test",
+    "last_name":  "User",
+    "zip":        "12345"
+  },
+  "steps": [
+    {
+      "action": "sd_login",
+      "description": "Log in with standard_user credentials",
+      "continue_on_failure": false
+    },
+    {
+      "action": "sd_add_to_cart",
+      "description": "Add '{{product}}' to the cart",
+      "extra": {
+        "products": ["{{product}}"]
+      }
+    },
+    {
+      "action": "sd_view_cart",
+      "description": "Navigate to cart — verify 1 item is present"
+    },
+    {
+      "action": "screenshot",
+      "description": "Capture cart contents before checkout",
+      "extra": { "filename": "happy_path_cart.png" }
+    },
+    {
+      "action": "sd_checkout",
+      "description": "Complete checkout with shipping info → verify order confirmation",
+      "extra": {
+        "first_name": "{{first_name}}",
+        "last_name":  "{{last_name}}",
+        "zip":        "{{zip}}"
+      }
+    },
+    {
+      "action": "screenshot",
+      "description": "Capture order confirmation screen",
+      "extra": { "filename": "happy_path_confirmation.png" }
+    }
+  ]
+}

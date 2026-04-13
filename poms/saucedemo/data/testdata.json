@@ -1,0 +1,31 @@
+[
+  {
+    "comment": "Standard user — full happy-path checkout with one item",
+    "username": "standard_user",
+    "password": "secret_sauce",
+    "products": ["Sauce Labs Backpack"],
+    "shipping": { "first_name": "Test", "last_name": "User", "zip": "12345" }
+  },
+  {
+    "comment": "Standard user — multi-item checkout, sorted by price",
+    "username": "standard_user",
+    "password": "secret_sauce",
+    "products": ["Sauce Labs Bike Light", "Sauce Labs Bolt T-Shirt"],
+    "sort": "lohi",
+    "shipping": { "first_name": "Test", "last_name": "User", "zip": "12345" }
+  },
+  {
+    "comment": "Standard user — all items added, verify cart count",
+    "username": "standard_user",
+    "password": "secret_sauce",
+    "products": [
+      "Sauce Labs Backpack",
+      "Sauce Labs Bike Light",
+      "Sauce Labs Bolt T-Shirt",
+      "Sauce Labs Fleece Jacket",
+      "Sauce Labs Onesie",
+      "Test.allTheThings() T-Shirt (Red)"
+    ],
+    "shipping": { "first_name": "Test", "last_name": "User", "zip": "12345" }
+  }
+]

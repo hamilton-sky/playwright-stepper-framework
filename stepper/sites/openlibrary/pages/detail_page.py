@@ -36,9 +36,9 @@ class OLDetailPage(PageModule):
             resolver, context: ExecutionContext,
         ) -> StepResult:
             try:
-                from shared_poms.config import load_settings
-                from shared_poms.driver import PlaywrightDriver
-                from shared_poms.pages.book_detail_page import BookDetailPage
+                from poms.openLibrary.config import load_settings
+                from poms.shared.driver import PlaywrightDriver
+                from poms.openLibrary.pages.book_detail_page import BookDetailPage
 
                 settings        = load_settings()
                 driver          = PlaywrightDriver(page)

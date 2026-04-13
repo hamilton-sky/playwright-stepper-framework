@@ -1,0 +1,10 @@
+{
+  "test_name": "ol_search_and_add",
+  "suite_name": "C:\\Users\\Yafit\\playwright-stepper-framework\\stepper\\sites\\openlibrary\\workflows\\ol_search_and_add.json",
+  "browser": "chromium",
+  "headless": false,
+  "total_duration_ms": 122671,
+  "step_count": 6,
+  "test_id": "2026-04-13_18-52-48_ol_search_and_add_001",
+  "created_at": "2026-04-13T18:54:51.581735"
+}

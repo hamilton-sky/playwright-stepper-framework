@@ -17,8 +17,8 @@ import logging
 import allure
 import pytest
 
-from shared_poms.config import load_settings
-from shared_poms.pages.reading_list_page import ReadingListPage
+from poms.openLibrary.config import load_settings
+from poms.openLibrary.pages.reading_list_page import ReadingListPage
 from flows import (
     search_books_by_title_under_year,
     add_books_to_reading_list,

@@ -41,14 +41,15 @@ import pytest
 import pytest_asyncio
 from playwright.async_api import async_playwright
 
-# ── sys.path: make exam/ importable (shared_poms installed via pyproject.toml) ──
+# ── sys.path: make workspace root importable for poms ──
 _exam_dir = Path(__file__).resolve().parent  # exam/
-if str(_exam_dir) not in sys.path:
-    sys.path.insert(0, str(_exam_dir))
+_workspace_root = _exam_dir.parent  # workspace root
+if str(_workspace_root) not in sys.path:
+    sys.path.insert(0, str(_workspace_root))
 
-from shared_poms.driver import PlaywrightDriver
-from shared_poms.config import load_settings, load_test_data
-from shared_poms.pages.login_page import LoginPage
+from poms.shared.driver import PlaywrightDriver
+from poms.openLibrary.config import load_settings, load_test_data
+from poms.openLibrary.pages.login_page import LoginPage
 
 
 def _has_credentials() -> bool:
@@ -140,7 +141,7 @@ async def _authed_storage_state(browser, settings):
     context = await browser.new_context(viewport={"width": 1280, "height": 800})
     page = await context.new_page()
     driver = PlaywrightDriver(page)
-    login_page = LoginPage(driver, settings.base_url, settings.delays)
+    login_page = LoginPage(driver, settings.base_url, settings.delays, page=page)
     if not await login_page.is_session_live():
         await login_page.open()
         await login_page.fill_username(os.environ["OPENLIBRARY_USERNAME"])

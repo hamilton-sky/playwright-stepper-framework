@@ -1,0 +1,163 @@
+18:44:05 | INFO | main | Loaded session from C:\Users\Yafit\playwright-stepper-framework\poms\artifacts\storage_state.json
+18:44:05 | INFO | stepper.runner.step_runner | ▶ Step 1: Ensure user is logged in
+18:44:16 | INFO | sites.openlibrary.pages.login_action | ol_ensure_login — session expired, logging in as shammaihamilton@gmail.com
+18:44:34 | WARNING | stepper.resolvers.element_resolver | Deterministic cascade failed → visual AI fallback
+18:44:34 | WARNING | stepper.resolvers.element_resolver | Visual AI disabled — returning not-found
+18:44:34 | WARNING | poms.shared.base_page | Resolver could not find element for fill: {'label': 'Username'}
+18:44:34 | WARNING | stepper.resolvers.element_resolver | Deterministic cascade failed → visual AI fallback
+18:44:34 | WARNING | stepper.resolvers.element_resolver | Visual AI disabled — returning not-found
+18:44:34 | WARNING | poms.shared.base_page | Resolver could not find element for fill: {'placeholder': 'Username'}
+18:44:34 | WARNING | stepper.resolvers.element_resolver | Deterministic cascade failed → visual AI fallback
+18:44:34 | WARNING | stepper.resolvers.element_resolver | Visual AI disabled — returning not-found
+18:44:34 | WARNING | poms.shared.base_page | Resolver could not find element for fill: {'id': 'username'}
+18:44:34 | WARNING | stepper.resolvers.element_resolver | Deterministic cascade failed → visual AI fallback
+18:44:34 | WARNING | stepper.resolvers.element_resolver | Visual AI disabled — returning not-found
+18:44:34 | WARNING | poms.shared.base_page | Resolver could not find element for fill: {'css': '#username'}
+18:44:34 | WARNING | stepper.resolvers.element_resolver | Deterministic cascade failed → visual AI fallback
+18:44:34 | WARNING | stepper.resolvers.element_resolver | Visual AI disabled — returning not-found
+18:44:34 | WARNING | poms.shared.base_page | Resolver could not find element for fill: {'label': 'Password'}
+18:44:34 | WARNING | stepper.resolvers.element_resolver | Deterministic cascade failed → visual AI fallback
+18:44:34 | WARNING | stepper.resolvers.element_resolver | Visual AI disabled — returning not-found
+18:44:34 | WARNING | poms.shared.base_page | Resolver could not find element for fill: {'placeholder': 'Password'}
+18:44:34 | WARNING | stepper.resolvers.element_resolver | Deterministic cascade failed → visual AI fallback
+18:44:34 | WARNING | stepper.resolvers.element_resolver | Visual AI disabled — returning not-found
+18:44:34 | WARNING | poms.shared.base_page | Resolver could not find element for fill: {'id': 'password'}
+18:44:34 | WARNING | stepper.resolvers.element_resolver | Deterministic cascade failed → visual AI fallback
+18:44:34 | WARNING | stepper.resolvers.element_resolver | Visual AI disabled — returning not-found
+18:44:34 | WARNING | poms.shared.base_page | Resolver could not find element for fill: {'css': '#password'}
+18:44:34 | WARNING | stepper.resolvers.element_resolver | Deterministic cascade failed → visual AI fallback
+18:44:34 | WARNING | stepper.resolvers.element_resolver | Visual AI disabled — returning not-found
+18:44:34 | WARNING | poms.shared.base_page | Resolver could not find element for click: {'role': 'button', 'name': 'Log in'}
+18:44:34 | WARNING | stepper.resolvers.element_resolver | Deterministic cascade failed → visual AI fallback
+18:44:34 | WARNING | stepper.resolvers.element_resolver | Visual AI disabled — returning not-found
+18:44:34 | WARNING | poms.shared.base_page | Resolver could not find element for click: {'role': 'button', 'name': 'Sign in'}
+18:44:34 | WARNING | stepper.resolvers.element_resolver | Deterministic cascade failed → visual AI fallback
+18:44:34 | WARNING | stepper.resolvers.element_resolver | Visual AI disabled — returning not-found
+18:44:34 | WARNING | poms.shared.base_page | Resolver could not find element for click: {'css': '.cta-btn--primary'}
+18:44:34 | INFO | sites.openlibrary.pages.login_action | ol_ensure_login ✓ — authenticated
+18:44:34 | INFO | stepper.reporter.test_report_reporter | Recorded step 1: ol_ensure_login → passed
+18:44:34 | INFO | stepper.runner.step_runner | ✓ Step 1 → passed
+18:44:34 | INFO | stepper.runner.step_runner | ▶ Step 2: Remove all books from want-to-read shelf
+18:44:37 | WARNING | stepper.resolvers.element_resolver | Deterministic cascade failed → visual AI fallback
+18:44:37 | WARNING | stepper.resolvers.element_resolver | Visual AI disabled — returning not-found
+18:44:37 | WARNING | poms.shared.base_page | Resolver could not find element for click: {'role': 'link', 'name': 'Next', 'css': "a.next-page, a[rel='next']"}
+18:44:37 | INFO | sites.openlibrary.pages.reading_list_action | ol_clear_reading_list — removing 5 book(s)
+18:44:40 | INFO | poms.openLibrary.pages.book_detail_page | Waiting for shelf button on https://openlibrary.org/works/OL1105384W/Memoirs_of_a_Revolutionist
+18:44:40 | INFO | poms.openLibrary.pages.book_detail_page | Shelf button ready
+18:44:46 | INFO | sites.openlibrary.pages.reading_list_action |   [1/5] not on shelf: https://openlibrary.org/works/OL1105384W/Memoirs_of_a_Revolutionist
+18:44:50 | INFO | poms.openLibrary.pages.book_detail_page | Waiting for shelf button on https://openlibrary.org/works/OL274574W/Crónica_de_una_muerte_anunciada
+18:44:50 | INFO | poms.openLibrary.pages.book_detail_page | Shelf button ready
+18:44:56 | INFO | sites.openlibrary.pages.reading_list_action |   [2/5] not on shelf: https://openlibrary.org/works/OL274574W/Crónica_de_una_muerte_anunciada
+18:44:59 | INFO | poms.openLibrary.pages.book_detail_page | Waiting for shelf button on https://openlibrary.org/works/OL472165W/Peril_at_End_House
+18:44:59 | INFO | poms.openLibrary.pages.book_detail_page | Shelf button ready
+18:45:04 | INFO | sites.openlibrary.pages.reading_list_action |   [3/5] not on shelf: https://openlibrary.org/works/OL472165W/Peril_at_End_House
+18:45:09 | INFO | poms.openLibrary.pages.book_detail_page | Waiting for shelf button on https://openlibrary.org/works/OL893526W/Dune_Messiah
+18:45:09 | INFO | poms.openLibrary.pages.book_detail_page | Shelf button ready
+18:45:14 | INFO | sites.openlibrary.pages.reading_list_action |   [4/5] not on shelf: https://openlibrary.org/works/OL893526W/Dune_Messiah
+18:45:19 | INFO | poms.openLibrary.pages.book_detail_page | Waiting for shelf button on https://openlibrary.org/works/OL893415W/Dune
+18:45:19 | INFO | poms.openLibrary.pages.book_detail_page | Shelf button ready
+18:45:24 | INFO | sites.openlibrary.pages.reading_list_action |   [5/5] not on shelf: https://openlibrary.org/works/OL893415W/Dune
+18:45:24 | INFO | sites.openlibrary.pages.reading_list_action | ol_clear_reading_list ✓
+18:45:25 | INFO | stepper.reporter.test_report_reporter | Recorded step 2: ol_clear_reading_list → passed
+18:45:25 | INFO | stepper.runner.step_runner | ✓ Step 2 → passed
+18:45:25 | INFO | stepper.runner.step_runner | ▶ Step 3: Store reading list count (should be 0 after clear)
+18:45:26 | WARNING | stepper.resolvers.element_resolver | Deterministic cascade failed → visual AI fallback
+18:45:26 | WARNING | stepper.resolvers.element_resolver | Visual AI disabled — returning not-found
+18:45:26 | WARNING | poms.shared.base_page | Resolver could not find element for click: {'role': 'link', 'name': 'Next', 'css': "a.next-page, a[rel='next']"}
+18:45:28 | WARNING | stepper.resolvers.element_resolver | Deterministic cascade failed → visual AI fallback
+18:45:28 | WARNING | stepper.resolvers.element_resolver | Visual AI disabled — returning not-found
+18:45:28 | WARNING | poms.shared.base_page | Resolver could not find element for click: {'role': 'link', 'name': 'Next', 'css': "a.next-page, a[rel='next']"}
+18:45:28 | INFO | sites.openlibrary.pages.reading_list_action | ol_store_count ✓ — count_before=0
+18:45:28 | INFO | stepper.reporter.test_report_reporter | Recorded step 3: ol_store_count → passed
+18:45:28 | INFO | stepper.runner.step_runner | ✓ Step 3 → passed
+18:45:28 | INFO | stepper.runner.step_runner | ▶ Step 4: Search and collect 5 Dune books published before 1980
+18:45:28 | INFO | poms.openLibrary.pages.book_search_page | Navigating to search URL: https://openlibrary.org/search?q=Dune
+18:45:31 | INFO | poms.openLibrary.pages.book_search_page | Navigation sent (commit strategy) in 3052ms
+18:45:31 | INFO | poms.openLibrary.pages.book_search_page | Polling for search results to load…
+18:45:31 | INFO | poms.openLibrary.pages.book_search_page | Search results loaded in 3216ms (after 1 polling attempts)
+18:45:31 | INFO | poms.openLibrary.pages.book_search_page | Collecting up to 5 books published before 1980 (max 5 pages)
+18:45:31 | INFO | poms.openLibrary.pages.book_search_page | Scanning page 1 — need 5 more book(s)
+18:45:31 | INFO | poms.openLibrary.pages.book_search_page | Page 1: examining 20 result item(s)
+18:45:31 | INFO | poms.openLibrary.pages.book_search_page |     Year text from resultDetails: 'First published in 1965\n120 editions, 15 ebooks'
+18:45:31 | INFO | poms.openLibrary.pages.book_search_page |   [1/20] accepted — year [1965] — https://openlibrary.org/works/OL893415W/Dune?edition=key%3A/books/OL26242482M
+18:45:31 | INFO | poms.openLibrary.pages.book_search_page |     Year text from resultDetails: 'First published in 1969\n70 editions, 11 ebooks'
+18:45:31 | INFO | poms.openLibrary.pages.book_search_page |   [2/20] accepted — year [1969] — https://openlibrary.org/works/OL893526W/Dune_Messiah?edition=key%3A/books/OL7525229M
+18:45:31 | INFO | poms.openLibrary.pages.book_search_page |     Year text from resultDetails: 'First published in 1932\n111 editions, 20 ebooks'
+18:45:31 | INFO | poms.openLibrary.pages.book_search_page |   [3/20] accepted — year [1932] — https://openlibrary.org/works/OL472165W/Peril_at_End_House?edition=key%3A/books/OL35638871M
+18:45:32 | INFO | poms.openLibrary.pages.book_search_page |     Year text from resultDetails: 'First published in 1980\n99 editions, 20 ebooks'
+18:45:32 | INFO | poms.openLibrary.pages.book_search_page |   [4/20] accepted — year [1980] — https://openlibrary.org/works/OL274574W/Crónica_de_una_muerte_anunciada?edition=key%3A/books/OL8886573M
+18:45:32 | INFO | poms.openLibrary.pages.book_search_page |     Year text from resultDetails: 'First published in 1899\n100 editions, 17 ebooks'
+18:45:32 | INFO | poms.openLibrary.pages.book_search_page |   [5/20] accepted — year [1899] — https://openlibrary.org/works/OL1105384W/Memoirs_of_a_Revolutionist?edition=key%3A/books/OL16829296M
+18:45:32 | INFO | poms.openLibrary.pages.book_search_page | Page 1: found 5 qualifying book(s) — total so far: 5/5
+18:45:32 | INFO | poms.openLibrary.pages.book_search_page | Collection complete: 5/5 books collected
+18:45:32 | INFO | sites.openlibrary.pages.search_page | collect_items → 5 books
+18:45:33 | INFO | stepper.reporter.test_report_reporter | Recorded step 4: ol_collect_books → passed
+18:45:33 | INFO | stepper.runner.step_runner | ✓ Step 4 → passed
+18:45:33 | INFO | stepper.runner.step_runner | ▶ Step 5: Add each collected book to reading list + screenshot
+18:45:37 | INFO | poms.openLibrary.pages.book_detail_page | Waiting for shelf button on https://openlibrary.org/works/OL893415W/Dune?edition=key%3A/books/OL26242482M
+18:45:37 | INFO | poms.openLibrary.pages.book_detail_page | Shelf button ready
+18:45:37 | INFO | poms.openLibrary.pages.book_detail_page | Adding to shelf: 'Want to Read'  url=https://openlibrary.org/works/OL893415W/Dune?edition=key%3A/books/OL26242482M
+18:45:37 | INFO | stepper.resolvers.element_resolver | ✓ [role] found 1 element — confidence 95%
+18:45:37 | INFO | poms.shared.base_page | ✓ click via role (95%)
+18:45:37 | INFO | poms.openLibrary.pages.book_detail_page | ✓ Added to shelf via role resolver: 'Want to Read'
+18:45:37 | INFO | sites.openlibrary.pages.detail_page | ol_add_to_shelf [1/5] → added
+18:45:40 | INFO | poms.openLibrary.pages.book_detail_page | Waiting for shelf button on https://openlibrary.org/works/OL893526W/Dune_Messiah?edition=key%3A/books/OL7525229M
+18:45:40 | INFO | poms.openLibrary.pages.book_detail_page | Shelf button ready
+18:45:40 | INFO | poms.openLibrary.pages.book_detail_page | Adding to shelf: 'Already Read'  url=https://openlibrary.org/works/OL893526W/Dune_Messiah?edition=key%3A/books/OL7525229M
+18:45:40 | WARNING | stepper.resolvers.element_resolver | Deterministic cascade failed → visual AI fallback
+18:45:40 | WARNING | stepper.resolvers.element_resolver | Visual AI disabled — returning not-found
+18:45:40 | WARNING | poms.shared.base_page | Resolver could not find element for click: {'role': 'button', 'name': 'Already Read'}
+18:45:40 | INFO | stepper.resolvers.element_resolver | ✓ [css] found 1 element — confidence 75%
+18:45:40 | WARNING | poms.shared.base_page | Medium confidence 75% on click — proceeding
+18:45:40 | INFO | poms.shared.base_page | ✓ click via css (75%)
+18:45:40 | INFO | poms.openLibrary.pages.book_detail_page | ✓ Added to shelf via CSS resolver (priority list)
+18:45:40 | INFO | sites.openlibrary.pages.detail_page | ol_add_to_shelf [2/5] → added
+18:45:43 | INFO | poms.openLibrary.pages.book_detail_page | Waiting for shelf button on https://openlibrary.org/works/OL472165W/Peril_at_End_House?edition=key%3A/books/OL35638871M
+18:45:43 | INFO | poms.openLibrary.pages.book_detail_page | Shelf button ready
+18:45:43 | INFO | poms.openLibrary.pages.book_detail_page | Adding to shelf: 'Already Read'  url=https://openlibrary.org/works/OL472165W/Peril_at_End_House?edition=key%3A/books/OL35638871M
+18:45:43 | WARNING | stepper.resolvers.element_resolver | Deterministic cascade failed → visual AI fallback
+18:45:43 | WARNING | stepper.resolvers.element_resolver | Visual AI disabled — returning not-found
+18:45:43 | WARNING | poms.shared.base_page | Resolver could not find element for click: {'role': 'button', 'name': 'Already Read'}
+18:45:43 | INFO | stepper.resolvers.element_resolver | ✓ [css] found 1 element — confidence 75%
+18:45:43 | WARNING | poms.shared.base_page | Medium confidence 75% on click — proceeding
+18:45:44 | INFO | poms.shared.base_page | ✓ click via css (75%)
+18:45:44 | INFO | poms.openLibrary.pages.book_detail_page | ✓ Added to shelf via CSS resolver (priority list)
+18:45:44 | INFO | sites.openlibrary.pages.detail_page | ol_add_to_shelf [3/5] → added
+18:45:47 | INFO | poms.openLibrary.pages.book_detail_page | Waiting for shelf button on https://openlibrary.org/works/OL274574W/Crónica_de_una_muerte_anunciada?edition=key%3A/books/OL8886573M
+18:45:47 | INFO | poms.openLibrary.pages.book_detail_page | Shelf button ready
+18:45:47 | INFO | poms.openLibrary.pages.book_detail_page | Adding to shelf: 'Want to Read'  url=https://openlibrary.org/works/OL274574W/Crónica_de_una_muerte_anunciada?edition=key%3A/books/OL8886573M
+18:45:47 | INFO | stepper.resolvers.element_resolver | ✓ [role] found 1 element — confidence 95%
+18:45:47 | INFO | poms.shared.base_page | ✓ click via role (95%)
+18:45:47 | INFO | poms.openLibrary.pages.book_detail_page | ✓ Added to shelf via role resolver: 'Want to Read'
+18:45:47 | INFO | sites.openlibrary.pages.detail_page | ol_add_to_shelf [4/5] → added
+18:45:52 | INFO | poms.openLibrary.pages.book_detail_page | Waiting for shelf button on https://openlibrary.org/works/OL1105384W/Memoirs_of_a_Revolutionist?edition=key%3A/books/OL16829296M
+18:45:52 | INFO | poms.openLibrary.pages.book_detail_page | Shelf button ready
+18:45:52 | INFO | poms.openLibrary.pages.book_detail_page | Adding to shelf: 'Already Read'  url=https://openlibrary.org/works/OL1105384W/Memoirs_of_a_Revolutionist?edition=key%3A/books/OL16829296M
+18:45:52 | WARNING | stepper.resolvers.element_resolver | Deterministic cascade failed → visual AI fallback
+18:45:52 | WARNING | stepper.resolvers.element_resolver | Visual AI disabled — returning not-found
+18:45:52 | WARNING | poms.shared.base_page | Resolver could not find element for click: {'role': 'button', 'name': 'Already Read'}
+18:45:52 | INFO | stepper.resolvers.element_resolver | ✓ [css] found 1 element — confidence 75%
+18:45:52 | WARNING | poms.shared.base_page | Medium confidence 75% on click — proceeding
+18:45:52 | INFO | poms.shared.base_page | ✓ click via css (75%)
+18:45:52 | INFO | poms.openLibrary.pages.book_detail_page | ✓ Added to shelf via CSS resolver (priority list)
+18:45:52 | INFO | sites.openlibrary.pages.detail_page | ol_add_to_shelf [5/5] → added
+18:45:52 | INFO | stepper.reporter.test_report_reporter | Recorded step 5: ol_add_to_shelf → passed
+18:45:52 | INFO | stepper.runner.step_runner | ✓ Step 5 → passed
+18:45:52 | INFO | stepper.runner.step_runner | ▶ Step 6: Assert reading list count increased by 5
+18:45:59 | WARNING | stepper.resolvers.element_resolver | Deterministic cascade failed → visual AI fallback
+18:45:59 | WARNING | stepper.resolvers.element_resolver | Visual AI disabled — returning not-found
+18:45:59 | WARNING | poms.shared.base_page | Resolver could not find element for click: {'role': 'link', 'name': 'Next', 'css': "a.next-page, a[rel='next']"}
+18:46:00 | WARNING | stepper.resolvers.element_resolver | Deterministic cascade failed → visual AI fallback
+18:46:00 | WARNING | stepper.resolvers.element_resolver | Visual AI disabled — returning not-found
+18:46:00 | WARNING | poms.shared.base_page | Resolver could not find element for click: {'role': 'link', 'name': 'Next', 'css': "a.next-page, a[rel='next']"}
+18:46:00 | INFO | sites.openlibrary.pages.reading_list_action | ol_assert_count ✓ — 5 books == 5
+18:46:00 | INFO | stepper.reporter.test_report_reporter | Recorded step 6: ol_assert_count → passed
+18:46:00 | INFO | stepper.runner.step_runner | ✓ Step 6 → passed
+18:46:00 | INFO | stepper.reporter.reporters | Report written: C:\Users\Yafit\playwright-stepper-framework\stepper\report.json
+18:46:00 | INFO | stepper.reporter.test_report_manager | Saved metadata: C:\Users\Yafit\playwright-stepper-framework\stepper\reports\2026-04-13_18-44-05_ol_search_and_add_001\metadata.json
+18:46:00 | INFO | stepper.reporter.test_report_manager | Saved summary: C:\Users\Yafit\playwright-stepper-framework\stepper\reports\2026-04-13_18-44-05_ol_search_and_add_001\summary.json
+18:46:00 | INFO | stepper.reporter.test_report_manager | Saved results: C:\Users\Yafit\playwright-stepper-framework\stepper\reports\2026-04-13_18-44-05_ol_search_and_add_001\results.json
+18:46:00 | INFO | stepper.reporter.test_report_manager | Saved performance metrics: C:\Users\Yafit\playwright-stepper-framework\stepper\reports\2026-04-13_18-44-05_ol_search_and_add_001\performance.json
+18:46:00 | INFO | stepper.reporter.test_report_manager | Generated cross-test summary: C:\Users\Yafit\playwright-stepper-framework\stepper\reports\summary\all_tests_summary.json
+18:46:00 | INFO | stepper.reporter.test_report_reporter | Test suite completed: 6/6 passed → C:\Users\Yafit\playwright-stepper-framework\stepper\reports\2026-04-13_18-44-05_ol_search_and_add_001
+18:46:00 | INFO | stepper.reporter.reporters | Allure result written: C:\Users\Yafit\playwright-stepper-framework\stepper\reports\allure-results\d18a0760-977b-4c5b-9835-70dfff3d02d7-result.json

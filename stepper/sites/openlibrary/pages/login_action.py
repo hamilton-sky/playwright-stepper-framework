@@ -41,13 +41,14 @@ class OLLoginPage(PageModule):
             resolver, context: ExecutionContext,
         ) -> StepResult:
             try:
-                from shared_poms.config import load_settings
-                from shared_poms.driver import PlaywrightDriver
-                from shared_poms.pages.login_page import LoginPage
+                from poms.openLibrary.config import load_settings
+                from poms.shared.driver import PlaywrightDriver
+                from poms.openLibrary.pages.login_page import LoginPage
 
                 settings   = load_settings()
                 driver     = PlaywrightDriver(page)
-                login_page = LoginPage(driver, settings.base_url, settings.delays)
+                login_page = LoginPage(driver, settings.base_url, settings.delays,
+                                       page=page, resolver=resolver)
 
                 if await login_page.is_session_live():
                     logger.info("ol_ensure_login ✓ — session already active")
@@ -63,7 +64,16 @@ class OLLoginPage(PageModule):
                     )
 
                 logger.info("ol_ensure_login — session expired, logging in as %s", settings.username)
-                await login_page.open()            # navigate + wait_for_ready
+
+                # is_session_live() navigates to a protected page, which OpenLibrary
+                # redirects to the login form. The browser is likely already on the
+                # login page — avoid a second navigation and just wait for the form.
+                if "/account/login" in driver.current_url:
+                    logger.info("ol_ensure_login — already on login page, skipping open()")
+                    await login_page.wait_for_ready()
+                else:
+                    await login_page.open()        # navigate + wait_for_ready
+
                 await login_page.fill_username(settings.username)
                 await login_page.fill_password(settings.password)
                 await login_page.submit()

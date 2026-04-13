@@ -1,0 +1,77 @@
+{
+  "test_id": "2026-04-13_18-54-53_ol_smoke_test_001",
+  "steps": [
+    {
+      "num": 1,
+      "description": "Smoke: verify authentication works",
+      "action": "ol_ensure_login",
+      "status": "passed",
+      "confidence": 0.0,
+      "duration_ms": 22961.3,
+      "screenshots": [
+        "step_01_ol_ensure_login.png"
+      ],
+      "error": ""
+    },
+    {
+      "num": 2,
+      "description": "Baseline: record current shelf count before any actions (must remain unchanged at the end)",
+      "action": "ol_store_count",
+      "status": "passed",
+      "confidence": 0.0,
+      "duration_ms": 7836.6,
+      "screenshots": [
+        "step_02_ol_store_count.png"
+      ],
+      "error": ""
+    },
+    {
+      "num": 3,
+      "description": "Smoke: verify search API returns at least 1 result for 'Dune' (no add \u2014 collect only)",
+      "action": "ol_collect_books",
+      "status": "passed",
+      "confidence": 0.0,
+      "duration_ms": 4600.3,
+      "screenshots": [
+        "step_03_ol_collect_books.png"
+      ],
+      "error": ""
+    },
+    {
+      "num": 4,
+      "description": "Capture search results \u2014 only runs when search actually returned books (when guard demo)",
+      "action": "screenshot",
+      "status": "passed",
+      "confidence": 0.0,
+      "duration_ms": 104.3,
+      "screenshots": [
+        "smoke_search_results.png"
+      ],
+      "error": ""
+    },
+    {
+      "num": 5,
+      "description": "Measure search page load time (threshold: 5000ms)",
+      "action": "measure_performance",
+      "status": "passed",
+      "confidence": 0.0,
+      "duration_ms": 13387.6,
+      "screenshots": [
+        "step_05_measure_performance.png"
+      ],
+      "error": ""
+    },
+    {
+      "num": 6,
+      "description": "Proof the shelf was never mutated \u2014 count must equal baseline (delta=0)",
+      "action": "ol_assert_count",
+      "status": "passed",
+      "confidence": 0.0,
+      "duration_ms": 15642.8,
+      "screenshots": [
+        "step_06_ol_assert_count.png"
+      ],
+      "error": ""
+    }
+  ]
+}
