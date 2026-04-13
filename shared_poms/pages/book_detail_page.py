@@ -80,7 +80,7 @@ class BookDetailPage(BasePage):
         except Exception:
             logger.warning("Shelf button not visible on %s — continuing", self._url)
 
-    async def add_to_reading_list(self, label: str | None = None) -> bool:
+    async def add_to_reading_list(self, label: str | None = None) -> str | None:
         """
         Click the shelf button to add the book to the reading list.
 
@@ -91,14 +91,15 @@ class BookDetailPage(BasePage):
         Resolution order is defined in self._add_steps (OCP — extend by appending,
         never by editing this method).
 
-        Returns True if added or already shelved, False if nothing worked after retry.
+        Returns the shelf label string if added or already shelved, None if nothing
+        worked after retry.
         """
         self._shelf_label = label or random.choice([SHELF_LABEL_WANT, SHELF_LABEL_ALREADY])
         logger.info("Adding to shelf: '%s'  url=%s", self._shelf_label, self._url)
 
         for step in self._add_steps:
             if await step():
-                return True
+                return self._shelf_label
 
         # First pass failed — reload the page and try once more.
         # Handles timing issues where the shelf widget loads late.
@@ -106,10 +107,10 @@ class BookDetailPage(BasePage):
         await self.open()
         for step in self._add_steps:
             if await step():
-                return True
+                return self._shelf_label
 
         logger.warning(f"⚠ Could not find shelf button on {self._url}")
-        return False
+        return None
 
     # ── Resolution steps (private) ────────────────────────────────────────────
 

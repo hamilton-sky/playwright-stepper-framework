@@ -74,13 +74,13 @@ async def add_books_to_reading_list(page, urls: list[str]) -> None:
             driver, settings.base_url, book_url=url, delays=settings.delays,
         )
         await detail.open()
-        await detail.add_to_reading_list()  # random shelf (exam spec)
+        chosen_shelf = await detail.add_to_reading_list()  # random shelf (exam spec)
         slug = re.sub(r"[^\w\-]", "_", url.split("/")[-1])[:60]
         try:
             await screenshot_mgr.capture(f"book_{idx}_{slug}")
         except Exception as e:
             logger.warning("Screenshot failed for book %d (%s): %s", idx, url, e)
-        logger.info("Added book %d/%d: %s", idx, len(urls), url)
+        logger.info("Added book %d/%d [shelf: %s]: %s", idx, len(urls), chosen_shelf or "unknown", url)
 
 
 async def assert_reading_list_count(page, expected_count: int) -> None:
