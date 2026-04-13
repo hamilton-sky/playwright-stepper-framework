@@ -41,12 +41,10 @@ import pytest
 import pytest_asyncio
 from playwright.async_api import async_playwright
 
-# ── sys.path: make shared_poms and exam/ importable ──────────────────────────
-_repo_root = Path(__file__).resolve().parent.parent   # playwright-stepper-framework/
-_exam_dir  = Path(__file__).resolve().parent           # exam/
-for _p in (_repo_root, _exam_dir):
-    if str(_p) not in sys.path:
-        sys.path.insert(0, str(_p))
+# ── sys.path: make exam/ importable (shared_poms installed via pyproject.toml) ──
+_exam_dir = Path(__file__).resolve().parent  # exam/
+if str(_exam_dir) not in sys.path:
+    sys.path.insert(0, str(_exam_dir))
 
 from shared_poms.driver import PlaywrightDriver
 from shared_poms.config import load_settings, load_test_data
@@ -101,6 +99,12 @@ def pytest_generate_tests(metafunc):
 @pytest.fixture(scope="session")
 def settings():
     return load_settings()
+
+
+@pytest.fixture
+def result_key(test_case):
+    """Stable tuple key for sharing state between ordered test methods."""
+    return (test_case["query"], test_case["max_year"], test_case["limit"])
 
 
 @pytest.fixture(scope="session")
@@ -163,3 +167,9 @@ async def page(browser, settings, _authed_storage_state):
     page = await context.new_page()
     yield page
     await context.close()
+
+
+@pytest_asyncio.fixture
+async def driver(page):
+    """Wraps the per-test Playwright page in the IBrowserDriver interface."""
+    return PlaywrightDriver(page)

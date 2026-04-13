@@ -57,10 +57,12 @@ class ReadingListPage(BasePage):
                     clean = urlparse(base + href)._replace(query="", fragment="").geturl()
                     book_urls.append(clean)
 
-            next_btn = await self._driver.query_selector(self._NEXT_PAGE)
-            if not next_btn:
+            clicked = await self._resolve_and_click(
+                {"css": self._NEXT_PAGE},
+                description="reading list next page",
+            )
+            if not clicked:
                 break
-            await next_btn.click()
             await self._driver.wait_for_load_state("domcontentloaded")
             await asyncio.sleep(self.delays.between_pagination_ms / 1000)
 

@@ -17,6 +17,7 @@ OCP — add_to_reading_list resolution order:
   Zero edits to add_to_reading_list() or any other step.
 """
 from __future__ import annotations
+import asyncio
 import logging
 import random
 from typing import Callable, Awaitable
@@ -159,7 +160,8 @@ class BookDetailPage(BasePage):
                     await el.click()
                     logger.info(f"✓ Added to shelf via driver fallback: {selector}")
                     return True
-            except Exception:
+            except Exception as e:
+                logger.debug("_step_driver_fallback: selector %r failed: %s", selector, e)
                 continue
         return False
 
@@ -172,8 +174,6 @@ class BookDetailPage(BasePage):
         The 0.5s sleep gives the dropdown time to render after the first click.
         Returns True if removed, False if not on any shelf.
         """
-        import asyncio as _asyncio
-
         # Step 1: click the shelf button to open the dropdown
         try:
             el = await self._driver.wait_for_selector(
@@ -188,7 +188,7 @@ class BookDetailPage(BasePage):
             return False
 
         # Step 2: wait for the dropdown to render before looking for the remove button
-        await _asyncio.sleep(0.5)
+        await asyncio.sleep(0.5)
 
         # Step 3: click the remove button
         try:

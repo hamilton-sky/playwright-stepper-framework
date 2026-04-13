@@ -55,5 +55,13 @@ async def measure_page_performance(
     output = {"url": url, "threshold_ms": threshold_ms, "metrics": metrics}
     out_path = Path(output_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(json.dumps(output, indent=2), encoding="utf-8")
+    existing: list = []
+    if out_path.exists():
+        try:
+            parsed = json.loads(out_path.read_text(encoding="utf-8"))
+            existing = parsed if isinstance(parsed, list) else [parsed]
+        except (json.JSONDecodeError, ValueError):
+            existing = []
+    existing.append(output)
+    out_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
     return output

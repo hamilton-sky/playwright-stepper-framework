@@ -21,16 +21,9 @@ from __future__ import annotations
 
 import logging
 import re
-import sys
-from pathlib import Path
 
-# Make shared_poms importable when this module is run or imported standalone
-_repo_root = Path(__file__).resolve().parent.parent
-if str(_repo_root) not in sys.path:
-    sys.path.insert(0, str(_repo_root))
-
-from shared_poms.driver import PlaywrightDriver
-from shared_poms.config import load_settings
+from shared_poms.interfaces import IBrowserDriver
+from shared_poms.config import Settings
 from shared_poms.pages.book_search_page import BookSearchPage
 from shared_poms.pages.book_detail_page import BookDetailPage
 from shared_poms.pages.reading_list_page import ReadingListPage
@@ -41,7 +34,8 @@ logger = logging.getLogger(__name__)
 
 
 async def search_books_by_title_under_year(
-    page, query: str, max_year: int, limit: int = 5
+    driver: IBrowserDriver, settings: Settings,
+    query: str, max_year: int, limit: int = 5,
 ) -> list[str]:
     """
     Search OpenLibrary by *query*, filter results to books published
@@ -51,20 +45,18 @@ async def search_books_by_title_under_year(
     results have been collected and more pages exist.
     Returns an empty list when no matches are found.
     """
-    settings = load_settings()
-    driver = PlaywrightDriver(page)
     search_page = BookSearchPage(driver, settings.base_url, settings.delays)
     await search_page.search(query)
     return await search_page.collect_books_under_year(max_year, limit)
 
 
-async def add_books_to_reading_list(page, urls: list[str]) -> None:
+async def add_books_to_reading_list(
+    driver: IBrowserDriver, settings: Settings, urls: list[str],
+) -> None:
     """
     Navigate to each URL and click "Want to Read" or "Already Read" (random).
     Takes a screenshot after every book that is added.
     """
-    settings = load_settings()
-    driver = PlaywrightDriver(page)
     screenshots_dir = settings.screenshots_dir
     screenshots_dir.mkdir(parents=True, exist_ok=True)
     screenshot_mgr = ScreenshotManager(driver, screenshots_dir)
@@ -83,13 +75,13 @@ async def add_books_to_reading_list(page, urls: list[str]) -> None:
         logger.info("Added book %d/%d [shelf: %s]: %s", idx, len(urls), chosen_shelf or "unknown", url)
 
 
-async def assert_reading_list_count(page, expected_count: int) -> None:
+async def assert_reading_list_count(
+    driver: IBrowserDriver, settings: Settings, expected_count: int,
+) -> None:
     """
     Open the reading list pages, count all books across both shelves,
     and assert the total equals *expected_count*.
     """
-    settings = load_settings()
-    driver = PlaywrightDriver(page)
     reading_list = ReadingListPage(driver, settings.base_url, settings.delays)
     actual = await reading_list.get_book_count()
     assert actual == expected_count, (
@@ -98,15 +90,13 @@ async def assert_reading_list_count(page, expected_count: int) -> None:
 
 
 async def measure_page_performance(
-    page, url: str, threshold_ms: int
+    driver: IBrowserDriver, settings: Settings, url: str, threshold_ms: int,
 ) -> dict:
     """
     Measure first_paint_ms, dom_content_loaded_ms, and load_time_ms.
     Logs a warning when load_time exceeds *threshold_ms* (not a failure).
     Writes results to performance_report.json.
     """
-    settings = load_settings()
-    driver = PlaywrightDriver(page)
     return await _measure_perf(
         driver, url, threshold_ms,
         output_path=settings.performance_output,
