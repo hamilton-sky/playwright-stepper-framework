@@ -12,8 +12,9 @@ JSON usage:
 from __future__ import annotations
 import logging
 
-from stepper.interfaces import ActionStrategy, StepConfig, StepResult, ExecutionContext
+from stepper.interfaces import StepConfig, StepResult, ExecutionContext
 from stepper.pages.base_page_module import PageModule
+from stepper.pages.glue_action import GlueAction
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +22,7 @@ logger = logging.getLogger(__name__)
 class OLLoginPage(PageModule):
     site = "ol"
 
-    class OLEnsureLoginAction(ActionStrategy):
+    class OLEnsureLoginAction(GlueAction):
         """
         Ensure the browser session is authenticated with OpenLibrary.
 
@@ -42,13 +43,12 @@ class OLLoginPage(PageModule):
         ) -> StepResult:
             try:
                 from poms.openLibrary.config import load_settings
-                from poms.shared.driver import PlaywrightDriver
                 from poms.openLibrary.pages.login_page import LoginPage
 
                 settings   = load_settings()
-                driver     = PlaywrightDriver(page)
-                login_page = LoginPage(driver, settings.base_url, settings.delays,
-                                       page=page, resolver=resolver)
+                driver     = self._driver(page)
+                login_page = self._build_pom(LoginPage, driver, settings.base_url,
+                                             settings.delays, page=page, resolver=resolver)
 
                 if await login_page.is_session_live():
                     logger.info("ol_ensure_login ✓ — session already active")

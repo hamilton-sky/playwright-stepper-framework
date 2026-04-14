@@ -28,6 +28,7 @@ class PageModule(ABC):
     Convention (cannot be enforced by ABC, enforced by register()):
       - Selector constants are ALL_CAPS class attributes
       - Every domain action_name starts with f"{site}_"
+      - Inner action classes must subclass GlueAction, not ActionStrategy directly
     """
 
     site: str  # subclasses declare this as a plain class attribute

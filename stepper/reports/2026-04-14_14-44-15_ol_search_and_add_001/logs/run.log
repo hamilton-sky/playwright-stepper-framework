@@ -1,0 +1,122 @@
+14:44:16 | INFO | stepper.runner.step_runner | ▶ Step 1: Ensure user is logged in
+14:44:27 | INFO | sites.openlibrary.pages.login_action | ol_ensure_login — session expired, logging in as shammaihamilton@gmail.com
+14:44:27 | INFO | sites.openlibrary.pages.login_action | ol_ensure_login — already on login page, skipping open()
+14:44:27 | INFO | stepper.resolvers.element_resolver | ✓ [label] found 1 element — confidence 93%
+14:44:27 | INFO | poms.shared.base_page | ✓ fill via label (93%)
+14:44:27 | INFO | stepper.resolvers.element_resolver | ✓ [label] found 1 element — confidence 93%
+14:44:28 | INFO | poms.shared.base_page | ✓ fill via label (93%)
+14:44:28 | INFO | stepper.resolvers.element_resolver | ✓ [role] found 1 element — confidence 95%
+14:44:28 | INFO | poms.shared.base_page | ✓ click via role (95%)
+14:44:31 | INFO | sites.openlibrary.pages.login_action | ol_ensure_login ✓ — authenticated
+14:44:32 | INFO | stepper.reporter.test_report_reporter | Recorded step 1: ol_ensure_login → passed
+14:44:32 | INFO | stepper.runner.step_runner | ✓ Step 1 → passed
+14:44:32 | INFO | stepper.runner.step_runner | ▶ Step 2: Capture logged-in state
+14:44:33 | INFO | stepper.actions.strategies | 📸 screenshot: C:\Users\Yafit\playwright-stepper-framework\stepper\reports\2026-04-14_14-44-15_ol_search_and_add_001\screenshots\144432_step.png
+14:44:33 | INFO | stepper.reporter.test_report_reporter | Recorded step 2: screenshot → passed
+14:44:33 | INFO | stepper.runner.step_runner | ✓ Step 2 → passed
+14:44:33 | INFO | stepper.runner.step_runner | ▶ Step 3: Remove all books from want-to-read shelf
+14:44:38 | INFO | sites.openlibrary.pages.reading_list_action | ol_clear_reading_list — removing 5 book(s)
+14:44:41 | INFO | poms.openLibrary.pages.book_detail_page | Waiting for shelf button on https://openlibrary.org/works/OL1105384W/Memoirs_of_a_Revolutionist
+14:44:42 | INFO | poms.openLibrary.pages.book_detail_page | Shelf button ready
+14:45:13 | INFO | poms.openLibrary.pages.book_detail_page | ✓ Removed from shelf (via toggle): https://openlibrary.org/works/OL1105384W/Memoirs_of_a_Revolutionist
+14:45:13 | INFO | sites.openlibrary.pages.reading_list_action |   [1/5] removed: https://openlibrary.org/works/OL1105384W/Memoirs_of_a_Revolutionist
+14:45:16 | INFO | poms.openLibrary.pages.book_detail_page | Waiting for shelf button on https://openlibrary.org/works/OL274574W/Crónica_de_una_muerte_anunciada
+14:45:16 | INFO | poms.openLibrary.pages.book_detail_page | Shelf button ready
+14:45:47 | INFO | poms.openLibrary.pages.book_detail_page | ✓ Removed from shelf (via toggle): https://openlibrary.org/works/OL274574W/Crónica_de_una_muerte_anunciada
+14:45:47 | INFO | sites.openlibrary.pages.reading_list_action |   [2/5] removed: https://openlibrary.org/works/OL274574W/Crónica_de_una_muerte_anunciada
+14:45:50 | INFO | poms.openLibrary.pages.book_detail_page | Waiting for shelf button on https://openlibrary.org/works/OL472165W/Peril_at_End_House
+14:45:51 | INFO | poms.openLibrary.pages.book_detail_page | Shelf button ready
+14:46:22 | INFO | poms.openLibrary.pages.book_detail_page | ✓ Removed from shelf (via toggle): https://openlibrary.org/works/OL472165W/Peril_at_End_House
+14:46:22 | INFO | sites.openlibrary.pages.reading_list_action |   [3/5] removed: https://openlibrary.org/works/OL472165W/Peril_at_End_House
+14:46:25 | INFO | poms.openLibrary.pages.book_detail_page | Waiting for shelf button on https://openlibrary.org/works/OL893526W/Dune_Messiah
+14:46:25 | INFO | poms.openLibrary.pages.book_detail_page | Shelf button ready
+14:46:56 | INFO | poms.openLibrary.pages.book_detail_page | ✓ Removed from shelf (via toggle): https://openlibrary.org/works/OL893526W/Dune_Messiah
+14:46:56 | INFO | sites.openlibrary.pages.reading_list_action |   [4/5] removed: https://openlibrary.org/works/OL893526W/Dune_Messiah
+14:46:59 | INFO | poms.openLibrary.pages.book_detail_page | Waiting for shelf button on https://openlibrary.org/works/OL893415W/Dune
+14:47:01 | INFO | poms.openLibrary.pages.book_detail_page | Shelf button ready
+14:47:32 | INFO | poms.openLibrary.pages.book_detail_page | ✓ Removed from shelf (via toggle): https://openlibrary.org/works/OL893415W/Dune
+14:47:32 | INFO | sites.openlibrary.pages.reading_list_action |   [5/5] removed: https://openlibrary.org/works/OL893415W/Dune
+14:47:32 | INFO | sites.openlibrary.pages.reading_list_action | ol_clear_reading_list ✓
+14:47:33 | INFO | stepper.reporter.test_report_reporter | Recorded step 3: ol_clear_reading_list → passed
+14:47:33 | INFO | stepper.runner.step_runner | ✓ Step 3 → passed
+14:47:33 | INFO | stepper.runner.step_runner | ▶ Step 4: Store reading list count (should be 0 after clear)
+14:47:35 | INFO | sites.openlibrary.pages.reading_list_action | ol_store_count ✓ — count_before=0
+14:47:35 | INFO | stepper.reporter.test_report_reporter | Recorded step 4: ol_store_count → passed
+14:47:35 | INFO | stepper.runner.step_runner | ✓ Step 4 → passed
+14:47:35 | INFO | stepper.runner.step_runner | ▶ Step 5: Search and collect 5 Dune books published before 1980
+14:47:35 | INFO | poms.openLibrary.pages.book_search_page | Navigating to search URL: https://openlibrary.org/search?q=Dune
+14:47:38 | INFO | poms.openLibrary.pages.book_search_page | Navigation sent (commit strategy) in 2228ms
+14:47:38 | INFO | poms.openLibrary.pages.book_search_page | Polling for search results to load…
+14:47:38 | INFO | poms.openLibrary.pages.book_search_page | Search results loaded in 2681ms (after 1 polling attempts)
+14:47:38 | INFO | poms.openLibrary.pages.book_search_page | Collecting up to 5 books published before 1980 (max 5 pages)
+14:47:38 | INFO | poms.openLibrary.pages.book_search_page | Scanning page 1 — need 5 more book(s)
+14:47:38 | INFO | poms.openLibrary.pages.book_search_page | Page 1: examining 20 result item(s)
+14:47:39 | INFO | poms.openLibrary.pages.book_search_page |     Year text from resultDetails: 'First published in 1965\n120 editions, 15 ebooks'
+14:47:39 | INFO | poms.openLibrary.pages.book_search_page |   [1/20] accepted — year 1965 — https://openlibrary.org/works/OL893415W/Dune?edition=key%3A/books/OL26242482M
+14:47:39 | INFO | poms.openLibrary.pages.book_search_page |     Year text from resultDetails: 'First published in 1969\n70 editions, 11 ebooks'
+14:47:39 | INFO | poms.openLibrary.pages.book_search_page |   [2/20] accepted — year 1969 — https://openlibrary.org/works/OL893526W/Dune_Messiah?edition=key%3A/books/OL7525229M
+14:47:39 | INFO | poms.openLibrary.pages.book_search_page |     Year text from resultDetails: 'First published in 1932\n111 editions, 20 ebooks'
+14:47:39 | INFO | poms.openLibrary.pages.book_search_page |   [3/20] accepted — year 1932 — https://openlibrary.org/works/OL472165W/Peril_at_End_House?edition=key%3A/books/OL35638871M
+14:47:39 | INFO | poms.openLibrary.pages.book_search_page |     Year text from resultDetails: 'First published in 1980\n99 editions, 20 ebooks'
+14:47:39 | INFO | poms.openLibrary.pages.book_search_page |   [4/20] accepted — year 1980 — https://openlibrary.org/works/OL274574W/Crónica_de_una_muerte_anunciada?edition=key%3A/books/OL8886573M
+14:47:40 | INFO | poms.openLibrary.pages.book_search_page |     Year text from resultDetails: 'First published in 1899\n100 editions, 17 ebooks'
+14:47:40 | INFO | poms.openLibrary.pages.book_search_page |   [5/20] accepted — year 1899 — https://openlibrary.org/works/OL1105384W/Memoirs_of_a_Revolutionist?edition=key%3A/books/OL16829296M
+14:47:40 | INFO | poms.openLibrary.pages.book_search_page | Page 1: found 5 qualifying book(s) — total so far: 5/5
+14:47:40 | INFO | poms.openLibrary.pages.book_search_page | Collection complete: 5/5 books collected
+14:47:40 | INFO | sites.openlibrary.pages.search_page | collect_items → 5 books
+14:47:40 | INFO | stepper.reporter.test_report_reporter | Recorded step 5: ol_collect_books → passed
+14:47:40 | INFO | stepper.runner.step_runner | ✓ Step 5 → passed
+14:47:40 | INFO | stepper.runner.step_runner | ▶ Step 6: Add each collected book to reading list + screenshot
+14:47:44 | INFO | poms.openLibrary.pages.book_detail_page | Waiting for shelf button on https://openlibrary.org/works/OL893415W/Dune?edition=key%3A/books/OL26242482M
+14:47:44 | INFO | poms.openLibrary.pages.book_detail_page | Shelf button ready
+14:47:44 | INFO | poms.openLibrary.pages.book_detail_page | Adding to shelf: 'Already Read'  url=https://openlibrary.org/works/OL893415W/Dune?edition=key%3A/books/OL26242482M
+14:47:44 | WARNING | stepper.resolvers.element_resolver | Deterministic cascade failed — falling through to zero-selector path: 'shelf button labelled 'Already Read''
+14:47:47 | WARNING | stepper.resolvers.element_resolver | [DescriptionFallback] no candidates above threshold → visual AI
+14:47:47 | WARNING | stepper.resolvers.element_resolver | Visual AI disabled — returning not-found
+14:47:47 | WARNING | poms.shared.base_page | Resolver could not find element for click: {'role': 'button', 'name': 'Already Read'}
+14:47:48 | INFO | poms.openLibrary.pages.book_detail_page | ✓ Added to shelf via dropdown: 'Already Read'
+14:47:49 | INFO | sites.openlibrary.pages.detail_page | ol_add_to_shelf [1/5] (year=1965) → added
+14:47:52 | INFO | poms.openLibrary.pages.book_detail_page | Waiting for shelf button on https://openlibrary.org/works/OL893526W/Dune_Messiah?edition=key%3A/books/OL7525229M
+14:47:52 | INFO | poms.openLibrary.pages.book_detail_page | Shelf button ready
+14:47:52 | INFO | poms.openLibrary.pages.book_detail_page | Adding to shelf: 'Want to Read'  url=https://openlibrary.org/works/OL893526W/Dune_Messiah?edition=key%3A/books/OL7525229M
+14:47:52 | INFO | stepper.resolvers.element_resolver | ✓ [role] found 1 element — confidence 95%
+14:47:53 | INFO | poms.shared.base_page | ✓ click via role (95%)
+14:47:53 | INFO | poms.openLibrary.pages.book_detail_page | ✓ Added to shelf via role resolver: 'Want to Read'
+14:47:53 | INFO | sites.openlibrary.pages.detail_page | ol_add_to_shelf [2/5] (year=1969) → added
+14:47:56 | INFO | poms.openLibrary.pages.book_detail_page | Waiting for shelf button on https://openlibrary.org/works/OL472165W/Peril_at_End_House?edition=key%3A/books/OL35638871M
+14:48:02 | INFO | poms.openLibrary.pages.book_detail_page | Shelf button ready
+14:48:02 | INFO | poms.openLibrary.pages.book_detail_page | Adding to shelf: 'Want to Read'  url=https://openlibrary.org/works/OL472165W/Peril_at_End_House?edition=key%3A/books/OL35638871M
+14:48:02 | INFO | stepper.resolvers.element_resolver | ✓ [role] found 1 element — confidence 95%
+14:48:02 | INFO | poms.shared.base_page | ✓ click via role (95%)
+14:48:02 | INFO | poms.openLibrary.pages.book_detail_page | ✓ Added to shelf via role resolver: 'Want to Read'
+14:48:03 | INFO | sites.openlibrary.pages.detail_page | ol_add_to_shelf [3/5] (year=1932) → added
+14:48:06 | INFO | poms.openLibrary.pages.book_detail_page | Waiting for shelf button on https://openlibrary.org/works/OL274574W/Crónica_de_una_muerte_anunciada?edition=key%3A/books/OL8886573M
+14:48:06 | INFO | poms.openLibrary.pages.book_detail_page | Shelf button ready
+14:48:06 | INFO | poms.openLibrary.pages.book_detail_page | Adding to shelf: 'Want to Read'  url=https://openlibrary.org/works/OL274574W/Crónica_de_una_muerte_anunciada?edition=key%3A/books/OL8886573M
+14:48:06 | INFO | stepper.resolvers.element_resolver | ✓ [role] found 1 element — confidence 95%
+14:48:07 | INFO | poms.shared.base_page | ✓ click via role (95%)
+14:48:07 | INFO | poms.openLibrary.pages.book_detail_page | ✓ Added to shelf via role resolver: 'Want to Read'
+14:48:07 | INFO | sites.openlibrary.pages.detail_page | ol_add_to_shelf [4/5] (year=1980) → added
+14:48:10 | INFO | poms.openLibrary.pages.book_detail_page | Waiting for shelf button on https://openlibrary.org/works/OL1105384W/Memoirs_of_a_Revolutionist?edition=key%3A/books/OL16829296M
+14:48:11 | INFO | poms.openLibrary.pages.book_detail_page | Shelf button ready
+14:48:11 | INFO | poms.openLibrary.pages.book_detail_page | Adding to shelf: 'Already Read'  url=https://openlibrary.org/works/OL1105384W/Memoirs_of_a_Revolutionist?edition=key%3A/books/OL16829296M
+14:48:11 | WARNING | stepper.resolvers.element_resolver | Deterministic cascade failed — falling through to zero-selector path: 'shelf button labelled 'Already Read''
+14:48:14 | WARNING | stepper.resolvers.element_resolver | [DescriptionFallback] no candidates above threshold → visual AI
+14:48:14 | WARNING | stepper.resolvers.element_resolver | Visual AI disabled — returning not-found
+14:48:14 | WARNING | poms.shared.base_page | Resolver could not find element for click: {'role': 'button', 'name': 'Already Read'}
+14:48:15 | INFO | poms.openLibrary.pages.book_detail_page | ✓ Added to shelf via dropdown: 'Already Read'
+14:48:15 | INFO | sites.openlibrary.pages.detail_page | ol_add_to_shelf [5/5] (year=1899) → added
+14:48:15 | INFO | stepper.reporter.test_report_reporter | Recorded step 6: ol_add_to_shelf → passed
+14:48:15 | INFO | stepper.runner.step_runner | ✓ Step 6 → passed
+14:48:16 | INFO | stepper.runner.step_runner | ▶ Step 7: Assert reading list count increased by 5
+14:48:23 | INFO | sites.openlibrary.pages.reading_list_action | ol_assert_count ✓ — 5 books == 5
+14:48:23 | INFO | stepper.reporter.test_report_reporter | Recorded step 7: ol_assert_count → passed
+14:48:23 | INFO | stepper.runner.step_runner | ✓ Step 7 → passed
+14:48:23 | INFO | stepper.reporter.reporters | Report written: C:\Users\Yafit\playwright-stepper-framework\stepper\report.json
+14:48:23 | INFO | stepper.reporter.test_report_manager | Saved metadata: C:\Users\Yafit\playwright-stepper-framework\stepper\reports\2026-04-14_14-44-15_ol_search_and_add_001\metadata.json
+14:48:23 | INFO | stepper.reporter.test_report_manager | Saved summary: C:\Users\Yafit\playwright-stepper-framework\stepper\reports\2026-04-14_14-44-15_ol_search_and_add_001\summary.json
+14:48:23 | INFO | stepper.reporter.test_report_manager | Saved results: C:\Users\Yafit\playwright-stepper-framework\stepper\reports\2026-04-14_14-44-15_ol_search_and_add_001\results.json
+14:48:23 | INFO | stepper.reporter.test_report_manager | Saved performance metrics: C:\Users\Yafit\playwright-stepper-framework\stepper\reports\2026-04-14_14-44-15_ol_search_and_add_001\performance.json
+14:48:23 | INFO | stepper.reporter.test_report_manager | Generated cross-test summary: C:\Users\Yafit\playwright-stepper-framework\stepper\reports\summary\all_tests_summary.json
+14:48:24 | INFO | stepper.reporter.test_report_reporter | Test suite completed: 7/7 passed → C:\Users\Yafit\playwright-stepper-framework\stepper\reports\2026-04-14_14-44-15_ol_search_and_add_001
+14:48:24 | INFO | stepper.reporter.reporters | Allure result written: C:\Users\Yafit\playwright-stepper-framework\stepper\reports\allure-results\6c304900-19ae-4b39-b4a9-76b4c16a35c2-result.json

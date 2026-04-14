@@ -18,11 +18,13 @@ from dataclasses import dataclass, field
 from typing import Optional, Any, ClassVar, TYPE_CHECKING
 
 # ──────────────────────────────────────────────────────────
-# CONFIDENCE GATE THRESHOLDS — single source of truth
-# Import these wherever a confidence decision is made.
+# CONFIDENCE GATE THRESHOLDS
+# CONFIDENCE_AUTO and CONFIDENCE_WARN are owned by poms/shared/constants.py
+# (shared with the POM resolver helpers — single source of truth).
+# Engine-only thresholds are declared here.
 # ──────────────────────────────────────────────────────────
-CONFIDENCE_AUTO:        float = 0.80   # act automatically
-CONFIDENCE_WARN:        float = 0.50   # warn and act
+from poms.shared.constants import CONFIDENCE_AUTO, CONFIDENCE_WARN  # re-exported
+
 CONFIDENCE_SEMANTIC:    float = 0.80   # semantic resolver min score to count as match
 CONFIDENCE_AI_PICK:     float = 0.70   # AI picker min score to accept a candidate
 CONFIDENCE_DESCRIPTION: float = 0.40   # description-fallback resolver min similarity

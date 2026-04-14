@@ -1,0 +1,33 @@
+{
+  "generated_at": "2026-04-14T14:50:46.125499",
+  "total_tests": 2,
+  "total_passed": 13,
+  "total_failed": 0,
+  "success_rate": 1.0,
+  "tests": [
+    {
+      "suite": "C:\\Users\\Yafit\\playwright-stepper-framework\\stepper\\sites\\openlibrary\\workflows\\ol_search_and_add.json",
+      "started_at": "2026-04-14T14:44:15.178450",
+      "total_steps": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "total_duration_ms": 248570,
+      "success_rate": 1.0,
+      "test_id": "2026-04-14_14-44-15_ol_search_and_add_001",
+      "finished_at": "2026-04-14T14:48:23.800544"
+    },
+    {
+      "suite": "C:\\Users\\Yafit\\playwright-stepper-framework\\stepper\\sites\\openlibrary\\workflows\\ol_smoke_test.json",
+      "started_at": "2026-04-14T14:49:57.001842",
+      "total_steps": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "total_duration_ms": 49017,
+      "success_rate": 1.0,
+      "test_id": "2026-04-14_14-49-57_ol_smoke_test_001",
+      "finished_at": "2026-04-14T14:50:46.033268"
+    }
+  ]
+}

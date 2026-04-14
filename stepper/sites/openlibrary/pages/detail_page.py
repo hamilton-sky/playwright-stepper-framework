@@ -11,8 +11,9 @@ import logging
 import warnings
 from pathlib import Path
 
-from stepper.interfaces import ActionStrategy, StepConfig, StepResult, ExecutionContext
+from stepper.interfaces import StepConfig, StepResult, ExecutionContext
 from stepper.pages.base_page_module import PageModule
+from stepper.pages.glue_action import GlueAction
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +23,7 @@ class OLDetailPage(PageModule):
     # Selectors removed — owned by BookDetailPage.Locators (Option 3).
     # Glue layers never duplicate POM selector knowledge.
 
-    class OLAddToShelfAction(ActionStrategy):
+    class OLAddToShelfAction(GlueAction):
         """
         Iterate over context.collected_items, open each book page,
         click the shelf button, take a screenshot.
@@ -42,11 +43,10 @@ class OLDetailPage(PageModule):
         ) -> StepResult:
             try:
                 from poms.openLibrary.config import load_settings
-                from poms.shared.driver import PlaywrightDriver
                 from poms.openLibrary.pages.book_detail_page import BookDetailPage
 
                 settings        = load_settings()
-                driver          = PlaywrightDriver(page)
+                driver          = self._driver(page)
                 screenshots_dir = self._screenshots_dir
 
                 urls = context.collected_items
@@ -61,10 +61,8 @@ class OLDetailPage(PageModule):
                 for idx, item in enumerate(urls, start=1):
                     url  = item["url"] if isinstance(item, dict) else item
                     year = item.get("year") if isinstance(item, dict) else None
-                    detail = BookDetailPage(
-                        driver, settings.base_url, url, settings.delays,
-                        page=page, resolver=resolver,
-                    )
+                    detail = self._build_pom(BookDetailPage, driver, settings.base_url,
+                                            url, settings.delays, page=page, resolver=resolver)
                     await detail.open()
 
                     shelf = await detail.add_to_reading_list()

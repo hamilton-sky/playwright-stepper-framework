@@ -12,8 +12,9 @@ JSON usage:
 from __future__ import annotations
 import logging
 
-from stepper.interfaces import ActionStrategy, StepConfig, StepResult, ExecutionContext
+from stepper.interfaces import StepConfig, StepResult, ExecutionContext
 from stepper.pages.base_page_module import PageModule
+from stepper.pages.glue_action import GlueAction
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +22,7 @@ logger = logging.getLogger(__name__)
 class SDCartPage(PageModule):
     site = "sd"
 
-    class SDViewCartAction(ActionStrategy):
+    class SDViewCartAction(GlueAction):
         """
         Navigate to the cart page and record how many items are present.
 
@@ -40,13 +41,12 @@ class SDCartPage(PageModule):
         ) -> StepResult:
             try:
                 from poms.saucedemo.config import load_settings
-                from poms.shared.driver import PlaywrightDriver
                 from poms.saucedemo.pages.cart_page import CartPage
 
                 settings  = load_settings()
-                driver    = PlaywrightDriver(page)
-                cart_page = CartPage(driver, settings.base_url,
-                                    page=page, resolver=resolver)
+                driver    = self._driver(page)
+                cart_page = self._build_pom(CartPage, driver, settings.base_url,
+                                            page=page, resolver=resolver)
 
                 await cart_page.open()
                 items = await cart_page.get_items()

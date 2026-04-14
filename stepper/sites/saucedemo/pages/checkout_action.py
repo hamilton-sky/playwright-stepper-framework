@@ -21,8 +21,9 @@ JSON usage:
 from __future__ import annotations
 import logging
 
-from stepper.interfaces import ActionStrategy, StepConfig, StepResult, ExecutionContext
+from stepper.interfaces import StepConfig, StepResult, ExecutionContext
 from stepper.pages.base_page_module import PageModule
+from stepper.pages.glue_action import GlueAction
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,7 @@ _DEFAULT_SHIPPING = {"first_name": "Test", "last_name": "User", "zip": "12345"}
 class SDCheckoutPage(PageModule):
     site = "sd"
 
-    class SDCheckoutAction(ActionStrategy):
+    class SDCheckoutAction(GlueAction):
         """
         Complete the SauceDemo checkout flow from the cart page.
 
@@ -62,14 +63,13 @@ class SDCheckoutPage(PageModule):
         ) -> StepResult:
             try:
                 from poms.saucedemo.config import load_settings
-                from poms.shared.driver import PlaywrightDriver
                 from poms.saucedemo.pages.cart_page import CartPage
                 from poms.saucedemo.pages.checkout_info_page import CheckoutInfoPage
                 from poms.saucedemo.pages.checkout_overview_page import CheckoutOverviewPage
                 from poms.saucedemo.pages.checkout_complete_page import CheckoutCompletePage
 
                 settings = load_settings()
-                driver   = PlaywrightDriver(page)
+                driver   = self._driver(page)
 
                 shipping = {
                     "first_name": step.extra.get("first_name", _DEFAULT_SHIPPING["first_name"]),
@@ -78,15 +78,15 @@ class SDCheckoutPage(PageModule):
                 }
 
                 # ── Step 1: cart → checkout form ──────────────────────────────
-                cart_page = CartPage(driver, settings.base_url,
-                                     page=page, resolver=resolver)
+                cart_page = self._build_pom(CartPage, driver, settings.base_url,
+                                            page=page, resolver=resolver)
                 await cart_page.open()
                 await cart_page.proceed_to_checkout()
                 logger.info("sd_checkout — proceeded to checkout info page")
 
                 # ── Step 2: fill shipping info ────────────────────────────────
-                info_page = CheckoutInfoPage(driver, settings.base_url,
-                                             page=page, resolver=resolver)
+                info_page = self._build_pom(CheckoutInfoPage, driver, settings.base_url,
+                                            page=page, resolver=resolver)
                 await info_page.wait_for_ready()
                 await info_page.fill_first_name(shipping["first_name"])
                 await info_page.fill_last_name(shipping["last_name"])
@@ -95,8 +95,8 @@ class SDCheckoutPage(PageModule):
                 logger.info("sd_checkout — shipping info submitted")
 
                 # ── Step 3: review order → finish ─────────────────────────────
-                overview_page = CheckoutOverviewPage(driver, settings.base_url,
-                                                     page=page, resolver=resolver)
+                overview_page = self._build_pom(CheckoutOverviewPage, driver, settings.base_url,
+                                                page=page, resolver=resolver)
                 await overview_page.wait_for_ready()
                 total = await overview_page.get_total()
                 if total is not None:
@@ -105,8 +105,8 @@ class SDCheckoutPage(PageModule):
                 await overview_page.finish()
 
                 # ── Step 4: verify confirmation ───────────────────────────────
-                complete_page = CheckoutCompletePage(driver, settings.base_url,
-                                                     page=page, resolver=resolver)
+                complete_page = self._build_pom(CheckoutCompletePage, driver, settings.base_url,
+                                                page=page, resolver=resolver)
                 await complete_page.wait_for_ready()
                 if not await complete_page.is_order_confirmed():
                     header = await complete_page.get_header_text()

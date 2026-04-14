@@ -15,8 +15,9 @@ or poms/saucedemo/config/config.yaml.
 from __future__ import annotations
 import logging
 
-from stepper.interfaces import ActionStrategy, StepConfig, StepResult, ExecutionContext
+from stepper.interfaces import StepConfig, StepResult, ExecutionContext
 from stepper.pages.base_page_module import PageModule
+from stepper.pages.glue_action import GlueAction
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,7 @@ logger = logging.getLogger(__name__)
 class SDLoginPage(PageModule):
     site = "sd"
 
-    class SDLoginAction(ActionStrategy):
+    class SDLoginAction(GlueAction):
         """
         Log in to SauceDemo.
 
@@ -48,13 +49,12 @@ class SDLoginPage(PageModule):
         ) -> StepResult:
             try:
                 from poms.saucedemo.config import load_settings
-                from poms.shared.driver import PlaywrightDriver
                 from poms.saucedemo.pages.login_page import LoginPage
 
                 settings   = load_settings()
-                driver     = PlaywrightDriver(page)
-                login_page = LoginPage(driver, settings.base_url,
-                                      page=page, resolver=resolver)
+                driver     = self._driver(page)
+                login_page = self._build_pom(LoginPage, driver, settings.base_url,
+                                             page=page, resolver=resolver)
 
                 if await login_page.is_logged_in():
                     logger.info("sd_login ✓ — already authenticated")

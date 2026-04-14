@@ -21,10 +21,9 @@ Subclasses define:
 from __future__ import annotations
 import logging
 
-logger = logging.getLogger(__name__)
+from poms.shared.constants import CONFIDENCE_AUTO, CONFIDENCE_WARN
 
-CONFIDENCE_AUTO = 0.80
-CONFIDENCE_WARN = 0.50
+logger = logging.getLogger(__name__)
 
 
 class BasePage:

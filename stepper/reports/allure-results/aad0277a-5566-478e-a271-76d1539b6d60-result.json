@@ -1,0 +1,114 @@
+{
+  "uuid": "aad0277a-5566-478e-a271-76d1539b6d60",
+  "name": "C:\\Users\\Yafit\\playwright-stepper-framework\\stepper\\sites\\openlibrary\\workflows\\ol_smoke_test.json",
+  "status": "passed",
+  "start": 1776167397043,
+  "stop": 1776167446346,
+  "stage": "finished",
+  "steps": [
+    {
+      "name": "Smoke: verify authentication works",
+      "status": "passed",
+      "start": 1776167397043,
+      "stop": 1776167405260,
+      "stage": "finished",
+      "statusDetails": {},
+      "attachments": [
+        {
+          "name": "screenshot",
+          "source": "step_01_ol_ensure_login.png",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Baseline: record current shelf count before any actions (must remain unchanged at the end)",
+      "status": "passed",
+      "start": 1776167405260,
+      "stop": 1776167413477,
+      "stage": "finished",
+      "statusDetails": {},
+      "attachments": [
+        {
+          "name": "screenshot",
+          "source": "step_02_ol_store_count.png",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Smoke: verify search API returns at least 1 result for 'Dune' (no add \u2014 collect only)",
+      "status": "passed",
+      "start": 1776167413477,
+      "stop": 1776167421694,
+      "stage": "finished",
+      "statusDetails": {},
+      "attachments": [
+        {
+          "name": "screenshot",
+          "source": "step_03_ol_collect_books.png",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Capture search results \u2014 only runs when search actually returned books (when guard demo)",
+      "status": "passed",
+      "start": 1776167421694,
+      "stop": 1776167429911,
+      "stage": "finished",
+      "statusDetails": {},
+      "attachments": [
+        {
+          "name": "screenshot",
+          "source": "smoke_search_results.png",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Measure search page load time (threshold: 5000ms)",
+      "status": "passed",
+      "start": 1776167429911,
+      "stop": 1776167438128,
+      "stage": "finished",
+      "statusDetails": {},
+      "attachments": [
+        {
+          "name": "screenshot",
+          "source": "step_05_measure_performance.png",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Proof the shelf was never mutated \u2014 count must equal baseline (delta=0)",
+      "status": "passed",
+      "start": 1776167438128,
+      "stop": 1776167446345,
+      "stage": "finished",
+      "statusDetails": {},
+      "attachments": [
+        {
+          "name": "screenshot",
+          "source": "step_06_ol_assert_count.png",
+          "type": "image/png"
+        }
+      ]
+    }
+  ],
+  "labels": [
+    {
+      "name": "suite",
+      "value": "C:\\Users\\Yafit\\playwright-stepper-framework\\stepper\\sites\\openlibrary\\workflows\\ol_smoke_test.json"
+    },
+    {
+      "name": "framework",
+      "value": "stepper"
+    },
+    {
+      "name": "language",
+      "value": "python"
+    }
+  ]
+}

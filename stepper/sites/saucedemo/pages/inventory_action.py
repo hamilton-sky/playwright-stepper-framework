@@ -18,8 +18,9 @@ JSON usage:
 from __future__ import annotations
 import logging
 
-from stepper.interfaces import ActionStrategy, StepConfig, StepResult, ExecutionContext
+from stepper.interfaces import StepConfig, StepResult, ExecutionContext
 from stepper.pages.base_page_module import PageModule
+from stepper.pages.glue_action import GlueAction
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +28,7 @@ logger = logging.getLogger(__name__)
 class SDInventoryPage(PageModule):
     site = "sd"
 
-    class SDAddToCartAction(ActionStrategy):
+    class SDAddToCartAction(GlueAction):
         """
         Navigate to the inventory page and add each named product to the cart.
 
@@ -47,13 +48,12 @@ class SDInventoryPage(PageModule):
         ) -> StepResult:
             try:
                 from poms.saucedemo.config import load_settings
-                from poms.shared.driver import PlaywrightDriver
                 from poms.saucedemo.pages.inventory_page import InventoryPage
 
                 settings       = load_settings()
-                driver         = PlaywrightDriver(page)
-                inventory_page = InventoryPage(driver, settings.base_url,
-                                              page=page, resolver=resolver)
+                driver         = self._driver(page)
+                inventory_page = self._build_pom(InventoryPage, driver, settings.base_url,
+                                                 page=page, resolver=resolver)
 
                 products = step.extra.get("products", [])
                 if not products:
@@ -89,7 +89,7 @@ class SDInventoryPage(PageModule):
                 logger.error("sd_add_to_cart failed: %s", e)
                 return StepResult(step=step, status="failed", error=str(e))
 
-    class SDSortProductsAction(ActionStrategy):
+    class SDSortProductsAction(GlueAction):
         """
         Apply a sort option to the inventory product list.
 
@@ -111,13 +111,12 @@ class SDInventoryPage(PageModule):
         ) -> StepResult:
             try:
                 from poms.saucedemo.config import load_settings
-                from poms.shared.driver import PlaywrightDriver
                 from poms.saucedemo.pages.inventory_page import InventoryPage
 
                 settings       = load_settings()
-                driver         = PlaywrightDriver(page)
-                inventory_page = InventoryPage(driver, settings.base_url,
-                                              page=page, resolver=resolver)
+                driver         = self._driver(page)
+                inventory_page = self._build_pom(InventoryPage, driver, settings.base_url,
+                                                 page=page, resolver=resolver)
 
                 sort_option = step.extra.get("sort", InventoryPage.SORT_NAME_ASC)
                 await inventory_page.select_sort(sort_option)

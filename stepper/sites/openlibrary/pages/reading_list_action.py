@@ -17,8 +17,9 @@ Dependency direction: sites.openlibrary → stepper  (correct)
 from __future__ import annotations
 import logging
 
-from stepper.interfaces import ActionStrategy, StepConfig, StepResult, ExecutionContext
+from stepper.interfaces import StepConfig, StepResult, ExecutionContext
 from stepper.pages.base_page_module import PageModule
+from stepper.pages.glue_action import GlueAction
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +27,7 @@ logger = logging.getLogger(__name__)
 class OLReadingListPage(PageModule):
     site = "ol"
 
-    class OLClearReadingListAction(ActionStrategy):
+    class OLClearReadingListAction(GlueAction):
         """
         Remove every book from the want-to-read shelf.
 
@@ -46,16 +47,13 @@ class OLReadingListPage(PageModule):
         ) -> StepResult:
             try:
                 from poms.openLibrary.config import load_settings
-                from poms.shared.driver import PlaywrightDriver
                 from poms.openLibrary.pages.reading_list_page import ReadingListPage
                 from poms.openLibrary.pages.book_detail_page import BookDetailPage
 
                 settings     = load_settings()
-                driver       = PlaywrightDriver(page)
-                reading_list = ReadingListPage(
-                    driver, settings.base_url, settings.delays,
-                    page=page, resolver=resolver,
-                )
+                driver       = self._driver(page)
+                reading_list = self._build_pom(ReadingListPage, driver, settings.base_url,
+                                               settings.delays, page=page, resolver=resolver)
 
                 want_urls    = await reading_list.collect_all_book_urls(
                     ReadingListPage._WANT_TO_READ_PATH
@@ -71,10 +69,8 @@ class OLReadingListPage(PageModule):
 
                 logger.info(f"ol_clear_reading_list — removing {len(urls)} book(s)")
                 for idx, url in enumerate(urls, start=1):
-                    detail = BookDetailPage(
-                        driver, settings.base_url, url, settings.delays,
-                        page=page, resolver=resolver,
-                    )
+                    detail = self._build_pom(BookDetailPage, driver, settings.base_url,
+                                            url, settings.delays, page=page, resolver=resolver)
                     await detail.open()
                     removed = await detail.remove_from_shelf()
                     logger.info(
@@ -88,7 +84,7 @@ class OLReadingListPage(PageModule):
                 logger.error(f"ol_clear_reading_list failed: {e}")
                 return StepResult(step=step, status="failed", error=str(e))
 
-    class OLStoreCountAction(ActionStrategy):
+    class OLStoreCountAction(GlueAction):
         """
         Count books across both shelves and store the result in context.
 
@@ -109,15 +105,12 @@ class OLReadingListPage(PageModule):
         ) -> StepResult:
             try:
                 from poms.openLibrary.config import load_settings
-                from poms.shared.driver import PlaywrightDriver
                 from poms.openLibrary.pages.reading_list_page import ReadingListPage
 
                 settings     = load_settings()
-                driver       = PlaywrightDriver(page)
-                reading_list = ReadingListPage(
-                    driver, settings.base_url, settings.delays,
-                    page=page, resolver=resolver,
-                )
+                driver       = self._driver(page)
+                reading_list = self._build_pom(ReadingListPage, driver, settings.base_url,
+                                               settings.delays, page=page, resolver=resolver)
 
                 context_key = step.extra.get("context_key", "count_before")
                 count = await reading_list.get_book_count()
@@ -130,7 +123,7 @@ class OLReadingListPage(PageModule):
                 logger.error(f"ol_store_count failed: {e}")
                 return StepResult(step=step, status="failed", error=str(e))
 
-    class OLAssertCountAction(ActionStrategy):
+    class OLAssertCountAction(GlueAction):
         """
         Navigate to the reading list, count books across both shelves,
         assert the count matches expected.
@@ -149,15 +142,12 @@ class OLReadingListPage(PageModule):
                            resolver, context: ExecutionContext) -> StepResult:
             try:
                 from poms.openLibrary.config import load_settings
-                from poms.shared.driver import PlaywrightDriver
                 from poms.openLibrary.pages.reading_list_page import ReadingListPage
 
                 settings     = load_settings()
-                driver       = PlaywrightDriver(page)
-                reading_list = ReadingListPage(
-                    driver, settings.base_url, settings.delays,
-                    page=page, resolver=resolver,
-                )
+                driver       = self._driver(page)
+                reading_list = self._build_pom(ReadingListPage, driver, settings.base_url,
+                                               settings.delays, page=page, resolver=resolver)
 
                 await reading_list.open()
 
@@ -184,7 +174,7 @@ class OLReadingListPage(PageModule):
                 logger.error(f"ol_assert_count failed: {e}")
                 return StepResult(step=step, status="failed", error=str(e))
 
-    class OLEnsureCountAction(ActionStrategy):
+    class OLEnsureCountAction(GlueAction):
         """
         Check the shelf count and store the gap in context if top-up is needed.
 
@@ -210,15 +200,12 @@ class OLReadingListPage(PageModule):
         ) -> StepResult:
             try:
                 from poms.openLibrary.config import load_settings
-                from poms.shared.driver import PlaywrightDriver
                 from poms.openLibrary.pages.reading_list_page import ReadingListPage
 
                 settings     = load_settings()
-                driver       = PlaywrightDriver(page)
-                reading_list = ReadingListPage(
-                    driver, settings.base_url, settings.delays,
-                    page=page, resolver=resolver,
-                )
+                driver       = self._driver(page)
+                reading_list = self._build_pom(ReadingListPage, driver, settings.base_url,
+                                               settings.delays, page=page, resolver=resolver)
 
                 current = await reading_list.get_book_count()
                 target  = int(step.extra["target_count"])

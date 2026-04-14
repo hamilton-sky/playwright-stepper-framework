@@ -13,8 +13,9 @@ Dependency direction: sites.openlibrary → stepper  (correct)
 from __future__ import annotations
 import logging
 
-from stepper.interfaces import ActionStrategy, StepConfig, StepResult, ExecutionContext
+from stepper.interfaces import StepConfig, StepResult, ExecutionContext
 from stepper.pages.base_page_module import PageModule
+from stepper.pages.glue_action import GlueAction
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +23,7 @@ logger = logging.getLogger(__name__)
 class OLSearchPage(PageModule):
     site = "ol"
 
-    class OLCollectBooksAction(ActionStrategy):
+    class OLCollectBooksAction(GlueAction):
         """
         Collect book URLs from OpenLibrary search results.
         Navigates to the search page, submits the query, filters by max
@@ -45,13 +46,12 @@ class OLSearchPage(PageModule):
         ) -> StepResult:
             try:
                 from poms.openLibrary.config import load_settings
-                from poms.shared.driver import PlaywrightDriver
                 from poms.openLibrary.pages.book_search_page import BookSearchPage
 
                 settings    = load_settings()
-                driver      = PlaywrightDriver(page)
-                search_page = BookSearchPage(driver, settings.base_url, settings.delays,
-                                            page=page, resolver=resolver)
+                driver      = self._driver(page)
+                search_page = self._build_pom(BookSearchPage, driver, settings.base_url,
+                                             settings.delays, page=page, resolver=resolver)
 
                 query    = step.extra.get("query", "")
                 max_year = step.extra.get("filter", {}).get("year_max", 9999)
