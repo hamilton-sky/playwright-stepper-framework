@@ -18,7 +18,10 @@ logs/*
 allure-results/*
 !allure-results/.gitkeep
 
+
 openlibrary/allure-results/*
+
+jira-to-stepper-pipeline/*
 
 reports/*
 !reports/.gitkeep
