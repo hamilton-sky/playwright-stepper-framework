@@ -136,7 +136,15 @@ class BookDetailPage(BasePage):
         """
         Step 2: Resolver cascade using ARIA role + label set by add_to_reading_list.
         Most resilient — survives CSS class renames.
+
+        Only attempted for the primary shelf label (SHELF_LABEL_WANT).
+        Non-primary shelves ("Already Read", "Currently Reading") are never
+        top-level ARIA buttons — they live inside the dropdown revealed by
+        _step_dropdown_shelf. Trying the resolver for them produces expected
+        warnings and wastes ~1s, so we skip straight to the dropdown step.
         """
+        if self._shelf_label != SHELF_LABEL_WANT:
+            return False
         clicked = await self._resolve_and_click(
             {"role": "button", "name": self._shelf_label},
             description=f"shelf button labelled '{self._shelf_label}'",
