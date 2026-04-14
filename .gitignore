@@ -21,7 +21,7 @@ allure-results/*
 
 openlibrary/allure-results/*
 
-jira-to-stepper-pipeline/*
+jira-to-stepper-pipeline/
 
 reports/*
 !reports/.gitkeep
