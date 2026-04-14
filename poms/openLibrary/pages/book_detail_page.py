@@ -52,8 +52,10 @@ class BookDetailPage(BasePage):
             {"css":  SHELF_BTN_UNACTIVATED, "priority": 10},
             {"css":  SHELF_BTN_PRIMARY,     "priority": 20},
             {"text": "Want to Read",        "priority": 30},
-            {"text": "Already Read",        "priority": 40},
         ]
+        # Dropdown widget selectors (revealed by clicking the caret)
+        SHELF_DROPDOWN_CARET  = "a.generic-dropper__dropclick"
+        SHELF_DROPDOWN_BTNS   = ".read-statuses button.nostyle-btn"
 
     def __init__(self, driver, base_url: str, book_url: str,
                  delays=None, page=None, resolver=None):
@@ -65,9 +67,10 @@ class BookDetailPage(BasePage):
         # add_to_reading_list() iterates this list; it never needs editing.
         self._add_steps: list[Callable[[], Awaitable[bool]]] = [
             self._step_already_shelved,   # 1. idempotent guard
-            self._step_resolver_role,     # 2. ARIA role + label (most resilient)
-            self._step_resolver_css,      # 3. resolver cascade with CSS
-            self._step_driver_fallback,   # 4. direct driver CSS (last resort)
+            self._step_resolver_role,     # 2. ARIA role + label ("Want to Read" → 95% confidence)
+            self._step_dropdown_shelf,    # 3. open caret dropdown → click target shelf
+            self._step_resolver_css,      # 4. resolver cascade with CSS (fallback)
+            self._step_driver_fallback,   # 5. direct driver CSS (last resort)
         ]
 
     @property
@@ -143,8 +146,45 @@ class BookDetailPage(BasePage):
             logger.info(f"✓ Added to shelf via role resolver: '{self._shelf_label}'")
         return clicked
 
+    async def _step_dropdown_shelf(self) -> bool:
+        """
+        Step 3: Open the shelf dropdown via the caret and click the target shelf.
+
+        Non-primary shelves ("Already Read", "Currently Reading") are only
+        accessible inside a hidden dropdown — they are never top-level ARIA
+        buttons, so the role resolver can't find them without opening it first.
+
+        DOM structure (verified April 2026):
+          a.generic-dropper__dropclick  → caret that reveals the dropdown
+          .read-statuses button.nostyle-btn  → one button per shelf option
+        """
+        try:
+            caret = await self._driver.wait_for_selector(
+                self.Locators.SHELF_DROPDOWN_CARET, timeout=3_000
+            )
+            if not caret:
+                return False
+            await caret.click()
+            await asyncio.sleep(0.3)
+
+            buttons = await self._driver.query_selector_all(
+                self.Locators.SHELF_DROPDOWN_BTNS
+            )
+            for btn in buttons:
+                text = (await btn.inner_text()).strip()
+                if text == self._shelf_label:
+                    await btn.click()
+                    logger.info("✓ Added to shelf via dropdown: '%s'", self._shelf_label)
+                    return True
+
+            logger.debug("_step_dropdown_shelf: '%s' not found in dropdown buttons", self._shelf_label)
+            return False
+        except Exception as e:
+            logger.debug("_step_dropdown_shelf failed: %s", e)
+            return False
+
     async def _step_resolver_css(self) -> bool:
-        """Step 3: Resolver cascade with CSS selectors from Locators."""
+        """Step 4: Resolver cascade with CSS selectors from Locators."""
         clicked = await self._resolve_and_click_any(
             self.Locators.ADD_PRIORITY_CFGS,
             description="unactivated shelf button",
@@ -154,7 +194,7 @@ class BookDetailPage(BasePage):
         return clicked
 
     async def _step_driver_fallback(self) -> bool:
-        """Step 4: Direct driver CSS — last resort, no resolver."""
+        """Step 5: Direct driver CSS — last resort, no resolver."""
         # Include base selector as final fallback for buttons without a known class state.
         selectors = [*self.Locators.ADD_SELECTORS, self.Locators.SHELF_BTN_BASE]
         for selector in selectors:
@@ -173,37 +213,54 @@ class BookDetailPage(BasePage):
         """
         Remove this book from whatever shelf it is on.
 
-        Uses direct wait_for_selector + click with short timeouts to avoid
-        the 60s hang that occurs when the remove button never appears.
-        The 0.5s sleep gives the dropdown time to render after the first click.
-        Returns True if removed, False if not on any shelf.
+        Returns True if removed, False if the book was not on any shelf.
+
+        OL has two removal behaviours depending on widget state:
+          A. Click activated button → dropdown appears → click "Remove From Shelf"
+          B. Click activated button → OL toggles removal directly (widget closes)
+
+        We detect success by checking activated state before and after the click,
+        so both behaviours return the correct value.
         """
-        # Step 1: click the shelf button to open the dropdown
+        # Guard: if not on any shelf, nothing to do
+        activated_before = await self._driver.query_selector(
+            self.Locators.SHELF_BTN_ACTIVATED
+        )
+        if not activated_before:
+            logger.debug("remove_from_shelf: book not on shelf — %s", self._url)
+            return False
+
+        # Click the shelf button (opens dropdown or toggles off directly)
         try:
             el = await self._driver.wait_for_selector(
                 self.Locators.SHELF_BTN_BASE, timeout=5_000
             )
             if not el:
-                logger.debug("remove_from_shelf: no shelf button on %s", self._url)
                 return False
             await el.click()
         except Exception as e:
             logger.debug("remove_from_shelf: shelf button click failed on %s: %s", self._url, e)
             return False
 
-        # Step 2: wait for the dropdown to render before looking for the remove button
         await asyncio.sleep(0.5)
 
-        # Step 3: click the remove button
+        # Path A: dropdown appeared — click the explicit "Remove From Shelf" button
         try:
-            remove_el = await self._driver.wait_for_selector(
-                self.Locators.REMOVE_FROM_LIST, timeout=5_000
-            )
+            remove_el = await self._driver.query_selector(self.Locators.REMOVE_FROM_LIST)
             if remove_el:
                 await remove_el.click()
-                logger.info("✓ Removed from shelf: %s", self._url)
+                logger.info("✓ Removed from shelf (via dropdown): %s", self._url)
                 return True
-        except Exception as e:
-            logger.debug("remove_from_shelf: remove button not found on %s: %s", self._url, e)
+        except Exception:
+            pass
 
+        # Path B: button click was a direct toggle — confirm activated state is gone
+        still_activated = await self._driver.query_selector(
+            self.Locators.SHELF_BTN_ACTIVATED
+        )
+        if not still_activated:
+            logger.info("✓ Removed from shelf (via toggle): %s", self._url)
+            return True
+
+        logger.debug("remove_from_shelf: could not confirm removal on %s", self._url)
         return False

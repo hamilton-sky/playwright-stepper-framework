@@ -18,12 +18,8 @@ logger = logging.getLogger(__name__)
 class ReadingListPage(BasePage):
     _WANT_TO_READ_PATH = "/account/books/want-to-read"
     _ALREADY_READ_PATH = "/account/books/already-read"
-    # Resolver cfg — cascade tries role+name first, falls back to css
-    _NEXT_PAGE_CFG     = {
-        "role": "link",
-        "name": "Next",
-        "css":  "a.next-page, a[rel='next']",
-    }
+    # Plain CSS — query_selector is a state read, no resolver needed
+    _NEXT_PAGE_CSS     = "a.next-page, a[rel='next']"
     BOOK_ITEM_SELECTOR = "ul.list-books > li"
     _BOOK_HREF         = "a[href*='/works/'], a[href*='/books/']"
 
@@ -62,12 +58,10 @@ class ReadingListPage(BasePage):
                     clean = urlparse(base + href)._replace(query="", fragment="").geturl()
                     book_urls.append(clean)
 
-            clicked = await self._resolve_and_click(
-                self._NEXT_PAGE_CFG,
-                description="reading list next page",
-            )
-            if not clicked:
+            next_el = await self._driver.query_selector(self._NEXT_PAGE_CSS)
+            if not next_el:
                 break
+            await next_el.click()
             await self._driver.wait_for_load_state("domcontentloaded")
             await asyncio.sleep(self.delays.between_pagination_ms / 1000)
 
@@ -82,12 +76,10 @@ class ReadingListPage(BasePage):
         while True:
             items    = await self._driver.query_selector_all(self.BOOK_ITEM_SELECTOR)
             total   += len(items)
-            clicked = await self._resolve_and_click(
-                self._NEXT_PAGE_CFG,
-                description="reading list next page",
-            )
-            if not clicked:
+            next_el = await self._driver.query_selector(self._NEXT_PAGE_CSS)
+            if not next_el:
                 break
+            await next_el.click()
             await self._driver.wait_for_load_state("domcontentloaded")
             await asyncio.sleep(self.delays.between_pagination_ms / 1000)
         return total

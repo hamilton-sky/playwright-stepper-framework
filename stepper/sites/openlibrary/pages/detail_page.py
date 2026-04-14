@@ -9,6 +9,7 @@ Dependency direction: sites.openlibrary → stepper  (correct)
 from __future__ import annotations
 import logging
 import warnings
+from pathlib import Path
 
 from stepper.interfaces import ActionStrategy, StepConfig, StepResult, ExecutionContext
 from stepper.pages.base_page_module import PageModule
@@ -31,6 +32,10 @@ class OLDetailPage(PageModule):
         """
         action_name = "ol_add_to_shelf"
 
+        def __init__(self, screenshots_dir: Path) -> None:
+            self._screenshots_dir = screenshots_dir
+            self._screenshots_dir.mkdir(parents=True, exist_ok=True)
+
         async def _execute(
             self, page, step: StepConfig,
             resolver, context: ExecutionContext,
@@ -42,9 +47,7 @@ class OLDetailPage(PageModule):
 
                 settings        = load_settings()
                 driver          = PlaywrightDriver(page)
-                # Use openlibrary's own screenshot directory (self-contained module)
-                screenshots_dir = settings.screenshots_dir
-                screenshots_dir.mkdir(parents=True, exist_ok=True)
+                screenshots_dir = self._screenshots_dir
 
                 urls = context.collected_items
                 if not urls:
@@ -54,15 +57,18 @@ class OLDetailPage(PageModule):
                     )
 
                 all_screenshots: list[str] = []
-                for idx, url in enumerate(urls, start=1):
+                books_output: list[dict] = []
+                for idx, item in enumerate(urls, start=1):
+                    url  = item["url"] if isinstance(item, dict) else item
+                    year = item.get("year") if isinstance(item, dict) else None
                     detail = BookDetailPage(
                         driver, settings.base_url, url, settings.delays,
                         page=page, resolver=resolver,
                     )
                     await detail.open()
 
-                    added = await detail.add_to_reading_list()
-                    if not added:
+                    shelf = await detail.add_to_reading_list()
+                    if not shelf:
                         warnings.warn(
                             f"Could not shelve book {url} — may already be on list",
                             stacklevel=2,
@@ -71,12 +77,15 @@ class OLDetailPage(PageModule):
                     shot_path = str(screenshots_dir / f"book_{idx}.png")
                     await driver.screenshot(path=shot_path)
                     all_screenshots.append(shot_path)
-                    logger.info(f"ol_add_to_shelf [{idx}/{len(urls)}] → {'added' if added else 'skipped'}")
+                    books_output.append({"url": url, "year": year, "shelf": shelf})
+                    year_label = f" (year={year})" if year else ""
+                    logger.info(f"ol_add_to_shelf [{idx}/{len(urls)}]{year_label} → {'added' if shelf else 'skipped'}")
 
                 return StepResult(
                     step=step, status="passed",
                     screenshot=all_screenshots[-1] if all_screenshots else "",
                     screenshots=all_screenshots,
+                    output={"books": books_output},
                 )
 
             except Exception as e:
@@ -84,8 +93,8 @@ class OLDetailPage(PageModule):
                 return StepResult(step=step, status="failed", error=str(e))
 
     @classmethod
-    def register(cls, registry) -> None:
-        actions = [cls.OLAddToShelfAction()]
+    def register(cls, registry, screenshots_dir: Path = Path("artifacts/screenshots")) -> None:
+        actions = [cls.OLAddToShelfAction(screenshots_dir=screenshots_dir)]
         for action in actions:
             if not action.action_name.startswith(cls.site + "_"):
                 raise ValueError(

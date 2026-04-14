@@ -10,6 +10,9 @@
       "action": "ol_ensure_login",
       "description": "Ensure user is logged in"
     },
+    { "action": "screenshot",
+      "description": "Capture logged-in state"
+    },
     {
       "action": "ol_clear_reading_list",
       "description": "Remove all books from want-to-read shelf"

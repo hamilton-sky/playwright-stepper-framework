@@ -52,7 +52,8 @@ class TestOpenLibraryExam:
         )
         assert isinstance(urls, list)
         assert len(urls) <= test_case["limit"]
-        for url in urls:
+        for item in urls:
+            url = item["url"] if isinstance(item, dict) else item
             assert url.startswith("http")
         _shared_results[result_key] = {"urls": urls}
 

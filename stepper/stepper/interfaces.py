@@ -79,6 +79,7 @@ class StepResult:
     screenshots: list[str] = field(default_factory=list)  # all screenshots from multi-shot actions
     confidence: float = 0.0
     duration_ms: float = 0.0
+    output: dict = field(default_factory=dict)  # step-produced data saved to results.json
 
 
 # ──────────────────────────────────────────────────────────
@@ -108,7 +109,7 @@ class ExecutionContext:
     StepRunner.run(). The runner and all standard actions work unchanged.
     """
 
-    collected_items: list[str]       = field(default_factory=list)
+    collected_items: list[Any]        = field(default_factory=list)  # list[dict] with url/year, or list[str] for legacy
     extracted_data:  list[Any]       = field(default_factory=list)
     paginated_data:  list[Any]       = field(default_factory=list)
     counts:          dict[str, int]  = field(default_factory=dict)

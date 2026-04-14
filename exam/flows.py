@@ -51,17 +51,19 @@ async def search_books_by_title_under_year(
 
 
 async def add_books_to_reading_list(
-    driver: IBrowserDriver, settings: Settings, urls: list[str],
+    driver: IBrowserDriver, settings: Settings, urls: list,
 ) -> None:
     """
     Navigate to each URL and click "Want to Read" or "Already Read" (random).
     Takes a screenshot after every book that is added.
+    Accepts list[dict] with {"url": ..., "year": ...} or plain list[str].
     """
     screenshots_dir = settings.screenshots_dir
     screenshots_dir.mkdir(parents=True, exist_ok=True)
     screenshot_mgr = ScreenshotManager(driver, screenshots_dir)
 
-    for idx, url in enumerate(urls, start=1):
+    for idx, item in enumerate(urls, start=1):
+        url = item["url"] if isinstance(item, dict) else item
         detail = BookDetailPage(
             driver, settings.base_url, book_url=url, delays=settings.delays,
         )

@@ -84,9 +84,15 @@ class AIPickResolver:
     """
 
     def __init__(self) -> None:
-        self._groq_key    = os.getenv("GROQ_API_KEY", "")
-        self._gemini_key  = os.getenv("GEMINI_API_KEY", "")
-        self._claude_key  = os.getenv("ANTHROPIC_API_KEY", "")
+        # Groq supports comma-separated keys for round-robin rotation.
+        # Each key has its own 14,400 req/day free quota.
+        # _groq_key_idx advances after every call so load spreads evenly
+        # across all keys from the start — not just when rate-limit hits.
+        raw_groq              = os.getenv("GROQ_API_KEY", "")
+        self._groq_keys       = [k.strip() for k in raw_groq.split(",") if k.strip()]
+        self._groq_key_idx    = 0          # next key to start from
+        self._gemini_key      = os.getenv("GEMINI_API_KEY", "")
+        self._claude_key      = os.getenv("ANTHROPIC_API_KEY", "")
 
     async def pick(
         self,
@@ -126,32 +132,63 @@ class AIPickResolver:
         return None
 
     def _is_configured(self, name: str) -> bool:
-        keys = {"groq": self._groq_key, "gemini": self._gemini_key, "claude": self._claude_key}
+        if name == "groq":
+            return bool(self._groq_keys)
+        keys = {"gemini": self._gemini_key, "claude": self._claude_key}
         return bool(keys.get(name, "").strip())
 
     # ── Groq backend ──────────────────────────────────────────────────────────
 
     async def _try_groq(self, prompt: str) -> str:
-        from groq import Groq  # pip install groq
-        client = Groq(api_key=self._groq_key)
-        completion = client.chat.completions.create(
-            model="meta-llama/llama-4-scout-17b-16e-instruct",
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are an expert at identifying UI elements. "
-                        "Select the element that best matches the user's intent. "
-                        "Output only valid JSON."
-                    ),
-                },
-                {"role": "user", "content": prompt},
-            ],
-            response_format={"type": "json_object"},
-            temperature=0.1,
-            max_tokens=120,
-        )
-        return completion.choices[0].message.content or ""
+        """
+        Try each Groq key in order.  On RateLimitError (429) rotate to the next
+        key.  Any other exception on a key also rotates — keeps the cascade moving.
+        Raises the last exception if every key is exhausted.
+        """
+        from groq import Groq, RateLimitError  # pip install groq
+
+        n = len(self._groq_keys)
+        start = self._groq_key_idx          # where this call begins in the rotation
+        last_exc: Exception | None = None
+
+        for i in range(n):
+            idx = (start + i) % n
+            key = self._groq_keys[idx]
+            try:
+                client = Groq(api_key=key)
+                completion = client.chat.completions.create(
+                    model="qwen-2.5-32b",   # free on Groq, strong classifier
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": (
+                                "You are an expert at identifying UI elements. "
+                                "Select the element that best matches the user's intent. "
+                                "Output only valid JSON."
+                            ),
+                        },
+                        {"role": "user", "content": prompt},
+                    ],
+                    response_format={"type": "json_object"},
+                    temperature=0.1,
+                    max_tokens=120,
+                )
+                # Advance pointer so the NEXT call starts on the following key
+                self._groq_key_idx = (idx + 1) % n
+                logger.debug(f"[AIPickResolver/groq] used key {idx + 1}/{n}")
+                return completion.choices[0].message.content or ""
+            except RateLimitError as e:
+                logger.warning(
+                    f"[AIPickResolver/groq] key {idx + 1}/{n} rate-limited — rotating"
+                )
+                last_exc = e
+            except Exception as e:
+                logger.warning(
+                    f"[AIPickResolver/groq] key {idx + 1}/{n} failed: {e} — rotating"
+                )
+                last_exc = e
+
+        raise last_exc or RuntimeError("All Groq keys exhausted")
 
     # ── Gemini backend ────────────────────────────────────────────────────────
 

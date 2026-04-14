@@ -28,9 +28,25 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import re
 from typing import Optional
 
 from stepper.interfaces import ResolverStrategy, CONFIDENCE_DESCRIPTION
+
+# Words that carry no element-matching signal — excluded from keyword extraction
+_STOPWORDS = frozenset({
+    # Articles / prepositions — never appear as button text
+    "the", "a", "an", "to", "of", "and", "or", "in", "on", "at",
+    "by", "for", "is", "it", "this", "that", "my", "your", "their",
+    "its", "with", "from", "into",
+    # Generic automation verbs — describe the *action*, not the element label.
+    # NOTE: "add" is intentionally excluded — many buttons read "Add to Cart",
+    # "Add to Reading List", etc., so it carries real matching signal.
+    "click", "press", "tap", "choose", "enter", "type",
+    "fill", "find", "open", "go", "navigate", "make", "sure",
+    # UI chrome words — too broad to discriminate
+    "page", "button", "link", "field", "form",
+})
 
 logger = logging.getLogger(__name__)
 
@@ -172,6 +188,56 @@ class LabelResolver(ResolverStrategy):
 
 
 # ──────────────────────────────────────────────────────────
+# PHASE 1.5 — Keyword fuzzy pre-filter (Strategy B)
+# ──────────────────────────────────────────────────────────
+
+class KeywordFuzzyResolver:
+    """
+    Strategy B: fast keyword pre-filter for zero-selector mode.
+
+    Extracts content words (≥4 chars, not stopwords) from the step description,
+    then calls page.get_by_text(keyword, exact=False) for each keyword.
+    Returns unique Playwright locators whose visible text contains any keyword.
+
+    Used as a cheap gate before AccessibilitySemanticResolver (Strategy A).
+    Exactly 1 unique match → act immediately at 85% confidence.
+    0 or 2+ matches → fall through to Strategy A.
+    """
+
+    MIN_WORD_LEN = 4
+
+    async def find(self, page, description: str) -> list:
+        keywords = self._extract_keywords(description)
+        if not keywords:
+            return []
+
+        seen_inner: set[str] = set()
+        candidates: list = []
+
+        for keyword in keywords:
+            try:
+                loc = page.get_by_text(keyword, exact=False)
+                count = await loc.count()
+                for i in range(count):
+                    item = loc.nth(i)
+                    try:
+                        inner = (await item.inner_text()).strip()[:120]
+                        if inner and inner not in seen_inner:
+                            seen_inner.add(inner)
+                            candidates.append(item)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+        return candidates
+
+    def _extract_keywords(self, description: str) -> list[str]:
+        words = re.findall(rf'\b[a-zA-Z]{{{self.MIN_WORD_LEN},}}\b', description)
+        return [w for w in words if w.lower() not in _STOPWORDS]
+
+
+# ──────────────────────────────────────────────────────────
 # PHASE 2 — Semantic resolver (used via score(), not collect())
 # ──────────────────────────────────────────────────────────
 
@@ -244,104 +310,167 @@ class SemanticResolver(ResolverStrategy):
 
 
 # ──────────────────────────────────────────────────────────
-# PHASE 2.5 — Description Fallback (zero-selector mode)
+# PHASE 2.5 — Description Fallback / Strategy A (zero-selector mode)
 # ──────────────────────────────────────────────────────────
 
 class DescriptionFallbackResolver:
     """
-    Fires when the step has NO element selector keys (no text/css/id/role/etc).
-    Collects all interactive elements on the page, scores each against
-    step.description using SemanticResolver, returns the best match.
+    Strategy A: accessibility-snapshot semantic search.
 
-    This enables zero-selector automation:
+    Fires when the step has NO element selector keys (no text/css/id/role/etc).
+    Uses page.accessibility.snapshot() to collect all interactive ARIA nodes,
+    scores each node's composite description against the step description using
+    MiniLM embeddings (or Jaccard fallback), and returns the top-k candidates
+    above the similarity threshold.
+
+    Enables zero-selector automation:
       { "action": "click", "description": "Add this book to my reading list" }
       — no "element" key needed at all.
 
-    NOT in the strategy cascade (collect() interface lacks step_description).
-    Called directly by ElementResolver._description_fallback().
+    Why accessibility snapshot over DOM scraping:
+      - ARIA tree is already semantically structured (role + name extracted)
+      - No layout noise (display:none elements excluded automatically)
+      - Playwright resolves accessible names including aria-label, aria-labelledby
 
-    Confidence = similarity_score × 0.9  (caps at 0.9 to stay below
-    deterministic resolvers with known-good selectors).
+    find_candidates() returns list[(locator, desc, score)] — caller decides
+    whether to act (1 result) or forward to AI pick (multiple results).
+    Confidence is capped at score × 0.9 to stay below deterministic resolvers.
 
-    Threshold: similarity >= 0.40 to act; below that → not-found.
+    Threshold: similarity >= 0.40; above that → included in candidates.
+    TOP_K = 3 candidates returned at most.
     """
 
-    # Playwright selector for all interactive / meaningful elements
-    INTERACTIVE_SELECTOR = (
-        "button, a[href], input, select, textarea, "
-        "[role='button'], [role='link'], [role='menuitem'], "
-        "[role='tab'], [role='checkbox'], [role='radio']"
-    )
-    MIN_SIMILARITY = CONFIDENCE_DESCRIPTION  # from stepper.interfaces — single source of truth
-    MAX_CANDIDATES = 60  # cap to avoid huge DOMs being slow
+    # ARIA roles that represent interactive / meaningful elements
+    INTERACTIVE_ROLES = frozenset({
+        "button", "link", "textbox", "checkbox", "radio", "combobox",
+        "option", "listbox", "menuitem", "menuitemcheckbox", "menuitemradio",
+        "searchbox", "slider", "spinbutton", "switch", "tab", "treeitem",
+    })
+    MIN_SIMILARITY = CONFIDENCE_DESCRIPTION  # single source of truth in interfaces.py
+    TOP_K = 3
 
     def __init__(self):
         self._semantic = SemanticResolver()
 
-    async def find(self, page, description: str) -> tuple[object | None, float]:
+    async def find_candidates(
+        self, page, description: str
+    ) -> list[tuple]:
         """
-        Returns (locator, confidence) or (None, 0.0) if nothing matches.
+        Returns list of (locator, desc, score) sorted by score descending.
+        Empty list if nothing meets the similarity threshold.
         """
         if not description:
-            return None, 0.0
+            return []
 
         try:
-            all_locs = await page.locator(self.INTERACTIVE_SELECTOR).all()
+            snapshot = await page.accessibility.snapshot()
         except Exception as e:
-            logger.debug(f"[DescriptionFallback] locator error: {e}")
-            return None, 0.0
+            logger.debug(f"[DescriptionFallback] accessibility.snapshot() error: {e}")
+            return []
 
-        candidates = all_locs[:self.MAX_CANDIDATES]
-        if not candidates:
-            return None, 0.0
+        if not snapshot:
+            return []
 
-        scored: list[tuple[object, str, float]] = []
-        for loc in candidates:
-            element_desc = await self._describe(loc)
-            if not element_desc:
+        nodes = self._flatten_snapshot(snapshot)
+        if not nodes:
+            return []
+
+        scored: list[tuple] = []
+        for node in nodes:
+            node_desc = self._describe_node(node)
+            if not node_desc:
                 continue
-            score = self._semantic.score(description, element_desc)
-            scored.append((loc, element_desc, score))
-
-        if not scored:
-            return None, 0.0
+            score = self._semantic.score(description, node_desc)
+            if score >= self.MIN_SIMILARITY:
+                loc = await self._node_to_locator(page, node)
+                if loc is not None:
+                    scored.append((loc, node_desc, score))
 
         scored.sort(key=lambda x: x[2], reverse=True)
-        best_loc, best_desc, best_score = scored[0]
+        top = scored[:self.TOP_K]
 
-        logger.debug(
-            f"[DescriptionFallback] top match: '{best_desc[:60]}' "
-            f"score={best_score:.2f}"
-        )
-
-        if best_score < self.MIN_SIMILARITY:
-            logger.warning(
-                f"[DescriptionFallback] best score {best_score:.2f} < "
-                f"{self.MIN_SIMILARITY} threshold — not-found"
+        if top:
+            logger.debug(
+                f"[DescriptionFallback] top-{len(top)} candidates: "
+                + ", ".join(f"'{d[:40]}' {s:.2f}" for _, d, s in top)
             )
-            return None, 0.0
+        return top
 
-        confidence = round(best_score * 0.9, 3)
-        logger.info(
-            f"✓ [description-fallback] '{best_desc[:50]}' "
-            f"similarity={best_score:.0%} → confidence={confidence:.0%}"
-        )
-        return best_loc, confidence
+    def _flatten_snapshot(self, node: dict, result: list | None = None) -> list[dict]:
+        """DFS traversal — collect all interactive nodes by ARIA role."""
+        if result is None:
+            result = []
+        if not isinstance(node, dict):
+            return result
+
+        role = (node.get("role") or "").lower()
+        name = (node.get("name") or "").strip()
+        if role in self.INTERACTIVE_ROLES and name:
+            result.append(node)
+
+        for child in node.get("children") or []:
+            self._flatten_snapshot(child, result)
+
+        return result
 
     @staticmethod
-    async def _describe(loc) -> str:
-        """Build a human-readable description of an element for scoring."""
+    def _describe_node(node: dict) -> str:
+        """Build a scoring-ready description from an accessibility tree node."""
+        parts = filter(None, [
+            node.get("role", ""),
+            node.get("name", ""),
+            node.get("value", ""),
+            node.get("description", ""),
+        ])
+        return " ".join(parts).strip()
+
+    @staticmethod
+    async def _node_to_locator(page, node: dict):
+        """
+        Convert an accessibility node back to a Playwright Locator.
+        Tries get_by_role(exact=True) → get_by_role(exact=False) → get_by_label.
+        Returns None if no live element is found.
+        """
+        role = (node.get("role") or "").lower()
+        name = (node.get("name") or "").strip()
+        if not role or not name:
+            return None
+
+        for exact in (True, False):
+            try:
+                loc = page.get_by_role(role, name=name, exact=exact)
+                count = await loc.count()
+                if count >= 1:
+                    return loc.first
+            except Exception:
+                pass
+
+        # Fallback: form inputs often have no role but do have a label
         try:
-            tag         = await loc.evaluate("el => el.tagName.toLowerCase()")
-            text        = (await loc.inner_text()).strip()[:80]
-            aria_label  = await loc.get_attribute("aria-label") or ""
-            title       = await loc.get_attribute("title") or ""
-            placeholder = await loc.get_attribute("placeholder") or ""
-            role        = await loc.get_attribute("role") or ""
-            parts = filter(None, [tag, role, aria_label, title, placeholder, text])
-            return " ".join(parts).strip()
+            loc = page.get_by_label(name)
+            count = await loc.count()
+            if count >= 1:
+                return loc.first
         except Exception:
-            return ""
+            pass
+
+        return None
+
+    async def find(self, page, description: str) -> tuple:
+        """
+        Deprecated shim — returns (locator, confidence) for the top-1 candidate.
+        Prefer find_candidates() for full top-k access.
+        """
+        candidates = await self.find_candidates(page, description)
+        if not candidates:
+            return None, 0.0
+        loc, desc, score = candidates[0]
+        confidence = round(score * 0.9, 3)
+        logger.info(
+            f"✓ [description-fallback] '{desc[:50]}' "
+            f"similarity={score:.0%} → confidence={confidence:.0%}"
+        )
+        return loc, confidence
 
 
 # ──────────────────────────────────────────────────────────

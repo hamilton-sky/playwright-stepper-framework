@@ -94,6 +94,7 @@ class StepRunner:
             for attempt in range(max_attempts):
                 try:
                     action = self._factory.create(step.action)
+                    self._resolver.set_context_description(step.description)
                     result = await action.execute(self._page, step, self._resolver, ctx)
                 except Exception as e:
                     logger.error(f"Step {idx+1} raised: {e}")

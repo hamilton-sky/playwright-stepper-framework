@@ -57,9 +57,13 @@ class OLReadingListPage(PageModule):
                     page=page, resolver=resolver,
                 )
 
-                urls = await reading_list.collect_all_book_urls(
+                want_urls    = await reading_list.collect_all_book_urls(
                     ReadingListPage._WANT_TO_READ_PATH
                 )
+                already_urls = await reading_list.collect_all_book_urls(
+                    ReadingListPage._ALREADY_READ_PATH
+                )
+                urls = want_urls + already_urls
 
                 if not urls:
                     logger.info("ol_clear_reading_list — shelf already empty")

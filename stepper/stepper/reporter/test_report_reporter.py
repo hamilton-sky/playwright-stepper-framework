@@ -128,6 +128,7 @@ class TestReportReporter(ReporterStrategy):
                     [Path(r.screenshot).name] if r.screenshot else []
                 ),
                 "error": r.error,
+                "output": r.output or None,
             }
             for i, r in enumerate(self._results)
         ]

@@ -88,6 +88,7 @@ class JsonReporter(ReporterStrategy):
                     "confidence":  round(r.confidence, 3),
                     "screenshot":  r.screenshot,
                     "error":       r.error,
+                    "output":      r.output or None,
                 }
                 for r in self._results
             ]

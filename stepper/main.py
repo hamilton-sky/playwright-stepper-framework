@@ -51,7 +51,7 @@ for _p in (_parent_path, _root_path, _src_path):
 
 from playwright.async_api import async_playwright
 
-from poms.openLibrary.config import load_settings
+from poms.openLibrary.config import load_settings, validate_ai_config
 
 from stepper.resolvers.element_resolver import ElementResolver, DefaultResolverFactory
 from stepper.actions.factory import build_default_registry
@@ -96,6 +96,7 @@ async def run(
     # ── 2. Infrastructure ─────────────────────────────────────────────────────
     try:
         settings = load_settings()
+        validate_ai_config(settings)
         use_visual_ai      = settings.use_visual_ai
         slow_mo            = settings.slow_mo_ms
         cfg_browser        = settings.browser
@@ -172,7 +173,7 @@ async def run(
         from sites.openlibrary.pages.reading_list_action import OLReadingListPage
         from sites.openlibrary.pages.login_action import OLLoginPage
         OLSearchPage.register(action_registry)
-        OLDetailPage.register(action_registry)
+        OLDetailPage.register(action_registry, screenshots_dir=screenshots_dir)
         OLReadingListPage.register(action_registry)
         OLLoginPage.register(action_registry)
 

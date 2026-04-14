@@ -77,8 +77,14 @@ class StepperSession:
 
         self._settings = load_settings()
 
+        ai_client = None
+        if self._settings.use_visual_ai:
+            import anthropic
+            ai_client = anthropic.Anthropic()
+
         resolver = ElementResolver(
             strategies=DefaultResolverFactory().build_cascade(),
+            ai_client=ai_client,
             use_visual_ai=self._settings.use_visual_ai,
         )
         registry = build_default_registry()

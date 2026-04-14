@@ -63,7 +63,7 @@ class OLSearchPage(PageModule):
 
                 context.collected_items = urls
                 logger.info(f"collect_items → {len(urls)} books")
-                return StepResult(step=step, status="passed")
+                return StepResult(step=step, status="passed", output={"items": urls})
 
             except Exception as e:
                 logger.error(f"collect_items failed: {e}")

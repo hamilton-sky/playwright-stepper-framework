@@ -61,22 +61,18 @@ class BookSearchPage(BasePage):
         # reading the entire li inner_text() — "First published in YYYY" is always present.
 
         # ── Search Input Selectors ────────────────────────────────────────
-        SEARCH_INPUT = "input#q"  # verified: OpenLibrary search input has id="q"
+        # NOTE: search() uses direct URL navigation — these cfgs are reserved for
+        # future form-based search. Verified against live DOM (April 2026).
+        # Input has name="q", placeholder="Search", no id, no role attribute.
         SEARCH_INPUT_CFGS: list[dict] = [
-            {"role": "searchbox",           "priority": 10},
-            {"label": "Search",             "priority": 20},
-            {"placeholder": "Search",       "priority": 30},
-            {"id":  "q",                    "priority": 40},
-            {"css": "input#q",              "priority": 50},
-            {"css": "input[name='q']",      "priority": 60},
-            {"css": "input[type='search']", "priority": 70},
+            {"placeholder": "Search",       "priority": 10},
+            {"css": "input[name='q']",      "priority": 20},
         ]
 
-        SEARCH_BUTTON = "button[type='submit']"
+        # Submit is <input type="submit" class="search-bar-submit"> — not a <button>
         SEARCH_BUTTON_CFGS: list[dict] = [
-            {"role": "button", "name": "Search", "priority": 10},
-            {"role": "button", "name": "Go",     "priority": 20},
-            {"css": "button[type='submit']",     "priority": 30},
+            {"css": "input.search-bar-submit",   "priority": 10},
+            {"css": "input[type='submit']",       "priority": 20},
         ]
 
     def __init__(self, driver, base_url: str, delays=None,
@@ -141,14 +137,15 @@ class BookSearchPage(BasePage):
 
 
 
-    async def collect_books_under_year(self, max_year: int, limit: int) -> list[str]:
+    async def collect_books_under_year(self, max_year: int, limit: int) -> list[dict]:
         """
-        Collect book URLs from search results, filtered by max publication year.
+        Collect book items from search results, filtered by max publication year.
+        Each item is {"url": str, "year": int}.
         Paginates automatically until limit is reached or pages run out.
 
         Page cap comes from delays.max_search_pages (config-driven, not hardcoded).
         """
-        collected: list[str] = []
+        collected: list[dict] = []
         max_pages = self.delays.max_search_pages  # from config, not magic number
         logger.info("Collecting up to %d books published before %d (max %d pages)",
                     limit, max_year, max_pages)
@@ -207,9 +204,10 @@ class BookSearchPage(BasePage):
         logger.info("Collection complete: %d/%d books collected", len(collected), limit)
         return collected
 
-    async def _collect_from_page(self, max_year: int, limit: int) -> list[str]:
+    async def _collect_from_page(self, max_year: int, limit: int) -> list[dict]:
         """
-        Collect qualifying book URLs from the current page.
+        Collect qualifying book items from the current page.
+        Each item is {"url": str, "year": int}.
 
         Strategy:
         1. Find result items using primary selector (or fallback if needed)
@@ -218,7 +216,7 @@ class BookSearchPage(BasePage):
 
         Uses Playwright Locator API — re-queries lazily, never produces stale handles.
         """
-        urls: list[str] = []
+        urls: list[dict] = []
 
         # Use primary selector first, fall back if needed
         items = self._driver.locator(self.Locators.RESULT_ITEM)
@@ -268,8 +266,9 @@ class BookSearchPage(BasePage):
                 href = await item.locator("a").first.get_attribute("href")
                 if href:
                     full_url = self.base_url.rstrip("/") + href
-                    urls.append(full_url)
-                    logger.info("  [%d/%d] accepted — year %s — %s", i + 1, count, year, full_url)
+                    year_int = year[0] if isinstance(year, list) and year else year
+                    urls.append({"url": full_url, "year": year_int})
+                    logger.info("  [%d/%d] accepted — year %s — %s", i + 1, count, year_int, full_url)
             except Exception:
                 continue
 

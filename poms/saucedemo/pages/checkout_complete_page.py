@@ -26,7 +26,6 @@ class CheckoutCompletePage(BasePage):
         BACK_HOME_CFG = [
             {"css":  "[data-test='back-to-products']",      "priority": 10},
             {"role": "button", "name": "Back Home",          "priority": 20},
-            {"role": "link",   "name": "Back Home",          "priority": 30},
         ]
 
     @property

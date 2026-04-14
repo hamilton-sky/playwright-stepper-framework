@@ -3,36 +3,36 @@
     "url": "https://openlibrary.org/search?q=Dune",
     "threshold_ms": 3000,
     "metrics": {
-      "dom_content_loaded_ms": 6079.39999999851,
-      "load_time_ms": 6852,
-      "first_byte_ms": 4090.800000000745,
-      "response_end_ms": 4093.5,
-      "transfer_size": 21687,
-      "first_paint_ms": 5164
+      "dom_content_loaded_ms": 4076.5999999996275,
+      "load_time_ms": 5431.399999999441,
+      "first_byte_ms": 2325.2000000001863,
+      "response_end_ms": 2327.0999999996275,
+      "transfer_size": 21814,
+      "first_paint_ms": 3428
     }
   },
   {
     "url": "https://openlibrary.org/works/OL18020194W/Dune",
     "threshold_ms": 2500,
     "metrics": {
-      "dom_content_loaded_ms": 5368.900000002235,
-      "load_time_ms": 6690.900000002235,
-      "first_byte_ms": 3332.2000000029802,
-      "response_end_ms": 3334.60000000149,
+      "dom_content_loaded_ms": 4268,
+      "load_time_ms": 5303.299999999814,
+      "first_byte_ms": 2584.2999999998137,
+      "response_end_ms": 2586.0999999996275,
       "transfer_size": 24645,
-      "first_paint_ms": 4428
+      "first_paint_ms": 3648
     }
   },
   {
     "url": "https://openlibrary.org/account/books/want-to-read",
     "threshold_ms": 2000,
     "metrics": {
-      "dom_content_loaded_ms": 4812,
-      "load_time_ms": 6119.20000000298,
-      "first_byte_ms": 2963.400000002235,
-      "response_end_ms": 2965.900000002235,
-      "transfer_size": 17289,
-      "first_paint_ms": 4296
+      "dom_content_loaded_ms": 2927.100000000559,
+      "load_time_ms": 3561.4000000003725,
+      "first_byte_ms": 1444.300000000745,
+      "response_end_ms": 1445.5,
+      "transfer_size": 12964,
+      "first_paint_ms": 2552
     }
   }
 ]

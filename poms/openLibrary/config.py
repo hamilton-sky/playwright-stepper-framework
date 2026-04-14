@@ -139,6 +139,40 @@ def load_settings(
     )
 
 
+def validate_ai_config(settings: Settings) -> None:
+    """
+    Warn at startup if AI features are enabled but the required keys are missing.
+    Called by main.py and api.py after load_settings() so problems surface early
+    rather than silently failing mid-run inside the resolver cascade.
+
+    Keys checked:
+      ANTHROPIC_API_KEY  — required for VisualAIResolver + Claude AI-pick backend
+      GROQ_API_KEY       — optional, AIPickResolver Groq backend (cheapest/fastest)
+      GEMINI_API_KEY     — optional, AIPickResolver Gemini backend
+    """
+    import logging
+    log = logging.getLogger(__name__)
+
+    has_anthropic = bool(os.environ.get("ANTHROPIC_API_KEY", "").strip())
+    has_groq      = bool(os.environ.get("GROQ_API_KEY", "").strip())
+    has_gemini    = bool(os.environ.get("GEMINI_API_KEY", "").strip())
+
+    if settings.use_visual_ai and not has_anthropic:
+        log.warning(
+            "use_visual_ai=True but ANTHROPIC_API_KEY is not set — "
+            "VisualAIResolver will be disabled at runtime."
+        )
+
+    if not any([has_groq, has_gemini, has_anthropic]):
+        log.warning(
+            "No AI provider keys found (GROQ_API_KEY / GEMINI_API_KEY / ANTHROPIC_API_KEY). "
+            "AIPickResolver will be skipped — ambiguous elements fall back to top semantic match."
+        )
+    else:
+        active = [k for k, v in [("Groq", has_groq), ("Gemini", has_gemini), ("Claude", has_anthropic)] if v]
+        log.info("AI pick backends available: %s", " → ".join(active))
+
+
 def load_test_data(path: str | Path | None = None) -> list[dict]:
     if path is None:
         path = _SHARED_POMS_DIR / "data" / "testdata.json"
