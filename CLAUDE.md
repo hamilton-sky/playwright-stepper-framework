@@ -17,7 +17,7 @@ playwright-stepper-framework/
 │
 ├── stepper/                          # The Automation Engine
 │   ├── main.py                       # Entry point
-│   ├── stepper/                      # Core framework modules
+│   ├── engine/                       # Core framework modules
 │   │   ├── actions/                  # ActionRegistry + strategies
 │   │   ├── resolvers/                # Element resolution cascade
 │   │   ├── runner/                   # StepRunner, when_eval, API

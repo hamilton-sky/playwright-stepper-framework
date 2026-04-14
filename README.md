@@ -37,25 +37,30 @@ JSON Workflow          Stepper Engine              POM Layer               Brows
 ```
 playwright-stepper-framework/
 │
-├── shared_poms/                    # Pure POMs — zero framework imports, reusable anywhere
-│   ├── interfaces.py               # IBrowserDriver, IElementHandle, Delays (DIP contracts)
-│   ├── driver.py                   # PlaywrightDriver — implements IBrowserDriver
-│   ├── config.py                   # 3-tier settings: defaults → config.yaml → ENV
-│   ├── performance.py              # measure_page_performance() — raw timing via JS API
-│   ├── pages/
-│   │   ├── base_page.py            # BasePage: open(), navigate(), delay helpers
-│   │   ├── login_page.py           # LoginPage: selectors + is_session_live()
-│   │   ├── book_search_page.py     # search(), collect_books_under_year() + pagination
-│   │   ├── book_detail_page.py     # add_to_reading_list(), remove_from_shelf()
-│   │   └── reading_list_page.py    # get_book_count(), collect_all_book_urls()
-│   ├── utils/
-│   │   ├── book_filter.py          # extract_year_from_text(), is_under_year() — pure functions
-│   │   ├── shelf.py                # SHELF_LABEL_WANT / SHELF_LABEL_ALREADY constants
-│   │   └── screenshot.py          # ScreenshotManager helper
-│   └── data/
-│       └── testdata.json           # Parametrised test cases (query, max_year, limit)
+├── poms/                           # Pure Page Object Model layer
+│   ├── shared/                     # Shared across ALL sites
+│   │   ├── interfaces.py           # IBrowserDriver, IElementHandle, Delays (DIP contracts)
+│   │   ├── driver.py               # PlaywrightDriver — implements IBrowserDriver
+│   │   ├── base_page.py            # SharedBasePage — resolver helpers
+│   │   └── performance.py          # measure_page_performance() — raw timing via JS API
+│   ├── openLibrary/                # OpenLibrary POMs
+│   │   ├── config.py               # 3-tier settings: defaults → config.yaml → ENV
+│   │   ├── pages/
+│   │   │   ├── base_page.py        # BasePage: open(), navigate(), delay helpers
+│   │   │   ├── login_page.py       # LoginPage: selectors + is_session_live()
+│   │   │   ├── book_search_page.py # search(), collect_books_under_year() + pagination
+│   │   │   ├── book_detail_page.py # add_to_reading_list(), remove_from_shelf()
+│   │   │   └── reading_list_page.py  # get_book_count(), collect_all_book_urls()
+│   │   ├── utils/
+│   │   │   ├── book_filter.py      # extract_year_from_text(), is_under_year() — pure functions
+│   │   │   ├── shelf.py            # SHELF_LABEL_WANT / SHELF_LABEL_ALREADY constants
+│   │   │   └── screenshot.py       # ScreenshotManager helper
+│   │   └── data/
+│   │       └── testdata.json       # Parametrised test cases (query, max_year, limit)
+│   ├── saucedemo/                  # SauceDemo POMs
+│   └── phpTravels/                 # phpTravels POMs
 │
-├── exam/                           # Pytest exam suite — calls shared_poms directly
+├── exam/                           # Pytest exam suite — calls poms/ directly
 │   ├── flows.py                    # 4 exam function signatures (orchestration layer)
 │   │                               #   search_books_by_title_under_year(page, query, max_year, limit)
 │   │                               #   add_books_to_reading_list(page, urls)
@@ -71,7 +76,7 @@ playwright-stepper-framework/
 ├── stepper/                        # Stepper framework + site integrations
 │   ├── main.py                     # DIP root — wires registry, resolver, runner, reporter
 │   ├── pytest.ini                  # asyncio_mode = auto, alluredir, log_cli settings
-│   ├── stepper/                    # Core engine (site-agnostic)
+│   ├── engine/                     # Core engine (site-agnostic)
 │   │   ├── interfaces.py           # StepConfig, StepResult, ExecutionContext,
 │   │   │                           #   ActionStrategy, ResolverStrategy (all abstract)
 │   │   ├── utils.py                # dict_to_step_config() — single source of truth
@@ -101,7 +106,7 @@ playwright-stepper-framework/
 │   │       └── base_page_module.py # PageModule base — enforces ol_ action_name prefix
 │   │
 │   ├── sites/openlibrary/          # OpenLibrary integration (site module pattern)
-│   │   ├── pages/                  # Stepper ↔ shared_poms glue (thin adapters)
+│   │   ├── pages/                  # Stepper ↔ poms/ glue (thin adapters)
 │   │   │   ├── login_action.py     # ol_ensure_login
 │   │   │   ├── search_page.py      # ol_collect_books
 │   │   │   ├── detail_page.py      # ol_add_to_shelf
@@ -134,7 +139,7 @@ playwright-stepper-framework/
 
 ## Exam Function Signatures
 
-The four required functions live in `exam/flows.py` and delegate to `shared_poms/` POM classes:
+The four required functions live in `exam/flows.py` and delegate to `poms/` POM classes:
 
 ```python
 # exam/flows.py
@@ -329,7 +334,7 @@ pytest tests/ -v --alluredir=reports/allure-results
 allure serve reports/allure-results
 ```
 
-**Difference vs Stepper workflows**: `exam/` calls `flows.py` functions directly (Python-level). The Stepper workflows call `ol_*` action names through the registry (JSON-level). Both hit the same `shared_poms` POM layer — they are complementary, not redundant.
+**Difference vs Stepper workflows**: `exam/` calls `flows.py` functions directly (Python-level). The Stepper workflows call `ol_*` action names through the registry (JSON-level). Both hit the same `poms/` layer — they are complementary, not redundant.
 
 ---
 

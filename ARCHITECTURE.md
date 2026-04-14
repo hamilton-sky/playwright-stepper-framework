@@ -24,7 +24,7 @@ playwright-stepper-framework/
 ├── stepper/                      # The Automation Engine
 │   ├── main.py                   # Entry point — wires everything together
 │   ├── pytest.ini                # asyncio_mode = auto, alluredir, log_cli settings
-│   ├── stepper/                  # Core framework modules
+│   ├── engine/                   # Core framework modules
 │   │   ├── interfaces.py         # Strategy/Observer abstractions + StepConfig
 │   │   ├── actions/
 │   │   │   ├── factory.py        # ActionRegistry (factory + registry pattern)
