@@ -3,9 +3,10 @@
 Three layers — each with a single responsibility:
 
 ```
-shared_poms/pages/          POM layer — owns selectors + raw page interactions
+poms/openLibrary/pages/     POM layer — owns selectors + raw page interactions
                             No framework coupling. No flow logic.
                             LoginPage, BookSearchPage, BookDetailPage, ReadingListPage
+                            collect_books_under_year() returns list[dict{url, year}]
 
 sites/openlibrary/pages/    Glue layer — wraps POM methods into named Stepper behaviors
                             No selectors. No flow logic. Calls POM methods only.
@@ -52,8 +53,11 @@ ol_ensure_count  →  context.counts["gap"] = N          (set when top-up needed
 
 ol_collect_books →  when: { context_greater_than: { key: gap, value: 0 } }
                     extra.limit = "{{gap}}"             (resolved at runtime by StepRunner)
+                    sets context.collected_items = list[dict{url, year}]
+                    StepResult.output = {items: [{url, year}, …]}
 
 ol_add_to_shelf  →  when: { context_key_exists: collected_items }
+                    StepResult.output = {books: [{url, year, shelf}, …]}
 
 ol_assert_count  →  when: { context_greater_than: { key: gap, value: 0 } }
 ```

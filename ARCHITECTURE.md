@@ -5,18 +5,21 @@
 ```
 playwright-stepper-framework/
 │
-├── shared_poms/                  # Pure Page Object Model layer (site-agnostic)
-│   ├── config.py                 # Settings loader (YAML + env vars)
-│   ├── driver.py                 # Playwright adapter (IBrowserDriver impl)
-│   ├── interfaces.py             # POM contracts (IBrowserDriver, IElementHandle)
-│   ├── auth.py                   # Legacy login helpers (used by exam/ only)
-│   ├── performance.py            # Performance metrics
-│   └── pages/                    # Pure POMs — selectors live here and nowhere else
-│       ├── base_page.py
-│       ├── login_page.py         # Login form selectors + is_session_live()
-│       ├── book_search_page.py
-│       ├── book_detail_page.py
-│       └── reading_list_page.py
+├── poms/                         # Pure Page Object Model layer
+│   ├── shared/                   # Shared across all sites
+│   │   ├── driver.py             # Playwright adapter (IBrowserDriver impl)
+│   │   ├── interfaces.py         # POM contracts (IBrowserDriver, IElementHandle)
+│   │   ├── base_page.py          # SharedBasePage — resolver helpers
+│   │   └── performance.py        # Performance metrics
+│   ├── openLibrary/              # OpenLibrary POMs
+│   │   ├── config.py             # Settings loader (YAML + env vars)
+│   │   └── pages/                # Pure POMs — selectors live here and nowhere else
+│   │       ├── login_page.py
+│   │       ├── book_search_page.py   # collect_books_under_year → list[dict{url,year}]
+│   │       ├── book_detail_page.py
+│   │       └── reading_list_page.py
+│   ├── saucedemo/                # SauceDemo POMs
+│   └── phpTravels/               # phpTravels POMs
 │
 ├── stepper/                      # The Automation Engine
 │   ├── main.py                   # Entry point — wires everything together
@@ -221,6 +224,8 @@ playwright-stepper-framework/
   │  confidence:   resolver confidence      │
   │  duration_ms:  execution time           │
   │  screenshot:   file path                │
+  │  output:       dict (step-produced data │
+  │                saved to results.json)   │
   └──────────────────────────────────────────┘
 
   BUILT-IN ACTIONS
@@ -246,8 +251,10 @@ playwright-stepper-framework/
   ────────────────────────────────────
   ol_ensure_login       → LoginPage.is_session_live() → fill + submit if needed
   ol_collect_books      → BookSearchPage.collect_books() → context.collected_items
+                          list[dict{url, year}] — also written to StepResult.output
                           limit: step.extra["limit"] or context.counts["gap"] or 5
   ol_add_to_shelf       → BookDetailPage.add_to_reading_list() per collected item
+                          StepResult.output = {books: [{url, year, shelf}, …]}
   ol_clear_reading_list → ReadingListPage.clear() (removes all books)
   ol_store_count        → ReadingListPage.count() → context[context_key]
   ol_assert_count       → assert context count == expected (delta or absolute)
@@ -268,7 +275,7 @@ playwright-stepper-framework/
 
   THREE-LAYER CONTRACT
   ─────────────────────
-  POM   (shared_poms/pages/)     owns selectors + raw page interactions
+  POM   (poms/*/pages/)          owns selectors + raw page interactions
   Glue  (sites/*/pages/)         wraps POM into named behavior — one action, one job
   Flow  (workflows/*.json)       controls order, conditions, variables — no selectors
 ```
@@ -366,11 +373,13 @@ playwright-stepper-framework/
           extra: { query:"Dune", filter:{year_max:1980}, limit:5 }
           └─▶ BookSearchPage.search("Dune")
           └─▶ BookSearchPage.collect_books_under_year(1980, limit=5)
-          └─▶ context.collected_items = [url1, url2, … url5]
+          └─▶ context.collected_items = [{url, year}, …]  (list[dict])
+          └─▶ StepResult.output = {items: [{url, year}, …]}
 
   Step 5  ol_add_to_shelf
-          └─▶ for url in context.collected_items:
-                  navigate(url) → click("Want to Read") → screenshot()
+          └─▶ for item in context.collected_items:
+                  navigate(item["url"]) → click shelf button → screenshot()
+          └─▶ StepResult.output = {books: [{url, year, shelf}, …]}
 
   Step 6  ol_assert_count
           extra: { delta: 5 }

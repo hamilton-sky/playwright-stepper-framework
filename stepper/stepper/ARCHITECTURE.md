@@ -11,7 +11,9 @@ ActionFactory       Registry of action_name → ActionStrategy.
                     create(name) returns the registered strategy or raises.
 
 ActionStrategy      One action, one job. _execute() receives page, step, resolver,
-                    context. Returns StepResult. Never imports from runner/.
+                    context. Returns StepResult (status, output dict, screenshots).
+                    output dict is persisted to results.json via reporter.
+                    Never imports from runner/.
 
 ElementResolver     10-stage cascade: Role → Label → Placeholder → Text → Id →
                     CSS → XPath → Semantic → VisualAI.
