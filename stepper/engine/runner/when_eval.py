@@ -39,7 +39,7 @@ Combine:
 from __future__ import annotations
 import logging
 
-from stepper.interfaces import ExecutionContext
+from engine.interfaces import ExecutionContext
 
 logger = logging.getLogger(__name__)
 

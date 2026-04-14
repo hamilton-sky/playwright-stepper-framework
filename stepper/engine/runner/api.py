@@ -23,8 +23,8 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from stepper.interfaces import ExecutionContext, StepResult
-from stepper.planner.planner import _dict_to_step
+from engine.interfaces import ExecutionContext, StepResult
+from engine.planner.planner import _dict_to_step
 
 logger = logging.getLogger(__name__)
 
@@ -63,10 +63,10 @@ class StepperSession:
         from playwright.async_api import async_playwright
 
         from poms.openLibrary.config import load_settings
-        from stepper.resolvers.element_resolver import ElementResolver, DefaultResolverFactory
-        from stepper.actions.factory import build_default_registry
-        from stepper.runner.step_runner import StepRunner, LoggingObserver
-        from stepper.reporter.reporters import CompositeReporter, ConsoleReporter, JsonReporter, AllureReporter
+        from engine.resolvers.element_resolver import ElementResolver, DefaultResolverFactory
+        from engine.actions.factory import build_default_registry
+        from engine.runner.step_runner import StepRunner, LoggingObserver
+        from engine.reporter.reporters import CompositeReporter, ConsoleReporter, JsonReporter, AllureReporter
         from sites.openlibrary.pages.search_page import OLSearchPage
         from sites.openlibrary.pages.detail_page import OLDetailPage
         from sites.openlibrary.pages.reading_list_action import OLReadingListPage
@@ -124,7 +124,7 @@ class StepperSession:
         self._runner.add_observer(LoggingObserver())
 
         # Register runtime subflow action after runner exists
-        from stepper.actions.strategies import RunWorkflowAction
+        from engine.actions.strategies import RunWorkflowAction
         registry.register(RunWorkflowAction(run_steps_callable=self._runner.run, base_dir=Path.cwd()))
 
         return self

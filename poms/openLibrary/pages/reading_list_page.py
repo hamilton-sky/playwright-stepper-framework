@@ -19,7 +19,7 @@ class ReadingListPage(BasePage):
     _WANT_TO_READ_PATH = "/account/books/want-to-read"
     _ALREADY_READ_PATH = "/account/books/already-read"
     # Plain CSS — query_selector is a state read, no resolver needed
-    _NEXT_PAGE_CSS     = "a.next-page, a[rel='next']"
+    _NEXT_PAGE_CSS     = "a.ChoosePage[data-ol-link-track='Pager|Next']"
     BOOK_ITEM_SELECTOR = "ul.list-books > li"
     _BOOK_HREF         = "a[href*='/works/'], a[href*='/books/']"
 

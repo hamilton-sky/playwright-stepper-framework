@@ -53,11 +53,11 @@ from playwright.async_api import async_playwright
 
 from poms.openLibrary.config import load_settings, validate_ai_config
 
-from stepper.resolvers.element_resolver import ElementResolver, DefaultResolverFactory
-from stepper.actions.factory import build_default_registry
-from stepper.runner.step_runner import StepRunner, LoggingObserver
-from stepper.reporter.reporters import CompositeReporter, ConsoleReporter, JsonReporter, AllureReporter
-from stepper.reporter.test_report_reporter import TestReportReporter
+from engine.resolvers.element_resolver import ElementResolver, DefaultResolverFactory
+from engine.actions.factory import build_default_registry
+from engine.runner.step_runner import StepRunner, LoggingObserver
+from engine.reporter.reporters import CompositeReporter, ConsoleReporter, JsonReporter, AllureReporter
+from engine.reporter.test_report_reporter import TestReportReporter
 
 logging.basicConfig(
     level=logging.INFO,
@@ -82,10 +82,10 @@ async def run(
 
     # ── 1. Planner ───────────────────────────────────────────────────────────
     if workflow_path:
-        from stepper.planner.planner import JsonFilePlanner
+        from engine.planner.planner import JsonFilePlanner
         planner = JsonFilePlanner(workflow_path, variables=variables)
     elif task:
-        from stepper.planner.planner import ClaudePlanner
+        from engine.planner.planner import ClaudePlanner
         planner = ClaudePlanner()
     else:
         raise ValueError("Provide --workflow or --task")
@@ -200,7 +200,7 @@ async def run(
         runner.add_observer(LoggingObserver())
 
         # Register runtime subflow action after runner exists (needs runner.run callback)
-        from stepper.actions.strategies import RunWorkflowAction
+        from engine.actions.strategies import RunWorkflowAction
         base_dir = Path(workflow_path).parent if workflow_path else Path.cwd()
         action_registry.register(RunWorkflowAction(run_steps_callable=runner.run, base_dir=base_dir))
 

@@ -11,9 +11,9 @@ import logging
 import warnings
 from pathlib import Path
 
-from stepper.interfaces import StepConfig, StepResult, ExecutionContext
-from stepper.pages.base_page_module import PageModule
-from stepper.pages.glue_action import GlueAction
+from engine.interfaces import StepConfig, StepResult, ExecutionContext
+from engine.pages.base_page_module import PageModule
+from engine.pages.glue_action import GlueAction
 
 logger = logging.getLogger(__name__)
 

@@ -12,7 +12,7 @@ DIP: Callers depend on ActionFactory interface, not this class.
 from __future__ import annotations
 import logging
 from pathlib import Path
-from stepper.interfaces import ActionFactory, ActionStrategy
+from engine.interfaces import ActionFactory, ActionStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +60,7 @@ def build_default_registry(
     Note: collect_items is an OpenLibrary-specific action — it is registered
     by OLSearchPage.register() in main.py, not here.
     """
-    from stepper.actions.strategies import (
+    from engine.actions.strategies import (
         NavigateAction, ClickAction, FillAction, HoverAction, SelectAction,
         ScreenshotAction, WaitAction,
         AssertCountAction, StoreCountAction,

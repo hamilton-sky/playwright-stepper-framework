@@ -31,7 +31,7 @@ import logging
 import re
 from typing import Optional
 
-from stepper.interfaces import ResolverStrategy, CONFIDENCE_DESCRIPTION
+from engine.interfaces import ResolverStrategy, CONFIDENCE_DESCRIPTION
 
 # Words that carry no element-matching signal — excluded from keyword extraction
 _STOPWORDS = frozenset({

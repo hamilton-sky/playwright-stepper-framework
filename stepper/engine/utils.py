@@ -8,7 +8,7 @@ strategies.py — those copies are now removed.
 
 from __future__ import annotations
 
-from stepper.interfaces import StepConfig
+from engine.interfaces import StepConfig
 
 
 def dict_to_step_config(d: dict) -> StepConfig:

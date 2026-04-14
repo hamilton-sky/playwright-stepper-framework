@@ -29,4 +29,8 @@ reports/*
 # Runtime report written to stepper/ root after each run
 stepper/report.json
 
+# Site-specific artifacts and reports (generated at runtime)
+poms/artifacts/
+stepper/reports/
+
 storage_state.json

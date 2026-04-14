@@ -32,22 +32,24 @@ if match:
 
 ---
 
-## Bug 2: Typo in CSS Selector — `.searchResultITem` (Capital T)
+## Bug 2: Wrong CSS Selector for Pagination — Silent Failure on Multi-Page Lists
 
-**Location:** `search_books_by_title_under_year` → result collection loop
+**Location:** `ReadingListPage` → `_NEXT_PAGE_CSS` constant, used in `_count_shelf` and `collect_all_book_urls`
 
 ```python
-results = await page.query_selector_all(".searchResultITem")
+_NEXT_PAGE_CSS = "a.next-page, a[rel='next']"
 ```
 
 **Problem:**  
-The selector has a capital `T` in `ITem`. The actual OpenLibrary class is `.searchResultItem` (lowercase `t`).
-`query_selector_all` returns an empty list silently, so the function never finds any results
-and returns `[]` on every search.
+Neither `a.next-page` nor `a[rel='next']` exist on OpenLibrary's reading list pages.
+`query_selector` returns `None` on every page, so the `while True` pagination loop
+breaks immediately after the first page — books on page 2 and beyond are silently ignored.
+`get_book_count()` will under-count on any account with more books than fit on one page,
+causing `assert_reading_list_count` to fail with no obvious error.
 
 **Fix:**  
 ```python
-results = await page.query_selector_all(".searchResultItem")
+_NEXT_PAGE_CSS = "a.ChoosePage[data-ol-link-track='Pager|Next']"
 ```
 
 ---

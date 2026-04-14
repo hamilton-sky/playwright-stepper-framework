@@ -23,15 +23,15 @@ from playwright.async_api import async_playwright
 # JSON files so files always land inside stepper/ regardless of cwd.
 _stepper_root = Path(__file__).resolve().parent.parent.parent  # stepper/stepper/actions/ → stepper/
 
-from stepper.interfaces import (
+from engine.interfaces import (
     ActionStrategy, StepConfig, StepResult, ExecutionContext,
     CONFIDENCE_AUTO, CONFIDENCE_WARN,
 )
-from stepper.utils import dict_to_step_config as _dict_to_step_config
+from engine.utils import dict_to_step_config as _dict_to_step_config
 
 logger = logging.getLogger(__name__)
 
-# Confidence gate constants imported from stepper.interfaces (single source of truth)
+# Confidence gate constants imported from engine.interfaces (single source of truth)
 
 
 # ──────────────────────────────────────────────────────────
@@ -355,7 +355,7 @@ class ForEachItemAction(ActionStrategy):
         )
         sub_steps_raw = step.extra.get("steps", [])
 
-        from stepper.runner.when_eval import evaluate_when
+        from engine.runner.when_eval import evaluate_when
 
         for idx, item in enumerate(items):
             for raw in sub_steps_raw:
@@ -841,7 +841,7 @@ class RunWorkflowAction(ActionStrategy):
     async def _execute(self, page, step: StepConfig, resolver,
                        context: ExecutionContext) -> StepResult:
         import json
-        from stepper.planner.planner import _substitute
+        from engine.planner.planner import _substitute
 
         wf_path = (step.extra or {}).get("path") or (step.extra or {}).get("workflow")
         if not wf_path:
@@ -1024,4 +1024,4 @@ class ParallelAction(ActionStrategy):
         return list(await asyncio.gather(*[run_one(s) for s in sub_steps]))
 
 
-# _dict_to_step_config is imported from stepper.utils at the top of this file.
+# _dict_to_step_config is imported from engine.utils at the top of this file.

@@ -15,14 +15,14 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from stepper.interfaces import (
+from engine.interfaces import (
     ResolveResult, ResolverFactory,
     CONFIDENCE_SEMANTIC, CONFIDENCE_AI_PICK,
 )
-from stepper.resolvers.strategies import (
+from engine.resolvers.strategies import (
     SemanticResolver, VisualAIResolver, DescriptionFallbackResolver, KeywordFuzzyResolver,
 )
-from stepper.resolvers.ai_pick_resolver import AIPickResolver
+from engine.resolvers.ai_pick_resolver import AIPickResolver
 
 logger = logging.getLogger(__name__)
 
@@ -308,7 +308,7 @@ class DefaultResolverFactory(ResolverFactory):
     """
 
     def build_cascade(self):
-        from stepper.resolvers.strategies import (
+        from engine.resolvers.strategies import (
             TextResolver, RoleResolver, PlaceholderResolver,
             IdResolver, CssResolver, XPathResolver, LabelResolver
         )

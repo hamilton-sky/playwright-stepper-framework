@@ -20,12 +20,12 @@ from pathlib import Path
 import copy
 import dataclasses
 
-from stepper.interfaces import (
+from engine.interfaces import (
     StepConfig, StepResult, StepObserver,
     ActionFactory, ReporterStrategy, ExecutionContext
 )
-from stepper.resolvers.element_resolver import ElementResolver
-from stepper.runner.when_eval import evaluate_when
+from engine.resolvers.element_resolver import ElementResolver
+from engine.runner.when_eval import evaluate_when
 
 logger = logging.getLogger(__name__)
 

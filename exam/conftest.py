@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import sys
 from pathlib import Path
 
 # ── Load .env file before anything else ──────────────────────────────────────
@@ -40,12 +39,6 @@ import argparse
 import pytest
 import pytest_asyncio
 from playwright.async_api import async_playwright
-
-# ── sys.path: make workspace root importable for poms ──
-_exam_dir = Path(__file__).resolve().parent  # exam/
-_workspace_root = _exam_dir.parent  # workspace root
-if str(_workspace_root) not in sys.path:
-    sys.path.insert(0, str(_workspace_root))
 
 from poms.shared.driver import PlaywrightDriver
 from poms.openLibrary.config import load_settings, load_test_data

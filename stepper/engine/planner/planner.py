@@ -13,8 +13,8 @@ from abc import ABC, abstractmethod
 
 from pathlib import Path
 
-from stepper.interfaces import StepConfig
-from stepper.utils import dict_to_step_config as _dict_to_step
+from engine.interfaces import StepConfig
+from engine.utils import dict_to_step_config as _dict_to_step
 
 logger = logging.getLogger(__name__)
 
@@ -237,4 +237,4 @@ class StaticPlanner(PlannerStrategy):
         return self._steps
 
 
-# _dict_to_step is imported from stepper.utils — single source of truth.
+# _dict_to_step is imported from engine.utils — single source of truth.

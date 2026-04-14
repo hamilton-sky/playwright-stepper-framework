@@ -33,7 +33,7 @@ subclass GlueAction, not ActionStrategy directly.
 
 from __future__ import annotations
 
-from stepper.interfaces import ActionStrategy
+from engine.interfaces import ActionStrategy
 
 
 class GlueAction(ActionStrategy):
