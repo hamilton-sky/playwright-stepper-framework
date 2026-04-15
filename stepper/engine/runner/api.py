@@ -106,6 +106,7 @@ class StepperSession:
         self._browser = await self._pw.chromium.launch(
             headless=self._headless,
             slow_mo=self._settings.slow_mo_ms,
+            args=["--disable-blink-features=AutomationControlled"],
         )
 
         context_kwargs: dict = {"viewport": {"width": 1280, "height": 800}}
@@ -114,6 +115,9 @@ class StepperSession:
 
         self._ctx  = await self._browser.new_context(**context_kwargs)
         self._page = await self._ctx.new_page()
+        await self._page.add_init_script(
+            "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
+        )
 
         self._runner = StepRunner(
             page=self._page,

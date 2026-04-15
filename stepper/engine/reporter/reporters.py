@@ -143,20 +143,35 @@ class AllureReporter(ReporterStrategy):
         steps_allure = []
         t = self._start_ms
         for r in self._results:
+            # ... inside for r in self._results: ...
+        
             step_entry: dict = {
-                "name":   r.step.description or r.step.action,
-                "status": self.STATUS_MAP.get(r.status, "unknown"),
-                "start":  t,
-                "stop":   t + step_duration,
-                "stage":  "finished",
-                "statusDetails": {"message": r.error} if r.error else {},
+            "name":   r.step.description or r.step.action,
+            "status": self.STATUS_MAP.get(r.status, "unknown"),
+            "start":  t,
+            "stop":   t + step_duration,
+            "stage":  "finished",
+            "statusDetails": {"message": r.error} if r.error else {},
             }
-            if r.screenshot:
+
+        # Check for the list of screenshots instead of just the single string
+            if r.screenshots:
+                step_entry["attachments"] = [
+                {
+                    "name": f"screenshot_{i+1}",
+                    "source": Path(path).name,
+                    "type": "image/png",
+                }
+                for i, path in enumerate(r.screenshots)
+            ]
+        # Fallback for single screenshot if screenshots list is empty
+            elif r.screenshot:
                 step_entry["attachments"] = [{
-                    "name":   "screenshot",
-                    "source": Path(r.screenshot).name,
-                    "type":   "image/png",
+                "name":   "screenshot",
+                "source": Path(r.screenshot).name,
+                "type":   "image/png",
                 }]
+
             steps_allure.append(step_entry)
             t += step_duration
 

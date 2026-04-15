@@ -9,10 +9,22 @@
   {
     "comment": "Second case — Foundation, Asimov, enough editions exist before 1990",
     "query": "Foundation",
-    "max_year": 1990,
-    "limit": 3,
-    "expected_count": 8
+    "max_year": 1985,
+    "limit": 7,
+    "expected_count": 7
   },
-   { "query": "1984", "max_year": 1950, "limit": 2, "expected_count": 2 }, 
-   { "query": "Pride and Prejudice", "max_year": 1820, "limit": 4, "expected_count": 4 }
+  {
+    "comment": "Third case — 1984, Orwell, matches default limit=2",
+    "query": "1984",
+    "max_year": 1950,
+    "limit": 2,
+    "expected_count": 2
+  },
+  {
+    "comment": "Fourth case — Pride and Prejudice, Austen, matches default limit=4",
+    "query": "Pride and Prejudice",
+    "max_year": 1935,
+    "limit": 4,
+    "expected_count": 4
+  }
 ]

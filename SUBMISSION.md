@@ -30,7 +30,7 @@ the same problem — and they share the same POM foundation.
 ### Path 1 — The Exam Suite (`exam/`)
 
 This is the direct answer to the exam spec. Four functions in `exam/flows.py`, each
-delegating to a POM class in `shared_poms/`. A pytest suite exercises them end-to-end
+delegating to a POM class in `poms/`. A pytest suite exercises them end-to-end
 against a live browser.
 
 ```bash
@@ -69,7 +69,7 @@ python main.py --workflow sites/openlibrary/workflows/ol_search_and_add.json \
   --data testcases.json
 ```
 
-Both paths hit the same `shared_poms/` POM layer. The POM is the single source of
+Both paths hit the same `poms/` POM layer. The POM is the single source of
 truth for all element knowledge. Neither the JSON workflow nor the pytest test ever
 contains a CSS selector or an XPath.
 
@@ -139,7 +139,7 @@ config, return a `StepResult`. `StepRunner` calls `.execute()` and processes the
 benchmarked performance. Any strategy is a valid substitute for any other, as far as
 the runner is concerned.
 
-The same holds for `IBrowserDriver`. All POMs in `shared_poms/` depend on this
+The same holds for `IBrowserDriver`. All POMs in `poms/` depend on this
 interface, not on Playwright's `Page` object directly. A test double, a remote driver,
 or a future CDP implementation would drop in without changing a POM class.
 

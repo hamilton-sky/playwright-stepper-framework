@@ -1,5 +1,8 @@
 {
   "name": "OpenLibrary — clear, search, add to shelf, assert (page module workflow)",
+  "settings": {
+    "continue_on_failure": true
+  },
   "variables": {
     "query":    "Dune",
     "max_year": 1980,

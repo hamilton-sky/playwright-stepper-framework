@@ -1,18 +1,18 @@
 ---
 description: Element resolution cascade — 3 phases, confidence thresholds, AI fallback chain
 globs:
-  - "stepper/stepper/resolvers/**/*.py"
+  - "stepper/engine/resolvers/**/*.py"
 ---
 
 ## Element Resolution Cascade
 
-Lives in `stepper/stepper/resolvers/`. Orchestrated by `element_resolver.py`.
+Lives in `stepper/engine/resolvers/`. Orchestrated by `element_resolver.py`.
 
 ```
   cfg dict  (role / label / placeholder / text / id / css / xpath)
        │
        ▼
-  PHASE 1 — Deterministic  (stepper/stepper/resolvers/strategies.py)
+  PHASE 1 — Deterministic  (stepper/engine/resolvers/strategies.py)
   ────────────────────────────────────────────────────────────────
   Priority  Strategy             Playwright call
   ────────  ───────────────────  ─────────────────────────────
@@ -34,7 +34,7 @@ Lives in `stepper/stepper/resolvers/`. Orchestrated by `element_resolver.py`.
   score ≥ 0.80 and exactly 1 → act
   2+ shortlisted at threshold → Phase 3
 
-  PHASE 3 — AI Pick  (stepper/stepper/resolvers/ai_pick_resolver.py)
+  PHASE 3 — AI Pick  (stepper/engine/resolvers/ai_pick_resolver.py)
   ────────────────────────────────────────────────────────────────
   Provider chain (cheapest first):  Groq → Gemini → Claude
   confidence ≥ 0.70 → act
@@ -47,7 +47,7 @@ Lives in `stepper/stepper/resolvers/`. Orchestrated by `element_resolver.py`.
 
 ### When adding a new resolver strategy
 
-1. Implement the `ResolverStrategy` interface from `stepper/stepper/interfaces.py`
+1. Implement the `ResolverStrategy` interface from `stepper/engine/interfaces.py`
 2. Assign a priority between 10–70 (or beyond 70 for a lower-priority fallback)
 3. Register it in `element_resolver.py`'s strategy list
 4. Keep deterministic strategies stateless — they must not modify page state

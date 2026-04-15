@@ -72,13 +72,9 @@ class ClickAction(ActionStrategy):
 
     async def _execute(self, page, step: StepConfig, resolver,
                        context: ExecutionContext) -> StepResult:
-        value, was_env = _resolve_input_value(step.input_value)
-        if was_env and not value:
-            return StepResult(
-                step=step,
-                status="failed",
-                error=f"Missing environment variable for value '{step.input_value}'",
-            )
+        _, err = _checked_input_value(step)
+        if err:
+            return err
         result = await resolver.resolve(page, step.element, step.description)
 
         if not result.found:
@@ -122,13 +118,9 @@ class FillAction(ActionStrategy):
 
     async def _execute(self, page, step: StepConfig, resolver,
                        context: ExecutionContext) -> StepResult:
-        value, was_env = _resolve_input_value(step.input_value)
-        if was_env and not value:
-            return StepResult(
-                step=step,
-                status="failed",
-                error=f"Missing environment variable for value '{step.input_value}'",
-            )
+        value, err = _checked_input_value(step)
+        if err:
+            return err
 
         result = await resolver.resolve(page, step.element, step.description)
 
@@ -138,7 +130,8 @@ class FillAction(ActionStrategy):
 
         await result.locator.scroll_into_view_if_needed()
         await result.locator.fill(value, timeout=5_000)
-        await result.locator.press("Enter")
+        if step.extra.get("press_enter", True):
+            await result.locator.press("Enter")
         logger.info(f"✓ fill '{value}' via {result.method}")
 
         if step.wait_for:
@@ -200,8 +193,8 @@ class SelectAction(ActionStrategy):
             return StepResult(step=step, status="skipped",
                               error=f"Element not found → {result.method}")
 
-        label = step.extra.get("label") if step.extra else None
-        index = step.extra.get("index") if step.extra else None
+        label = step.extra.get("label")
+        index = step.extra.get("index")
         value = step.input_value or ""
 
         try:
@@ -232,7 +225,6 @@ class ScreenshotAction(ActionStrategy):
 
     def __init__(self, screenshots_dir: Path = Path("artifacts/screenshots")):
         self._screenshots_dir = screenshots_dir
-        self._screenshots_dir.mkdir(parents=True, exist_ok=True)
 
     async def _execute(self, page, step: StepConfig, resolver,
                        context: ExecutionContext) -> StepResult:
@@ -490,6 +482,10 @@ class MeasurePerformanceAction(ActionStrategy):
     action_name = "measure_performance"
     read_only   = True
 
+    def __init__(self):
+        self._default_output = _stepper_root / "artifacts" / "performance.json"
+        self._default_output.parent.mkdir(parents=True, exist_ok=True)
+
     async def _execute(self, page, step: StepConfig, resolver,
                        context: ExecutionContext) -> StepResult:
         url       = step.url or step.input_value
@@ -514,12 +510,134 @@ class MeasurePerformanceAction(ActionStrategy):
 
         raw_path = Path(step.extra.get("output_path", "artifacts/performance.json"))
         output_path = raw_path if raw_path.is_absolute() else _stepper_root / raw_path
-        output_path.parent.mkdir(parents=True, exist_ok=True)
+        if output_path != self._default_output:
+            output_path.parent.mkdir(parents=True, exist_ok=True)
         with open(output_path, "w") as f:
             json.dump(report, f, indent=2)
 
         logger.info(f"performance: {metrics} → {output_path}")
         return StepResult(step=step, status="passed")
+
+
+class VisualCompareAction(ActionStrategy):
+    """
+    Take a screenshot and compare it against a stored baseline.
+
+    First run (no baseline exists): saves the screenshot as the baseline and
+    passes — so the first run always bootstraps the baseline automatically.
+
+    Subsequent runs: pixel-diffs the current screenshot against the baseline.
+    If the diff ratio exceeds `threshold` (default 0.01 = 1%), the step fails
+    and a diff image is written next to the baseline for review.
+
+    Step config (extra keys):
+        snapshot_name  str   Required. Unique name for this comparison point.
+                             e.g. "search-results-dune" or "shelf-after-add"
+        threshold      float Optional. Max allowed diff ratio (0.0–1.0). Default 0.01.
+        full_page      bool  Optional. Full-page screenshot. Default False.
+        update         bool  Optional. If true, overwrite baseline with current shot.
+                             Use this when an intentional UI change is approved.
+
+    Baselines are stored in:  stepper/artifacts/baselines/<snapshot_name>.png
+    Diff images are stored in: stepper/artifacts/baselines/<snapshot_name>.diff.png
+
+    JSON example:
+        {
+            "action": "visual_compare",
+            "description": "Shelf state after adding Dune books",
+            "extra": {
+                "snapshot_name": "shelf-after-dune-add",
+                "threshold": 0.02
+            }
+        }
+
+    To update a baseline after an approved UI change:
+        {
+            "action": "visual_compare",
+            "extra": { "snapshot_name": "shelf-after-dune-add", "update": true }
+        }
+    """
+    action_name = "visual_compare"
+    read_only   = True
+
+    def __init__(self):
+        self._baselines_dir = _stepper_root / "artifacts" / "baselines"
+        self._baselines_dir.mkdir(parents=True, exist_ok=True)
+
+    async def _execute(self, page, step: StepConfig, resolver,
+                       context: ExecutionContext) -> StepResult:
+        from PIL import Image, ImageChops, ImageEnhance
+        import io
+
+        snapshot_name = step.extra.get("snapshot_name")
+        if not snapshot_name:
+            return StepResult(
+                step=step, status="failed",
+                error="visual_compare requires extra.snapshot_name"
+            )
+
+        threshold  = float(step.extra.get("threshold", 0.01))
+        full_page  = bool(step.extra.get("full_page", False))
+        do_update  = bool(step.extra.get("update", False))
+
+        baseline_path = self._baselines_dir / f"{snapshot_name}.png"
+        diff_path     = self._baselines_dir / f"{snapshot_name}.diff.png"
+
+        # Capture current state
+        raw_bytes = await page.screenshot(full_page=full_page)
+        current   = Image.open(io.BytesIO(raw_bytes)).convert("RGB")
+
+        # Update mode: overwrite baseline and pass
+        if do_update:
+            current.save(str(baseline_path))
+            logger.info(f"visual_compare: baseline updated → {baseline_path}")
+            return StepResult(step=step, status="passed",
+                              output={"snapshot": snapshot_name, "mode": "updated"})
+
+        # First run: no baseline yet — save and pass
+        if not baseline_path.exists():
+            current.save(str(baseline_path))
+            logger.info(f"visual_compare: baseline created → {baseline_path}")
+            return StepResult(step=step, status="passed",
+                              output={"snapshot": snapshot_name, "mode": "baseline_created"})
+
+        # Compare against baseline
+        baseline = Image.open(str(baseline_path)).convert("RGB")
+
+        # Resize current to match baseline dimensions if they differ
+        # (can happen after viewport changes)
+        if current.size != baseline.size:
+            current = current.resize(baseline.size, Image.LANCZOS)
+
+        diff_image = ImageChops.difference(baseline, current)
+        pixels     = list(diff_image.getdata())
+        total      = len(pixels)
+        # Count pixels where any channel differs by more than 8/255 (noise floor)
+        changed    = sum(1 for r, g, b in pixels if max(r, g, b) > 8)
+        diff_ratio = changed / total
+
+        if diff_ratio > threshold:
+            # Amplify diff image so small differences are visible
+            amplified = ImageEnhance.Brightness(diff_image).enhance(10)
+            amplified.save(str(diff_path))
+            msg = (
+                f"Visual diff {diff_ratio:.2%} exceeds threshold {threshold:.2%} "
+                f"for '{snapshot_name}'. Diff image → {diff_path}"
+            )
+            logger.warning(msg)
+            return StepResult(
+                step=step, status="failed", error=msg,
+                screenshot=str(diff_path),
+                output={"snapshot": snapshot_name, "diff_ratio": round(diff_ratio, 6),
+                        "threshold": threshold, "diff_image": str(diff_path)},
+            )
+
+        logger.info(f"visual_compare: '{snapshot_name}' passed (diff={diff_ratio:.4%})")
+        return StepResult(
+            step=step, status="passed",
+            output={"snapshot": snapshot_name, "diff_ratio": round(diff_ratio, 6),
+                    "threshold": threshold},
+        )
 
 
 # ──────────────────────────────────────────────────────────
@@ -546,6 +664,29 @@ def _resolve_input_value(value: str) -> tuple[str, bool]:
         key = value[6:-1]
         return os.environ.get(key, ""), True
     return value, False
+
+
+async def _fetch_attr(locator, attr: str) -> str:
+    """Fetch a single DOM attribute from a Playwright locator."""
+    if attr == "innerText":
+        return (await locator.inner_text()).strip()
+    if attr == "innerHTML":
+        return await locator.inner_html()
+    if attr == "textContent":
+        return (await locator.text_content() or "").strip()
+    return await locator.get_attribute(attr) or ""
+
+
+def _checked_input_value(step: StepConfig) -> tuple[str, StepResult | None]:
+    """Resolve input_value, returning (value, None) on success or ("", StepResult) on missing env var."""
+    value, was_env = _resolve_input_value(step.input_value)
+    if was_env and not value:
+        return "", StepResult(
+            step=step,
+            status="failed",
+            error=f"Missing environment variable for value '{step.input_value}'",
+        )
+    return value, None
 
 
 class ExtractDataAction(ActionStrategy):
@@ -610,29 +751,10 @@ class ExtractDataAction(ActionStrategy):
             for loc in locators[:limit]:
                 if len(attrs) == 1:
                     # Single attribute: return scalar
-                    attr = attrs[0]
-                    if attr == "innerText":
-                        value = await loc.inner_text()
-                    elif attr == "innerHTML":
-                        value = await loc.inner_html()
-                    elif attr == "textContent":
-                        value = await loc.text_content()
-                    else:
-                        value = await loc.get_attribute(attr)
-                    extracted.append(value)
+                    extracted.append(await _fetch_attr(loc, attrs[0]))
                 else:
                     # Multiple attributes: return dict
-                    row = {}
-                    for attr in attrs:
-                        if attr == "innerText":
-                            row[attr] = await loc.inner_text()
-                        elif attr == "innerHTML":
-                            row[attr] = await loc.inner_html()
-                        elif attr == "textContent":
-                            row[attr] = await loc.text_content()
-                        else:
-                            row[attr] = await loc.get_attribute(attr)
-                    extracted.append(row)
+                    extracted.append({attr: await _fetch_attr(loc, attr) for attr in attrs})
             
             # Apply URL prefix if needed (converts relative hrefs to absolute URLs)
             if url_prefix:

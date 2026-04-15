@@ -65,7 +65,7 @@ class ElementResolver:
         self._ai            = ai_client
         self._semantic      = SemanticResolver()
         self._visual        = VisualAIResolver(ai_client)
-        self._desc_fallback = DescriptionFallbackResolver()
+        self._desc_fallback = DescriptionFallbackResolver(semantic=self._semantic)
         self._keyword_fuzzy = KeywordFuzzyResolver()
         self._use_visual_ai = use_visual_ai
         self._ai_pick_resolver = AIPickResolver()   # Groq → Gemini → Claude

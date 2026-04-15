@@ -349,8 +349,8 @@ class DescriptionFallbackResolver:
     MIN_SIMILARITY = CONFIDENCE_DESCRIPTION  # single source of truth in interfaces.py
     TOP_K = 3
 
-    def __init__(self):
-        self._semantic = SemanticResolver()
+    def __init__(self, semantic: "SemanticResolver | None" = None):
+        self._semantic = semantic or SemanticResolver()
 
     async def find_candidates(
         self, page, description: str

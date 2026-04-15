@@ -34,7 +34,7 @@ StepRunner  (evaluates when-guards, dispatches actions)
 Glue pages/*  (named behaviors — one action, one job)
       │
       ▼
-shared_poms/pages/*  (POMs — selectors live here and nowhere else)
+poms/*/pages/*  (POMs — selectors live here and nowhere else)
       │
       ▼
 Playwright Page

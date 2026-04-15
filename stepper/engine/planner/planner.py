@@ -117,28 +117,30 @@ class JsonFilePlanner(PlannerStrategy):
         with open(self._path, encoding="utf-8") as f:
             data = json.load(f)
 
-        # Merge: workflow defaults < caller overrides
+        # 1. Extract settings (workflow-level defaults)
+        settings = data.get("settings", {})
+        
+        # Support the legacy top-level key for backward compatibility
+        if "continue_on_failure" in data:
+            settings.setdefault("continue_on_failure", data["continue_on_failure"])
+
         variables = {
             **data.get("variables", {}),
             **self._variables,
         }
 
         steps_raw = data.get("steps", data) if isinstance(data, dict) else data
-
-        # Expand static includes before substitution
         base_dir = Path(self._path).parent
         steps_raw = _expand_includes(steps_raw, base_dir, variables)
 
         if variables:
             steps_raw = _substitute(steps_raw, variables)
 
-        # Flow-level continue_on_failure — passes down to every step that
-        # does not already declare its own value. Step always wins over flow.
-        flow_continue = data.get("continue_on_failure", False) if isinstance(data, dict) else False
-        if flow_continue:
-            for step in steps_raw:
-                if "continue_on_failure" not in step:
-                    step["continue_on_failure"] = flow_continue
+        # 2. Apply settings to every step if not explicitly overridden by the step
+        for step in steps_raw:
+            for key, value in settings.items():
+                if key not in step:
+                    step[key] = value
 
         return [_dict_to_step(s) for s in steps_raw]
 

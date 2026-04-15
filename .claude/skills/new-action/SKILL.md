@@ -18,31 +18,33 @@ If arguments are missing, ask before proceeding.
 
 1. Verify `stepper/sites/<site-name>/pages/` exists.
 2. Verify the referenced POM exists in `poms/<site>/pages/`.
-3. Check `stepper/stepper/actions/factory.py` to understand how registration works.
+3. Check `stepper/engine/actions/factory.py` to understand how registration works.
 
 ## What to create
 
 Create `stepper/sites/<site-name>/pages/<action_name>_action.py`:
 
 ```python
-from stepper.stepper.interfaces import ActionStrategy
-from stepper.stepper.actions.factory import ActionRegistry
+from engine.pages.glue_action import GlueAction
 from poms.<site>.pages.<pom_module> import <PomClass>
 from poms.<site>.config import get_settings
 
 
-class <ActionClass>(ActionStrategy):
-    def _execute(self, page, step, resolver, context):
+class <ActionClass>(GlueAction):
+    action_name = "<action-name>"
+
+    async def _execute(self, page, step, resolver, context):
         settings = get_settings()
-        pom = <PomClass>(
-            self.driver, settings.base_url, settings.delays,
-            page=page, resolver=resolver          # ← REQUIRED
+        driver = self._driver(page)
+        pom = self._build_pom(
+            <PomClass>, driver, settings.base_url, settings.delays,
+            page=page, resolver=resolver          # ← enforced by _build_pom
         )
         # implementation here
 
     @classmethod
-    def register(cls):
-        ActionRegistry.register("<action-name>", cls)
+    def register(cls, registry) -> None:
+        registry.register(cls())
 ```
 
 ## After creating

@@ -19,26 +19,18 @@ from pathlib import Path
 
 
 def _load_env() -> None:
-    """Load key=value pairs from a .env file into os.environ.
+    """Load .env into os.environ using python-dotenv.
     Looks in project root first, then stepper/ as fallback.
+    Existing env vars are never overridden (override=False).
+    Supports quoted values, export prefixes, and multi-line values.
     """
+    from dotenv import load_dotenv
     _here = Path(__file__).resolve().parent
     for candidate in (_here.parent / ".env", _here / ".env"):
-        if not candidate.exists():
-            continue
-        for line in candidate.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            key, _, value = line.partition("=")
-            key = key.strip()
-            value = value.strip()
-            if key and key not in os.environ:   # don't override real env vars
-                os.environ[key] = value
-        break  # stop after first found
+        if candidate.exists():
+            load_dotenv(dotenv_path=candidate, override=False)
+            break
 
-
-_load_env()
 
 # Add src/ and repo root to path so all modules resolve regardless of cwd
 import sys
@@ -59,11 +51,6 @@ from engine.runner.step_runner import StepRunner, LoggingObserver
 from engine.reporter.reporters import CompositeReporter, ConsoleReporter, JsonReporter, AllureReporter
 from engine.reporter.test_report_reporter import TestReportReporter
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
-    datefmt="%H:%M:%S",
-)
 logger = logging.getLogger(__name__)
 
 # Absolute path to stepper/ — all output paths are anchored here so the tool
@@ -85,6 +72,8 @@ async def run(
     allure_serve: bool = False,
     record_video: bool = False,
     variables: dict | None = None,
+    resolver: "ElementResolver | None" = None,
+    _browser=None,
 ):
 
     # ── 1. Planner ───────────────────────────────────────────────────────────
@@ -101,7 +90,6 @@ async def run(
     logger.info(f"Planned {len(steps)} steps")
 
     # ── 2. Infrastructure ─────────────────────────────────────────────────────
-    cfg_headless = not headless
     try:
         settings = load_settings()
         validate_ai_config(settings)
@@ -115,17 +103,18 @@ async def run(
         cfg_browser        = "chromium"
         storage_state_path = None
 
-    ai_client = None
-    if use_visual_ai:
-        import anthropic
-        ai_client = anthropic.Anthropic()
+    if resolver is None:
+        ai_client = None
+        if use_visual_ai:
+            import anthropic
+            ai_client = anthropic.Anthropic()
 
-    resolver_factory = DefaultResolverFactory()
-    resolver = ElementResolver(
-        strategies=resolver_factory.build_cascade(),
-        ai_client=ai_client,
-        use_visual_ai=use_visual_ai,
-    )
+        resolver_factory = DefaultResolverFactory()
+        resolver = ElementResolver(
+            strategies=resolver_factory.build_cascade(),
+            ai_client=ai_client,
+            use_visual_ai=use_visual_ai,
+        )
 
     # ── 3. Reporters — absolute paths so output is always inside stepper/ ─────
     run_label = Path(workflow_path).stem if workflow_path else "task"
@@ -133,7 +122,7 @@ async def run(
         reports_base=str(_stepper_root / "reports"),
         test_name=run_label,
         browser=cfg_browser,
-        headless=cfg_headless,
+        headless=not headless,
     )
     reporters = [
         ConsoleReporter(),
@@ -144,10 +133,21 @@ async def run(
     reporter = CompositeReporter(reporters)
 
     # ── 4. Run ───────────────────────────────────────────────────────────────
-    async with async_playwright() as pw:
-        _launchers = {"chromium": pw.chromium, "firefox": pw.firefox, "webkit": pw.webkit}
-        browser = await _launchers.get(cfg_browser, pw.chromium).launch(headless=headless, slow_mo=slow_mo)
+    _owns_browser = _browser is None
+    _pw_instance = None
 
+    if _owns_browser:
+        _pw_instance = await async_playwright().start()
+        _launchers = {"chromium": _pw_instance.chromium, "firefox": _pw_instance.firefox, "webkit": _pw_instance.webkit}
+        browser = await _launchers.get(cfg_browser, _pw_instance.chromium).launch(
+            headless=headless,
+            slow_mo=slow_mo,
+            args=["--disable-blink-features=AutomationControlled"],
+        )
+    else:
+        browser = _browser
+
+    try:
         # Start suite first — TestReportReporter creates the run directory here.
         suite_name = workflow_path or task or "automation"
         reporter.start_suite(suite_name)
@@ -166,7 +166,8 @@ async def run(
             screenshots_dir = test_reporter.manager.get_screenshots_dir()
         else:
             screenshots_dir = _stepper_root / "artifacts" / "screenshots"
-            screenshots_dir.mkdir(parents=True, exist_ok=True)
+
+        screenshots_dir.mkdir(parents=True, exist_ok=True)
 
         # Build action registry now that we have the run-specific screenshots dir.
         action_registry = build_default_registry(screenshots_dir=screenshots_dir)
@@ -194,6 +195,9 @@ async def run(
             logger.info(f"Recording video → {videos_dir}")
         context = await browser.new_context(**context_kwargs)
         page    = await context.new_page()
+        await page.add_init_script(
+            "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
+        )
 
         runner = StepRunner(
             page=page,
@@ -218,12 +222,21 @@ async def run(
             logging.getLogger().removeHandler(log_handler)
             log_handler.close()
 
-        if storage_state_path:
+        _LOGIN_ACTIONS = {"ol_ensure_login", "sd_login", "ensure_login"}
+        if storage_state_path and any(r.step.action in _LOGIN_ACTIONS for r in results):
             Path(str(storage_state_path)).parent.mkdir(parents=True, exist_ok=True)
             await context.storage_state(path=str(storage_state_path))
             logger.info(f"Session saved to {storage_state_path}")
+        elif storage_state_path:
+            logger.debug("Skipping storage_state write — no login action ran")
 
-        await browser.close()
+        await context.close()
+
+    finally:
+        if _owns_browser:
+            await browser.close()
+            if _pw_instance:
+                await _pw_instance.stop()
 
     if allure_serve:
         _serve_allure()
@@ -231,7 +244,61 @@ async def run(
     return results
 
 
+async def _run_data_rows(rows: list[dict], cli_vars: dict, args) -> None:
+    """Open one playwright instance and browser; run each data row in a fresh context."""
+    # Build resolver once — reused across all rows (ElementResolver is stateless)
+    try:
+        settings = load_settings()
+        validate_ai_config(settings)
+        use_visual_ai = settings.use_visual_ai
+        slow_mo       = settings.slow_mo_ms
+        cfg_browser   = settings.browser
+    except Exception:
+        use_visual_ai = False
+        slow_mo       = 300
+        cfg_browser   = "chromium"
+
+    ai_client = None
+    if use_visual_ai:
+        import anthropic
+        ai_client = anthropic.Anthropic()
+
+    resolver_factory = DefaultResolverFactory()
+    resolver = ElementResolver(
+        strategies=resolver_factory.build_cascade(),
+        ai_client=ai_client,
+        use_visual_ai=use_visual_ai,
+    )
+
+    async with async_playwright() as pw:
+        _launchers = {"chromium": pw.chromium, "firefox": pw.firefox, "webkit": pw.webkit}
+        browser = await _launchers.get(cfg_browser, pw.chromium).launch(
+            headless=not args.show, slow_mo=slow_mo
+        )
+        for i, row in enumerate(rows, 1):
+            merged = {**row, **cli_vars}   # cli_vars wins over row values
+            logger.info(f"[data-driven] row {i}/{len(rows)}: {merged}")
+            await run(
+                workflow_path=args.workflow,
+                task=args.task,
+                headless=not args.show,
+                allure_serve=False,          # serve once at the end, not per row
+                record_video=args.video,
+                variables=merged,
+                resolver=resolver,
+                _browser=browser,
+            )
+        await browser.close()
+
+
 def main():
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+        datefmt="%H:%M:%S",
+    )
+    _load_env()
+
     parser = argparse.ArgumentParser(description="Stepper — AI Browser Automation")
     parser.add_argument("--workflow", help="Path to workflow JSON file")
     parser.add_argument("--task",     help="Natural language task description")
@@ -256,7 +323,7 @@ def main():
         except json.JSONDecodeError as e:
             parser.error(f"--vars is not valid JSON: {e}")
 
-    # --data: load the array and run once per row
+    # --data: load the array and run all rows sharing one browser
     if args.data:
         data_path = Path(args.data)
         if not data_path.exists():
@@ -265,17 +332,7 @@ def main():
         if not isinstance(rows, list):
             parser.error("--data file must contain a JSON array of objects")
 
-        for i, row in enumerate(rows, 1):
-            merged = {**row, **cli_vars}   # cli_vars wins over row values
-            logger.info(f"[data-driven] row {i}/{len(rows)}: {merged}")
-            asyncio.run(run(
-                workflow_path=args.workflow,
-                task=args.task,
-                headless=not args.show,
-                allure_serve=False,          # serve once at the end, not per row
-                record_video=args.video,
-                variables=merged,
-            ))
+        asyncio.run(_run_data_rows(rows, cli_vars, args))
 
         if args.allure_serve:
             _serve_allure()

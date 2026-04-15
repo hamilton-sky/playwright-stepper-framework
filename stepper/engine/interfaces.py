@@ -52,6 +52,7 @@ class StepConfig:
     retry: int = 0                              # number of retries on failure (0 = no retry)
     retry_delay_ms: int = 1000                  # delay between retries in milliseconds
     continue_on_failure: bool = False           # if True, flow continues even when step fails
+    skip_screenshot: bool = False               # if True, auto-screenshot is suppressed (useful inside for_each loops)
 
 
 @dataclass
@@ -64,7 +65,7 @@ class ResolveResult:
 
     @property
     def is_high_confidence(self) -> bool:
-        return self.confidence >= 0.80
+        return self.confidence >= CONFIDENCE_AUTO
 
     @property
     def is_acceptable(self) -> bool:
@@ -98,10 +99,12 @@ class ExecutionContext:
 
     Named fields cover the four things actions actually share:
         collected_items  - URLs (or item dicts) produced by collect_items
-        collected_books  - backward-compat alias for collected_items
         extracted_data   - items produced by extract_data
         paginated_data   - accumulated items produced by paginate
         counts           - named integer counters  e.g. {"count_before": 12}
+
+    Note: Legacy page._collected_books is accessed by ForEachItemAction as a
+    page-attribute fallback — not a typed field on this class.
 
     when_eval compatibility: implements get() and __contains__ so the
     condition evaluator requires zero changes.

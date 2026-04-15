@@ -235,40 +235,41 @@ class BookDetailPage(BasePage):
             self.Locators.SHELF_BTN_ACTIVATED
         )
         if not activated_before:
-            logger.debug("remove_from_shelf: book not on shelf — %s", self._url)
             return False
 
-        # Click the shelf button (opens dropdown or toggles off directly)
+        # 2. Click the main button to trigger removal/dropdown
         try:
             el = await self._driver.wait_for_selector(
                 self.Locators.SHELF_BTN_BASE, timeout=5_000
             )
-            if not el:
-                return False
             await el.click()
-        except Exception as e:
-            logger.debug("remove_from_shelf: shelf button click failed on %s: %s", self._url, e)
+        except Exception:
             return False
 
-        await asyncio.sleep(0.5)
-
-        # Path A: dropdown appeared — click the explicit "Remove From Shelf" button
+        # 3. THE FIX: Check for the dropdown "Remove" button with a SHORT timeout
         try:
-            remove_el = await self._driver.query_selector(self.Locators.REMOVE_FROM_LIST)
+            # If Path A (dropdown) exists, this finds it in 1s.
+            # If Path B (toggle) happened, this fails in 1s instead of 30s!
+            remove_el = await self._driver.wait_for_selector(
+                self.Locators.REMOVE_FROM_LIST, 
+                timeout=1000 
+            )
             if remove_el:
                 await remove_el.click()
-                logger.info("✓ Removed from shelf (via dropdown): %s", self._url)
+                logger.info("✓ Removed via dropdown Path A")
                 return True
         except Exception:
+            # If we timeout here, it just means the dropdown didn't appear.
+            # We move on to check if the toggle worked instead.
             pass
 
-        # Path B: button click was a direct toggle — confirm activated state is gone
+        # 4. Final check for Path B (Direct Toggle)
+        await asyncio.sleep(0.5) 
         still_activated = await self._driver.query_selector(
             self.Locators.SHELF_BTN_ACTIVATED
         )
         if not still_activated:
-            logger.info("✓ Removed from shelf (via toggle): %s", self._url)
+            logger.info("✓ Removed via toggle Path B")
             return True
 
-        logger.debug("remove_from_shelf: could not confirm removal on %s", self._url)
         return False

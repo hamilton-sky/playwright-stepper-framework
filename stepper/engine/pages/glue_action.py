@@ -33,7 +33,11 @@ subclass GlueAction, not ActionStrategy directly.
 
 from __future__ import annotations
 
+from typing import TypeVar, Type
+
 from engine.interfaces import ActionStrategy
+
+T = TypeVar("T")
 
 
 class GlueAction(ActionStrategy):
@@ -48,7 +52,7 @@ class GlueAction(ActionStrategy):
     """
 
     @staticmethod
-    def _build_pom(pom_cls, *args, page, resolver, **kwargs):
+    def _build_pom(pom_cls: Type[T], *args, page, resolver, **kwargs) -> T:
         """
         Construct a POM instance with resolver injection enforced.
 

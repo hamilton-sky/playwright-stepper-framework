@@ -13,6 +13,7 @@ DIP: Depends on interfaces, not concrete classes.
 
 from __future__ import annotations
 import asyncio
+import json
 import logging
 import time
 from pathlib import Path
@@ -51,7 +52,6 @@ class StepRunner:
         self._observers: list[StepObserver] = []
         if screenshots_dir is not None:
             self._screenshots_dir: Path | None = Path(screenshots_dir)
-            self._screenshots_dir.mkdir(parents=True, exist_ok=True)
         else:
             self._screenshots_dir = None
 
@@ -87,7 +87,7 @@ class StepRunner:
             # Resolve any remaining {{key}} placeholders against runtime context.
             # Plan-time substitution covers variables{}; this covers context.counts
             # so JSON can write "limit": "{{gap}}" and get the runtime value.
-            step = _resolve_context_vars(step, ctx)
+            step = _resolve_count_vars(step, ctx)
 
             t0 = time.monotonic()
             max_attempts = 1 + max(0, step.retry)
@@ -114,7 +114,7 @@ class StepRunner:
 
             # Auto-screenshot: capture page state after each step if the action
             # didn't already produce one. Framework-level — no POM dependency.
-            if self._screenshots_dir and not result.screenshot:
+            if self._screenshots_dir and not result.screenshot and not step.skip_screenshot:
                 try:
                     safe_action = step.action.replace("/", "_").replace("\\", "_")
                     shot_path = self._screenshots_dir / f"step_{idx+1:02d}_{safe_action}.png"
@@ -142,42 +142,44 @@ class StepRunner:
 
     # ── Observer notifications ─────────────────────────────────────────────────
 
-    def _notify_start(self, idx: int, step: StepConfig):
+    def _notify(self, method: str, *args):
         for obs in self._observers:
             try:
-                obs.on_step_start(idx, step)
+                getattr(obs, method)(*args)
             except Exception:
                 pass
+
+    def _notify_start(self, idx: int, step: StepConfig):
+        self._notify("on_step_start", idx, step)
 
     def _notify_done(self, idx: int, result: StepResult):
-        for obs in self._observers:
-            try:
-                obs.on_step_done(idx, result)
-            except Exception:
-                pass
+        self._notify("on_step_done", idx, result)
 
     def _notify_log(self, msg: str, level: str = "info"):
-        for obs in self._observers:
-            try:
-                obs.on_log(msg, level)
-            except Exception:
-                pass
+        self._notify("on_log", msg, level)
 
 
 # ── Runtime context variable resolution ──────────────────────────────────────
 
-def _resolve_context_vars(step: StepConfig, ctx: ExecutionContext) -> StepConfig:
+def _resolve_count_vars(step: StepConfig, ctx: ExecutionContext) -> StepConfig:
     """
-    Resolve any remaining {{key}} placeholders against runtime context.
+    Substitute {{key}} placeholders that reference ctx.counts values set at runtime.
+
+    Scope: only ctx.counts — e.g. "limit": "{{gap}}" resolves to the integer stored
+    by ol_ensure_count. Other context fields (collected_items, extracted_data, etc.)
+    are handled by ForEachItemAction directly via its own substitution pass.
 
     Plan-time substitution (JsonFilePlanner) handles the variables{} block.
-    This pass handles context.counts values set by earlier steps at runtime
-    — e.g. "limit": "{{gap}}" resolves to the integer stored by ol_ensure_count.
 
     Returns a new StepConfig if any substitution occurred; the original otherwise.
     Type preservation: a pure "{{key}}" reference returns the typed value (int/bool).
     """
     if not ctx.counts:
+        return step
+
+    # Cheap scan: skip deepcopy entirely when no template tokens are present.
+    # json.dumps handles nested dicts/lists; most steps have no {{ tokens.
+    if "{{" not in json.dumps(step.extra):
         return step
 
     def _sub(obj):

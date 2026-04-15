@@ -64,7 +64,7 @@ def build_default_registry(
         NavigateAction, ClickAction, FillAction, HoverAction, SelectAction,
         ScreenshotAction, WaitAction,
         AssertCountAction, StoreCountAction,
-        MeasurePerformanceAction,
+        MeasurePerformanceAction, VisualCompareAction,
         ForEachItemAction,
         ExtractDataAction, PaginateAction,
         EnsureLoginAction, ParallelAction,
@@ -90,6 +90,7 @@ def build_default_registry(
         .register(for_each)
         .register(ensure_login)
         .register(MeasurePerformanceAction())
+        .register(VisualCompareAction())
         .register(ExtractDataAction())
         .register(paginate)
         .register(parallel)

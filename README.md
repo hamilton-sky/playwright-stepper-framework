@@ -162,6 +162,22 @@ orchestration engine so the Python layer stays thin.
 
 # Part II — Stepper Framework
 
+```bash
+cd stepper 
+
+# run one case (default: index 0)
+pytest tests/ -v --workflow ol_search_and_add.json --data ../poms/openLibrary/data/testdata.json
+
+# run a specific case by index
+pytest tests/ -v --workflow ol_search_and_add.json --data ../poms/openLibrary/data/testdata.json --case 2
+
+# run all cases
+pytest tests/ -v --workflow ol_search_and_add.json --data ../poms/openLibrary/data/testdata.json --all-cases
+
+```
+
+
+
 ## Three-Layer Architecture
 
 ```
@@ -271,6 +287,10 @@ Every step supports these optional fields:
 | `retry` | `0` | Retry on failure up to N times |
 | `retry_delay_ms` | `1000` | Milliseconds between retries |
 | `continue_on_failure` | `false` | `true` → warn and continue; `false` → hard-stop |
+| `extra` | — | Arbitrary config passed to action; supports `{{var}}` substitution |
+| `read_only` | `false` | For `parallel` steps: `true` → run in shared read-only tab; `false` → separate tab with fresh state |
+| `screenshot_on` | `failure` | `always` → capture after every attempt; `failure` → capture only on final failure |
+
 
 ### `when` condition reference
 
@@ -287,6 +307,7 @@ Every step supports these optional fields:
 | `all` | `[<cond>, ...]` | AND short-circuit |
 | `any` | `[<cond>, ...]` | OR short-circuit |
 
+
 ### Flow-level defaults
 
 Declare once at the top; all steps inherit unless they override:
@@ -294,6 +315,7 @@ Declare once at the top; all steps inherit unless they override:
 ```json
 {
   "continue_on_failure": true,
+  
   "steps": [
     { "action": "ol_ensure_login", "continue_on_failure": false },
     { "action": "screenshot" }
@@ -328,12 +350,24 @@ cd stepper
 python main.py --workflow sites/openlibrary/workflows/ol_regression_roundtrip.json \
   --vars '{"query":"Asimov","max_year":1960,"limit":2}'
 ```
+# run one case (default: index 0)
+pytest tests/ -v --workflow ol_search_and_add.json --data ../poms/openLibrary/data/testdata.json
+
+# run a specific case by index
+pytest tests/ -v --workflow ol_search_and_add.json --data ../poms/openLibrary/data/testdata.json --case 2
+
+# run all cases
+pytest tests/ -v --workflow ol_search_and_add.json --data ../poms/openLibrary/data/testdata.json --all-cases
+
+
 
 ---
 
 ## Showcase Workflows
 
-Nine ready-to-run JSON workflows demonstrating every engine capability:
+Twelve ready-to-run JSON workflows demonstrating every engine capability:
+
+**OpenLibrary (9 workflows)**
 
 | Workflow | What it showcases | Command (run from `stepper/`) |
 |---|---|---|
@@ -346,6 +380,14 @@ Nine ready-to-run JSON workflows demonstrating every engine capability:
 | `ol_smoke_test.json` | `when`-guarded + `continue_on_failure` soft-fail | `python main.py --workflow sites/openlibrary/workflows/ol_smoke_test.json` |
 | `ol_idempotency_test.json` | Add same books twice → count must not grow | `python main.py --workflow sites/openlibrary/workflows/ol_idempotency_test.json` |
 | `login.json` | Generic reusable login subflow | `python main.py --workflow sites/openlibrary/workflows/login.json` |
+
+**SauceDemo (3 workflows)**
+
+| Workflow | What it showcases | Command (run from `stepper/`) |
+|---|---|---|
+| `sd_happy_path.json` | Login → add to cart → checkout | `python main.py --workflow sites/saucedemo/workflows/sd_happy_path.json` |
+| `sd_multi_product.json` | Add multiple products, verify cart | `python main.py --workflow sites/saucedemo/workflows/sd_multi_product.json` |
+| `sd_smoke_test.json` | Smoke check with `continue_on_failure` | `python main.py --workflow sites/saucedemo/workflows/sd_smoke_test.json` |
 
 ---
 
@@ -360,6 +402,11 @@ Nine ready-to-run JSON workflows demonstrating every engine capability:
 | `ol_store_count` | Count books across both shelves → stores in `context` |
 | `ol_assert_count` | Assert count equals `expected_count` or `count_before + delta` |
 | `ol_ensure_count` | Count shelf, store `gap` in context if top-up needed |
+| `sd_login` | SauceDemo login — fills credentials, submits |
+| `sd_add_to_cart` | Add named products to cart by title |
+| `sd_sort_products` | Set inventory sort order (az, za, lohi, hilo) |
+| `sd_view_cart` | Navigate to cart, read item list into context |
+| `sd_checkout` | Full checkout flow: info → overview → confirm |
 | `navigate` | Go to URL |
 | `click` | Click element via resolver cascade |
 | `fill` | Type into input + press Enter |
@@ -368,10 +415,12 @@ Nine ready-to-run JSON workflows demonstrating every engine capability:
 | `screenshot` | Capture screenshot to file |
 | `wait` | Wait for selector, URL fragment, or fixed seconds |
 | `extract_data` | Scrape DOM data into `context.extracted_data` |
+| `paginate` | Loop pages, accumulate results → `context.paginated_data` |
 | `for_each_item` | Loop over `context.collected_items`, run sub-steps per item |
 | `store_count` | Count elements via CSS selectors, store in `context` |
 | `assert_count` | Assert element count matches expected (CSS or context source) |
 | `measure_performance` | Collect `first_paint_ms`, `dom_content_loaded_ms`, `load_time_ms` |
+| `visual_compare` | Pixel-level screenshot diff against stored baseline |
 | `ensure_login` | Generic login subflow — accepts `login_steps` list in config |
 | `run_workflow` | Execute a sub-workflow JSON file then return to parent flow |
 | `parallel` | Run multiple `read_only` sub-steps concurrently in separate tabs |
@@ -417,6 +466,7 @@ playwright-stepper-framework/
 │   │   ├── interfaces.py             # IBrowserDriver, IElementHandle, Delays (DIP contracts)
 │   │   ├── driver.py                 # PlaywrightDriver — implements IBrowserDriver
 │   │   ├── base_page.py              # SharedBasePage — resolver helpers
+│   │   ├── constants.py              # CONFIDENCE_AUTO / CONFIDENCE_WARN — single source of truth
 │   │   └── performance.py            # measure_page_performance() — raw timing via JS API
 │   ├── openLibrary/
 │   │   ├── config.py                 # 3-tier settings: defaults → config.yaml → ENV
@@ -432,8 +482,20 @@ playwright-stepper-framework/
 │   │   │   └── screenshot.py         # ScreenshotManager helper
 │   │   └── data/
 │   │       └── testdata.json         # Parametrised test cases (query, max_year, limit)
-│   ├── saucedemo/                    # SauceDemo POMs
-│   └── phpTravels/                   # phpTravels POMs
+│   ├── saucedemo/
+│   │   ├── config.py                 # SauceDemo settings
+│   │   ├── pages/
+│   │   │   ├── base_page.py
+│   │   │   ├── login_page.py
+│   │   │   ├── inventory_page.py
+│   │   │   ├── product_page.py
+│   │   │   ├── cart_page.py
+│   │   │   ├── checkout_info_page.py
+│   │   │   ├── checkout_overview_page.py
+│   │   │   └── checkout_complete_page.py
+│   │   └── data/
+│   │       └── testdata.json
+│   └── phpTravels/                   # phpTravels POMs (POM layer only — no glue yet)
 │
 ├── exam/                             # Pytest exam suite — calls poms/ directly
 │   ├── flows.py                      # 4 exam function signatures (orchestration layer)
@@ -448,13 +510,16 @@ playwright-stepper-framework/
 │   │   ├── interfaces.py             # StepConfig, StepResult, ExecutionContext (all abstract)
 │   │   ├── actions/
 │   │   │   ├── factory.py            # ActionRegistry + build_default_registry()
-│   │   │   └── strategies.py         # navigate, click, fill, hover, select, screenshot,
-│   │   │                             #   wait, store_count, assert_count, for_each_item,
-│   │   │                             #   extract_data, paginate, ensure_login,
-│   │   │                             #   measure_performance, run_workflow, parallel
+│   │   │   ├── strategies.py         # navigate, click, fill, hover, select, screenshot,
+│   │   │   │                         #   wait, store_count, assert_count, for_each_item,
+│   │   │   │                         #   extract_data, paginate, ensure_login,
+│   │   │   │                         #   measure_performance, visual_compare,
+│   │   │   │                         #   run_workflow, parallel
+│   │   │   └── sub_step_mixin.py     # SubStepRunnerMixin — shared nested-step logic
 │   │   ├── resolvers/
 │   │   │   ├── element_resolver.py   # Cascade executor + DefaultResolverFactory
-│   │   │   └── strategies.py         # Role → Label → Placeholder → Text → Id → Css → XPath
+│   │   │   ├── strategies.py         # Role → Label → Placeholder → Text → Id → Css → XPath
+│   │   │   └── ai_pick_resolver.py   # AI disambiguation (Groq → Gemini → Claude)
 │   │   ├── runner/
 │   │   │   ├── step_runner.py        # Execution loop, retry, observer notifications
 │   │   │   ├── api.py                # StepperSession + run_steps() public API
@@ -464,26 +529,41 @@ playwright-stepper-framework/
 │   │   │   ├── reporters.py          # CompositeReporter, ConsoleReporter, JsonReporter,
 │   │   │   │                         #   AllureReporter, TestReportReporter
 │   │   │   └── test_report_reporter.py
+│   │   ├── pages/
+│   │   │   ├── base_page_module.py   # PageModule ABC
+│   │   │   ├── glue_action.py        # GlueAction base — enforces resolver injection
+│   │   │   └── page_objects.py       # POM registry
 │   │   └── planner/
 │   │       └── planner.py            # JsonFilePlanner (loads JSON) + ClaudePlanner (AI)
 │   │
-│   └── sites/openlibrary/
-│       ├── pages/                    # Glue layer — wires POMs into Stepper actions
-│       │   ├── login_action.py       # ol_ensure_login
-│       │   ├── search_page.py        # ol_collect_books
-│       │   ├── detail_page.py        # ol_add_to_shelf
-│       │   └── reading_list_action.py  # ol_clear_reading_list, ol_store_count,
-│       │                               #   ol_assert_count, ol_ensure_count
-│       └── workflows/                # JSON orchestration — zero selectors
-│           ├── ol_search_and_add.json
-│           ├── ol_add_only.json
-│           ├── ol_ensure_count.json
-│           ├── ol_regression_roundtrip.json
-│           ├── ol_multi_author.json
-│           ├── ol_parallel_perf.json
-│           ├── ol_smoke_test.json
-│           ├── ol_idempotency_test.json
-│           └── login.json
+│   ├── sites/openlibrary/
+│   │   ├── pages/                    # Glue layer — wires POMs into Stepper actions
+│   │   │   ├── login_action.py       # ol_ensure_login
+│   │   │   ├── search_page.py        # ol_collect_books
+│   │   │   ├── detail_page.py        # ol_add_to_shelf
+│   │   │   └── reading_list_action.py  # ol_clear_reading_list, ol_store_count,
+│   │   │                               #   ol_assert_count, ol_ensure_count
+│   │   └── workflows/                # JSON orchestration — zero selectors
+│   │       ├── ol_search_and_add.json
+│   │       ├── ol_add_only.json
+│   │       ├── ol_ensure_count.json
+│   │       ├── ol_regression_roundtrip.json
+│   │       ├── ol_multi_author.json
+│   │       ├── ol_parallel_perf.json
+│   │       ├── ol_smoke_test.json
+│   │       ├── ol_idempotency_test.json
+│   │       └── login.json
+│   │
+│   └── sites/saucedemo/
+│       ├── pages/                    # Glue layer
+│       │   ├── login_action.py       # sd_login
+│       │   ├── inventory_action.py   # sd_add_to_cart, sd_sort_products
+│       │   ├── cart_action.py        # sd_view_cart
+│       │   └── checkout_action.py    # sd_checkout
+│       └── workflows/
+│           ├── sd_happy_path.json
+│           ├── sd_multi_product.json
+│           └── sd_smoke_test.json
 │
 └── requirements.txt
 ```

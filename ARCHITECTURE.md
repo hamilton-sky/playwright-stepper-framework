@@ -10,6 +10,7 @@ playwright-stepper-framework/
 │   │   ├── driver.py             # Playwright adapter (IBrowserDriver impl)
 │   │   ├── interfaces.py         # POM contracts (IBrowserDriver, IElementHandle)
 │   │   ├── base_page.py          # SharedBasePage — resolver helpers
+│   │   ├── constants.py          # CONFIDENCE_AUTO / CONFIDENCE_WARN thresholds
 │   │   └── performance.py        # Performance metrics
 │   ├── openLibrary/              # OpenLibrary POMs
 │   │   ├── config.py             # Settings loader (YAML + env vars)
@@ -28,7 +29,8 @@ playwright-stepper-framework/
 │   │   ├── interfaces.py         # Strategy/Observer abstractions + StepConfig
 │   │   ├── actions/
 │   │   │   ├── factory.py        # ActionRegistry (factory + registry pattern)
-│   │   │   └── strategies.py     # Navigate, Click, Fill, ForEach, Parallel, etc.
+│   │   │   ├── strategies.py     # Navigate, Click, Fill, ForEach, Parallel, etc.
+│   │   │   └── sub_step_mixin.py # SubStepRunnerMixin — shared logic for nested steps
 │   │   ├── resolvers/
 │   │   │   ├── element_resolver.py   # Cascade orchestrator (det → semantic → AI)
 │   │   │   ├── strategies.py         # 7 deterministic resolver strategies
@@ -45,6 +47,7 @@ playwright-stepper-framework/
 │   │   │   └── test_report_reporter.py
 │   │   ├── pages/
 │   │   │   ├── base_page_module.py  # PageModule ABC (site-specific actions)
+│   │   │   ├── glue_action.py       # GlueAction base — enforces resolver injection
 │   │   │   └── page_objects.py      # POM registry
 │   │   └── utils.py
 │   │
@@ -55,11 +58,23 @@ playwright-stepper-framework/
 │   │   │   ├── login_action.py       # Registers ol_ensure_login
 │   │   │   └── reading_list_action.py  # Registers ol_clear_reading_list,
 │   │   │                               #   ol_store_count, ol_assert_count, ol_ensure_count
-│   │   └── workflows/
+│   │   └── workflows/                # 9 JSON workflows
 │   │       ├── ol_search_and_add.json
 │   │       ├── ol_smoke_test.json
 │   │       ├── ol_parallel_perf.json
-│   │       └── … (9 workflows total)
+│   │       └── … (+ ol_add_only, ol_ensure_count, ol_regression_roundtrip,
+│   │              ol_multi_author, ol_idempotency_test, login)
+│   │
+│   ├── sites/saucedemo/          # SauceDemo site integration
+│   │   ├── pages/
+│   │   │   ├── login_action.py       # Registers sd_login
+│   │   │   ├── inventory_action.py   # Registers sd_add_to_cart, sd_sort_products
+│   │   │   ├── cart_action.py        # Registers sd_view_cart
+│   │   │   └── checkout_action.py    # Registers sd_checkout
+│   │   └── workflows/
+│   │       ├── sd_happy_path.json
+│   │       ├── sd_multi_product.json
+│   │       └── sd_smoke_test.json
 │   │
 │   ├── tests/                    # Stepper engine test suite
 │   │   ├── conftest.py           # --headed flag registration
@@ -230,22 +245,23 @@ playwright-stepper-framework/
 
   BUILT-IN ACTIONS
   ────────────────
-  Navigate       → goto(url), wait_for_load_state
-  Click          → resolve element → click()
-  Fill           → resolve element → fill(text)
-  Hover          → resolve element → hover()
-  Select         → resolve element → selectOption()
-  Screenshot     → page.screenshot()
-  Wait           → asyncio.sleep / wait_for_selector
-  StoreCount     → locator.count() → context.counts[key]
-  AssertCount    → context.counts[key] vs expected value
-  ExtractData    → collect elements → context.extracted_data
-  Paginate       → loop pages, accumulate items
-  ForEachItem    → iterate context.collected_items, run sub-steps
-  EnsureLogin    → delegate to site-specific login action
-  MeasurePerf    → capture performance metrics
-  ParallelAction → run read-only actions concurrently
-  RunWorkflow    → nested sub-workflow execution
+  navigate            → goto(url), wait_for_load_state
+  click               → resolve element → click()
+  fill                → resolve element → fill(text)
+  hover               → resolve element → hover()
+  select              → resolve element → selectOption()
+  screenshot          → page.screenshot()
+  wait                → asyncio.sleep / wait_for_selector
+  store_count         → locator.count() → context.counts[key]
+  assert_count        → context.counts[key] vs expected value
+  extract_data        → collect elements → context.extracted_data
+  paginate            → loop pages, accumulate items → context.paginated_data
+  for_each_item       → iterate context.collected_items, run sub-steps
+  ensure_login        → delegate to site-specific login action
+  measure_performance → capture performance metrics
+  visual_compare      → screenshot diff against stored baseline (pixel-level)
+  parallel            → run read-only actions concurrently in separate tabs
+  run_workflow        → nested sub-workflow execution
 
   SITE-SPECIFIC ACTIONS (OpenLibrary)
   ────────────────────────────────────
@@ -260,6 +276,14 @@ playwright-stepper-framework/
   ol_assert_count       → assert context count == expected (delta or absolute)
   ol_ensure_count       → count shelf, store gap in context if top-up needed
                           flow controls collect / add / assert via when-guards
+
+  SITE-SPECIFIC ACTIONS (SauceDemo)
+  ───────────────────────────────────
+  sd_login          → LoginPage.login() → fills credentials, submits
+  sd_add_to_cart    → InventoryPage.add_products() → adds named products to cart
+  sd_sort_products  → InventoryPage.sort() → sets dropdown sort order
+  sd_view_cart      → CartPage.open() → navigates to cart, reads item list
+  sd_checkout       → CartPage → CheckoutInfoPage → CheckoutOverviewPage → CompletePage
 
   STEP-LEVEL CONTROLS (resolved at plan time by JsonFilePlanner)
   ──────────────────────────────────────────────────────────────
