@@ -73,6 +73,7 @@ def build_default_registry(
     registry     = ActionRegistry()
     for_each     = ForEachItemAction(action_factory=registry, screenshots_dir=screenshots_dir)
     ensure_login = EnsureLoginAction(action_factory=registry)
+    paginate     = PaginateAction(action_factory=registry)
     parallel     = ParallelAction(action_factory=registry)
 
     return (
@@ -90,6 +91,6 @@ def build_default_registry(
         .register(ensure_login)
         .register(MeasurePerformanceAction())
         .register(ExtractDataAction())
-        .register(PaginateAction())
+        .register(paginate)
         .register(parallel)
     )

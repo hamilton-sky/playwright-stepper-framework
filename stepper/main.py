@@ -71,6 +71,13 @@ logger = logging.getLogger(__name__)
 _stepper_root = Path(__file__).resolve().parent
 
 
+def _serve_allure() -> None:
+    import subprocess
+    allure_dir = str(_stepper_root / "reports" / "allure-results")
+    logger.info(f"Launching: allure serve {allure_dir}")
+    subprocess.run(["allure", "serve", allure_dir])
+
+
 async def run(
     workflow_path: str = None,
     task: str = None,
@@ -94,19 +101,18 @@ async def run(
     logger.info(f"Planned {len(steps)} steps")
 
     # ── 2. Infrastructure ─────────────────────────────────────────────────────
+    cfg_headless = not headless
     try:
         settings = load_settings()
         validate_ai_config(settings)
         use_visual_ai      = settings.use_visual_ai
         slow_mo            = settings.slow_mo_ms
         cfg_browser        = settings.browser
-        cfg_headless       = not headless
         storage_state_path = settings.storage_state_path
     except Exception:
         use_visual_ai      = False
         slow_mo            = 300
         cfg_browser        = "chromium"
-        cfg_headless       = not headless
         storage_state_path = None
 
     ai_client = None
@@ -123,29 +129,32 @@ async def run(
 
     # ── 3. Reporters — absolute paths so output is always inside stepper/ ─────
     run_label = Path(workflow_path).stem if workflow_path else "task"
+    test_reporter = TestReportReporter(
+        reports_base=str(_stepper_root / "reports"),
+        test_name=run_label,
+        browser=cfg_browser,
+        headless=cfg_headless,
+    )
     reporters = [
         ConsoleReporter(),
         JsonReporter(str(_stepper_root / "report.json")),
-        TestReportReporter(
-            reports_base=str(_stepper_root / "reports"),
-            test_name=run_label,
-            browser=cfg_browser,
-            headless=cfg_headless,
-        ),
+        test_reporter,
         AllureReporter(str(_stepper_root / "reports" / "allure-results")),
     ]
     reporter = CompositeReporter(reporters)
 
     # ── 4. Run ───────────────────────────────────────────────────────────────
     async with async_playwright() as pw:
-        browser = await pw.chromium.launch(headless=headless, slow_mo=slow_mo)
+        _launchers = {"chromium": pw.chromium, "firefox": pw.firefox, "webkit": pw.webkit}
+        browser = await _launchers.get(cfg_browser, pw.chromium).launch(headless=headless, slow_mo=slow_mo)
 
         # Start suite first — TestReportReporter creates the run directory here.
-        suite_name    = workflow_path or task or "automation"
-        test_reporter = next((r for r in reporters if isinstance(r, TestReportReporter)), None)
+        suite_name = workflow_path or task or "automation"
         reporter.start_suite(suite_name)
 
-        # Wire terminal log → reports/{run}/logs/run.log
+        # Wire terminal log and screenshots into the run-specific directory.
+        # Screenshots go directly into the run directory — no separate temp folder.
+        # Actions write here; TestReportReporter records the paths without copying.
         log_handler = None
         if test_reporter and test_reporter.manager.current_test_dir:
             log_path = test_reporter.manager.current_test_dir / "logs" / "run.log"
@@ -154,10 +163,6 @@ async def run(
                 "%(asctime)s | %(levelname)s | %(name)s | %(message)s", datefmt="%H:%M:%S"
             ))
             logging.getLogger().addHandler(log_handler)
-
-        # Screenshots go directly into the run directory — no separate temp folder.
-        # Actions write here; TestReportReporter records the paths without copying.
-        if test_reporter and test_reporter.manager.current_test_dir:
             screenshots_dir = test_reporter.manager.get_screenshots_dir()
         else:
             screenshots_dir = _stepper_root / "artifacts" / "screenshots"
@@ -199,7 +204,9 @@ async def run(
         )
         runner.add_observer(LoggingObserver())
 
-        # Register runtime subflow action after runner exists (needs runner.run callback)
+        # TEMPORAL COUPLING: RunWorkflowAction MUST be registered after StepRunner is
+        # constructed. It closes over runner.run, so the runner must already exist.
+        # Moving this block above the StepRunner construction will cause a NameError.
         from engine.actions.strategies import RunWorkflowAction
         base_dir = Path(workflow_path).parent if workflow_path else Path.cwd()
         action_registry.register(RunWorkflowAction(run_steps_callable=runner.run, base_dir=base_dir))
@@ -219,9 +226,7 @@ async def run(
         await browser.close()
 
     if allure_serve:
-        import subprocess
-        logger.info(f"Launching: allure serve {_stepper_root / 'reports' / 'allure-results'}")
-        subprocess.run(["allure", "serve", str(_stepper_root / "reports" / "allure-results")])
+        _serve_allure()
 
     return results
 
@@ -273,8 +278,7 @@ def main():
             ))
 
         if args.allure_serve:
-            import subprocess
-            subprocess.run(["allure", "serve", str(_stepper_root / "reports" / "allure-results")])
+            _serve_allure()
         return
 
     # Single run (no --data)

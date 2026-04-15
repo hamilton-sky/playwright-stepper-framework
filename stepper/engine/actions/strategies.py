@@ -12,6 +12,8 @@ OCP: Add FillFormAction, HoverAction, DragAction — zero changes elsewhere.
 
 from __future__ import annotations
 import asyncio
+import copy
+import json
 import logging
 import os
 from datetime import datetime
@@ -28,6 +30,7 @@ from engine.interfaces import (
     CONFIDENCE_AUTO, CONFIDENCE_WARN,
 )
 from engine.utils import dict_to_step_config as _dict_to_step_config
+from engine.actions.sub_step_mixin import SubStepRunnerMixin, _apply_substitutions
 
 logger = logging.getLogger(__name__)
 
@@ -234,7 +237,7 @@ class ScreenshotAction(ActionStrategy):
     async def _execute(self, page, step: StepConfig, resolver,
                        context: ExecutionContext) -> StepResult:
         ts   = datetime.now().strftime("%H%M%S")
-        name = step.extra.get("filename") or f"{ts}_step.png" if step.extra else f"{ts}_step.png"
+        name = step.extra.get("filename") or f"{ts}_step.png"
         path = str(self._screenshots_dir / name)
         await page.screenshot(path=path, full_page=False)
         logger.info(f"📸 screenshot: {path}")
@@ -332,7 +335,7 @@ class StoreCountAction(ActionStrategy):
         return StepResult(step=step, status="passed")
 
 
-class ForEachItemAction(ActionStrategy):
+class ForEachItemAction(SubStepRunnerMixin, ActionStrategy):
     """
     Iterate over collected item URLs and run sub-steps on each.
     Template variables: {{item_url}}, {{book_url}} (compat), {{index}}
@@ -346,7 +349,6 @@ class ForEachItemAction(ActionStrategy):
 
     async def _execute(self, page, step: StepConfig, resolver,
                        context: ExecutionContext) -> StepResult:
-        import json
         # Prefer typed context field; fall back to legacy page attribute
         items = (
             context.collected_items
@@ -355,63 +357,42 @@ class ForEachItemAction(ActionStrategy):
         )
         sub_steps_raw = step.extra.get("steps", [])
 
-        from engine.runner.when_eval import evaluate_when
-
         for idx, item in enumerate(items):
-            for raw in sub_steps_raw:
-                if isinstance(item, dict):
-                    item_url = (
-                        item.get("url")
-                        or item.get("href")
-                        or item.get("link")
-                        or ""
-                    )
-                else:
-                    item_url = item
-
-                resolved_raw = (
-                    json.dumps(raw)
-                    .replace("{{item_url}}", str(item_url))
-                    .replace("{{book_url}}", str(item_url))  # backward compatibility
-                    .replace("{{index}}", str(idx + 1))
+            if isinstance(item, dict):
+                item_url = (
+                    item.get("url")
+                    or item.get("href")
+                    or item.get("link")
+                    or ""
                 )
+            else:
+                item_url = item
 
-                # Metadata support: {{item.<key>}} replacements for dict items
-                if isinstance(item, dict):
-                    for key, val in item.items():
-                        token = f"{{{{item.{key}}}}}"
-                        if token in resolved_raw:
-                            if isinstance(val, (dict, list)):
-                                val_str = json.dumps(val)
-                            else:
-                                val_str = str(val)
-                            resolved_raw = resolved_raw.replace(token, val_str)
-                sub_cfg = _dict_to_step_config(json.loads(resolved_raw))
+            subs = {
+                "item_url": str(item_url),
+                "book_url": str(item_url),  # backward compatibility
+                "index": str(idx + 1),
+            }
+            if isinstance(item, dict):
+                for key, val in item.items():
+                    subs[f"item.{key}"] = val
 
-                # Evaluate `when` condition before running sub-step
-                if sub_cfg.when:
-                    try:
-                        should_run = await evaluate_when(sub_cfg.when, context, page)
-                    except Exception as e:
-                        logger.warning(f"ForEach when-eval error: {e} — sub-step will run")
-                        should_run = True
-                    if not should_run:
-                        logger.info(f"  ○ sub-step skipped (when=false): {sub_cfg.description or sub_cfg.action}")
-                        continue
-
-                action  = self._factory.create(sub_cfg.action)
-                try:
-                    await action.execute(page, sub_cfg, resolver, context)
-                except Exception as e:
-                    logger.error(f"ForEach item {idx+1}: {e}")
-                    await page.screenshot(
-                        path=str(self._screenshots_dir / f"error_book_{idx+1}.png")
-                    )
+            try:
+                await self._run_sub_steps(
+                    sub_steps_raw, page, resolver, context,
+                    substitutions=subs,
+                    stop_on_failure=False,
+                )
+            except Exception as e:
+                logger.error(f"ForEach item {idx+1}: {e}")
+                await page.screenshot(
+                    path=str(self._screenshots_dir / f"error_book_{idx+1}.png")
+                )
 
         return StepResult(step=step, status="passed")
 
 
-class EnsureLoginAction(ActionStrategy):
+class EnsureLoginAction(SubStepRunnerMixin, ActionStrategy):
     """
     Ensure the user is logged in before continuing.
 
@@ -466,26 +447,29 @@ class EnsureLoginAction(ActionStrategy):
 
         logger.info("→ ensure_login: running login steps")
         # Wait for the login form to be ready before filling credentials
-        try:
-            await page.wait_for_selector("#username", state="visible", timeout=10_000)
-        except Exception:
-            pass
-        import json
-        for raw in login_steps:
-            resolved_raw = json.dumps(raw)
-            sub_cfg = _dict_to_step_config(json.loads(resolved_raw))
-            action = self._factory.create(sub_cfg.action)
+        ready_selector = step.extra.get("form_ready_selector")
+        if ready_selector:
             try:
-                sub_result = await action.execute(page, sub_cfg, resolver, context)
-                if sub_result.status != "passed":
-                    return StepResult(
-                        step=step,
-                        status="failed",
-                        error=f"ensure_login: step '{sub_cfg.description or sub_cfg.action}' {sub_result.status}",
-                    )
-            except Exception as e:
-                logger.error(f"ensure_login step failed: {e}")
-                return StepResult(step=step, status="failed", error=str(e))
+                await page.wait_for_selector(ready_selector, state="visible", timeout=10_000)
+            except Exception:
+                pass
+
+        try:
+            results = await self._run_sub_steps(
+                login_steps, page, resolver, context,
+                stop_on_failure=True,
+            )
+        except Exception as e:
+            logger.error("ensure_login step failed: %s", e)
+            return StepResult(step=step, status="failed", error=str(e))
+
+        for result in results:
+            if result.status != "passed":
+                return StepResult(
+                    step=step,
+                    status="failed",
+                    error=f"ensure_login: step '{result.step.description or result.step.action}' {result.status}",
+                )
 
         if check_url:
             await page.goto(check_url, wait_until="domcontentloaded", timeout=30_000)
@@ -508,7 +492,6 @@ class MeasurePerformanceAction(ActionStrategy):
 
     async def _execute(self, page, step: StepConfig, resolver,
                        context: ExecutionContext) -> StepResult:
-        import json
         url       = step.url or step.input_value
         threshold = step.extra.get("threshold_ms", 3000)
 
@@ -717,6 +700,9 @@ class PaginateAction(ActionStrategy):
     """
     action_name = "paginate"
 
+    def __init__(self, action_factory):
+        self._factory = action_factory
+
     async def _execute(self, page, step: StepConfig, resolver,
                        context: ExecutionContext) -> StepResult:
         import time
@@ -759,7 +745,8 @@ class PaginateAction(ActionStrategy):
                     }
                 )
                 
-                extract_result = await ExtractDataAction()._execute(
+                action = self._factory.create("extract_data")
+                extract_result = await action.execute(
                     page, extract_step, resolver, context
                 )
                 
@@ -840,7 +827,6 @@ class RunWorkflowAction(ActionStrategy):
 
     async def _execute(self, page, step: StepConfig, resolver,
                        context: ExecutionContext) -> StepResult:
-        import json
         from engine.planner.planner import _substitute
 
         wf_path = (step.extra or {}).get("path") or (step.extra or {}).get("workflow")
