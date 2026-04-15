@@ -495,7 +495,7 @@ playwright-stepper-framework/
 │   │   │   └── checkout_complete_page.py
 │   │   └── data/
 │   │       └── testdata.json
-│   └── phpTravels/                   # phpTravels POMs (POM layer only — no glue yet)
+│   └── phpTravels/                   # phpTravels POMs [scaffolded — not integrated; POM layer only, no glue or workflows]
 │
 ├── exam/                             # Pytest exam suite — calls poms/ directly
 │   ├── flows.py                      # 4 exam function signatures (orchestration layer)

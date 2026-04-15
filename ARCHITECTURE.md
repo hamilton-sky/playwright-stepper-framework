@@ -20,7 +20,7 @@ playwright-stepper-framework/
 │   │       ├── book_detail_page.py
 │   │       └── reading_list_page.py
 │   ├── saucedemo/                # SauceDemo POMs
-│   └── phpTravels/               # phpTravels POMs
+│   └── phpTravels/               # phpTravels POMs [scaffolded — not integrated]
 │
 ├── stepper/                      # The Automation Engine
 │   ├── main.py                   # Entry point — wires everything together

@@ -71,6 +71,17 @@ def pytest_addoption(parser):
                          help="Run all test cases from testdata.json")
     except (ValueError, argparse.ArgumentError):
         pass
+    try:
+        parser.addoption(
+            "--clear-before-run", action="store_true", default=False,
+            help=(
+                "Clear the reading list before adding books. "
+                "Enables exact == count assertions instead of >=. "
+                "Equivalent to the Stepper's ol_clear_reading_list + when: guard."
+            ),
+        )
+    except (ValueError, argparse.ArgumentError):
+        pass
 
 
 def pytest_generate_tests(metafunc):
@@ -99,6 +110,21 @@ def settings():
 def result_key(test_case):
     """Stable tuple key for sharing state between ordered test methods."""
     return (test_case["query"], test_case["max_year"], test_case["limit"])
+
+
+@pytest.fixture
+def clear_before_run(request) -> bool:
+    """
+    True when --clear-before-run is passed on the CLI.
+
+    Acts as the pytest equivalent of a Stepper when: guard:
+      - test_add_books clears the shelf when this is True
+      - test_assert_reading_list_count uses == (exact) instead of >= (at-least)
+
+    Usage:
+        pytest tests/ -v --clear-before-run
+    """
+    return request.config.getoption("--clear-before-run", default=False)
 
 
 @pytest.fixture(scope="session")
