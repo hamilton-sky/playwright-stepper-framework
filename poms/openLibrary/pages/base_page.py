@@ -43,14 +43,15 @@ class BasePage(SharedBasePage):
     """
 
     def __init__(self, driver, base_url: str, delays=None,
-                 page=None, resolver=None):
+                 page=None, resolver=None, behaviour=None):
         from poms.shared.interfaces import Delays
-        super().__init__(driver, base_url, page=page, resolver=resolver)
+        super().__init__(driver, base_url, page=page, resolver=resolver,
+                         behaviour=behaviour)
         self.delays = delays if delays is not None else Delays()
 
     async def open(self) -> None:
         await self._driver.goto(self.url, wait_until="domcontentloaded")
-        await asyncio.sleep(self.delays.page_load_wait_ms / 1000)
+        await self._sleep(self.delays.page_load_wait_ms)
         # networkidle can hang indefinitely on pages with lazy-loading or
         # analytics polling — domcontentloaded is reliable enough, and
         # each subclass wait_for_ready() handles page-specific readiness.

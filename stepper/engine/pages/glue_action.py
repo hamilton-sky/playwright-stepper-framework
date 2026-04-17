@@ -33,7 +33,7 @@ subclass GlueAction, not ActionStrategy directly.
 
 from __future__ import annotations
 
-from typing import TypeVar, Type
+from typing import TypeVar
 
 from engine.interfaces import ActionStrategy
 
@@ -41,30 +41,17 @@ T = TypeVar("T")
 
 
 class GlueAction(ActionStrategy):
-    """
-    Base class for all site-specific (glue-layer) actions.
 
-    Provides two construction helpers that encode the resolver-injection
-    contract so it cannot be accidentally omitted:
+    async def execute(self, page, step, resolver, context, behaviour):
+        # The runner passes the 'official' behaviour instance here
+        return await self._execute(page, step, resolver, context, behaviour)
 
-      _build_pom  — construct any POM with page= and resolver= enforced
-      _driver     — wrap a Playwright page in PlaywrightDriver
-    """
-
-    @staticmethod
-    def _build_pom(pom_cls: Type[T], *args, page, resolver, **kwargs) -> T:
+    def _build_pom(self, pom_cls, *args, page, resolver, behaviour, **kwargs):
         """
-        Construct a POM instance with resolver injection enforced.
-
-        Calling this instead of the POM constructor directly makes it
-        impossible to forget page= or resolver= — both are keyword-only
-        and required by this signature.
-
-        Example:
-            pom = self._build_pom(LoginPage, driver, settings.base_url,
-                                  settings.delays, page=page, resolver=resolver)
+        Updated to make behaviour a mandatory argument.
         """
-        return pom_cls(*args, page=page, resolver=resolver, **kwargs)
+        return pom_cls(*args, page=page, resolver=resolver, 
+                       behaviour=behaviour, **kwargs)
 
     @staticmethod
     def _driver(page):

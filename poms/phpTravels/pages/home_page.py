@@ -30,6 +30,7 @@ class HomePage(BasePage):
         TAB_CARS    = "a[href*='#cars']"
 
         # ── Hotels search form ────────────────────────────────────────────────
+        # Plain strings — used for wait_for_selector and select_option
         HOTEL_DESTINATION   = "#hotels input.typeahead"
         HOTEL_CHECKIN       = "#hotels input[name='checkin']"
         HOTEL_CHECKOUT      = "#hotels input[name='checkout']"
@@ -60,6 +61,59 @@ class HomePage(BasePage):
         NAV_LOGO            = ".navbar-brand"
         NAV_MY_ACCOUNT      = "a[href*='/account']"
 
+        # ── Interactive cfg lists ─────────────────────────────────────────────
+        TAB_HOTELS_CFG = [
+            {"role": "link", "name": "Hotels",       "priority": 10},
+            {"css":  "a[href*='#hotels']",            "priority": 20},
+        ]
+        TAB_FLIGHTS_CFG = [
+            {"role": "link", "name": "Flights",      "priority": 10},
+            {"css":  "a[href*='#flights']",           "priority": 20},
+        ]
+        TAB_TOURS_CFG = [
+            {"role": "link", "name": "Tours",        "priority": 10},
+            {"css":  "a[href*='#tours']",             "priority": 20},
+        ]
+        HOTEL_DESTINATION_CFG = [
+            {"placeholder": "Destination",              "priority": 10},
+            {"css":         "#hotels input.typeahead",  "priority": 20},
+        ]
+        SUGGESTION_ITEM_CFG = [
+            {"css": ".tt-suggestion", "priority": 10},
+        ]
+        HOTEL_CHECKIN_CFG = [
+            {"placeholder": "Check In",                      "priority": 10},
+            {"css":         "#hotels input[name='checkin']", "priority": 20},
+        ]
+        HOTEL_CHECKOUT_CFG = [
+            {"placeholder": "Check Out",                      "priority": 10},
+            {"css":         "#hotels input[name='checkout']", "priority": 20},
+        ]
+        HOTEL_SEARCH_BTN_CFG = [
+            {"role": "button", "name": "Search",         "priority": 10},
+            {"css":  "#hotels button[type='submit']",    "priority": 20},
+        ]
+        FLIGHT_ORIGIN_CFG = [
+            {"placeholder": "From",                         "priority": 10},
+            {"css":         "#flights input[name='from']",  "priority": 20},
+        ]
+        FLIGHT_DESTINATION_CFG = [
+            {"placeholder": "To",                          "priority": 10},
+            {"css":         "#flights input[name='to']",   "priority": 20},
+        ]
+        FLIGHT_DEPART_DATE_CFG = [
+            {"placeholder": "Departure Date",                        "priority": 10},
+            {"css":         "#flights input[name='departure_date']", "priority": 20},
+        ]
+        FLIGHT_RETURN_DATE_CFG = [
+            {"placeholder": "Return Date",                          "priority": 10},
+            {"css":         "#flights input[name='return_date']",   "priority": 20},
+        ]
+        FLIGHT_SEARCH_BTN_CFG = [
+            {"role": "button", "name": "Search",          "priority": 10},
+            {"css":  "#flights button[type='submit']",    "priority": 20},
+        ]
+
     @property
     def url(self) -> str:
         return f"{self.base_url}/"
@@ -75,19 +129,19 @@ class HomePage(BasePage):
     # ── Tab navigation ────────────────────────────────────────────────────────
 
     async def select_hotels_tab(self) -> None:
-        await self._driver.click(self.Locators.TAB_HOTELS)
+        await self._resolve_and_click_any(self.Locators.TAB_HOTELS_CFG)
 
     async def select_flights_tab(self) -> None:
-        await self._driver.click(self.Locators.TAB_FLIGHTS)
+        await self._resolve_and_click_any(self.Locators.TAB_FLIGHTS_CFG)
 
     async def select_tours_tab(self) -> None:
-        await self._driver.click(self.Locators.TAB_TOURS)
+        await self._resolve_and_click_any(self.Locators.TAB_TOURS_CFG)
 
     # ── Hotels form ───────────────────────────────────────────────────────────
 
     async def fill_hotel_destination(self, value: str) -> None:
         """Type into the destination autocomplete and wait for suggestions."""
-        await self._driver.fill(self.Locators.HOTEL_DESTINATION, value)
+        await self._resolve_and_fill_any(self.Locators.HOTEL_DESTINATION_CFG, value)
         try:
             await self._driver.wait_for_selector(
                 self.Locators.SUGGESTION_LIST, timeout=5_000
@@ -97,43 +151,36 @@ class HomePage(BasePage):
 
     async def select_first_hotel_suggestion(self) -> None:
         """Click the first suggestion in the autocomplete dropdown."""
-        await self._driver.click(self.Locators.SUGGESTION_ITEM)
+        await self._resolve_and_click_any(self.Locators.SUGGESTION_ITEM_CFG)
 
     async def fill_hotel_checkin(self, date: str) -> None:
         """date: 'DD-MM-YYYY' or whatever format the site expects."""
-        await self._driver.fill(self.Locators.HOTEL_CHECKIN, date)
+        await self._resolve_and_fill_any(self.Locators.HOTEL_CHECKIN_CFG, date)
 
     async def fill_hotel_checkout(self, date: str) -> None:
-        await self._driver.fill(self.Locators.HOTEL_CHECKOUT, date)
+        await self._resolve_and_fill_any(self.Locators.HOTEL_CHECKOUT_CFG, date)
 
     async def fill_hotel_adults(self, count: str) -> None:
-        page = self._page
-        if page:
-            await page.select_option(self.Locators.HOTEL_ADULTS, count)
-        else:
-            await self._driver.evaluate(
-                f"document.querySelector('{self.Locators.HOTEL_ADULTS}').value = '{count}';"
-                f"document.querySelector('{self.Locators.HOTEL_ADULTS}').dispatchEvent(new Event('change'));"
-            )
+        await self._select_option(self.Locators.HOTEL_ADULTS, count)
 
     async def submit_hotel_search(self) -> None:
-        await self._driver.click(self.Locators.HOTEL_SEARCH_BTN)
+        await self._resolve_and_click_any(self.Locators.HOTEL_SEARCH_BTN_CFG)
         await self._driver.wait_for_load_state("domcontentloaded")
 
     # ── Flights form ──────────────────────────────────────────────────────────
 
     async def fill_flight_origin(self, value: str) -> None:
-        await self._driver.fill(self.Locators.FLIGHT_ORIGIN, value)
+        await self._resolve_and_fill_any(self.Locators.FLIGHT_ORIGIN_CFG, value)
 
     async def fill_flight_destination(self, value: str) -> None:
-        await self._driver.fill(self.Locators.FLIGHT_DESTINATION, value)
+        await self._resolve_and_fill_any(self.Locators.FLIGHT_DESTINATION_CFG, value)
 
     async def fill_flight_depart_date(self, date: str) -> None:
-        await self._driver.fill(self.Locators.FLIGHT_DEPART_DATE, date)
+        await self._resolve_and_fill_any(self.Locators.FLIGHT_DEPART_DATE_CFG, date)
 
     async def fill_flight_return_date(self, date: str) -> None:
-        await self._driver.fill(self.Locators.FLIGHT_RETURN_DATE, date)
+        await self._resolve_and_fill_any(self.Locators.FLIGHT_RETURN_DATE_CFG, date)
 
     async def submit_flight_search(self) -> None:
-        await self._driver.click(self.Locators.FLIGHT_SEARCH_BTN)
+        await self._resolve_and_click_any(self.Locators.FLIGHT_SEARCH_BTN_CFG)
         await self._driver.wait_for_load_state("domcontentloaded")

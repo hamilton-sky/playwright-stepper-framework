@@ -62,13 +62,7 @@ class LoginPage(BasePage):
 
     async def get_error_message(self) -> str | None:
         """Return the error banner text, or None if no error is visible."""
-        try:
-            el = await self._driver.query_selector(self.Locators.ERROR_MSG)
-            if el:
-                return await el.inner_text()
-        except Exception:
-            pass
-        return None
+        return await self._get_text_or_none(self.Locators.ERROR_MSG)
 
     async def is_logged_in(self) -> bool:
         """True if the post-login app logo is present (not on the login page)."""

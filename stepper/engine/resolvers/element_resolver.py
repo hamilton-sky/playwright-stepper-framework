@@ -12,6 +12,7 @@ SRP: Only decides WHICH element to act on, never performs the action itself.
 """
 
 from __future__ import annotations
+import asyncio
 import logging
 from typing import Optional
 
@@ -289,11 +290,15 @@ class ElementResolver:
     @staticmethod
     async def _describe_locator(loc) -> str:
         try:
-            text  = (await loc.inner_text()).strip()[:80]
-            role  = await loc.get_attribute("role") or ""
-            label = await loc.get_attribute("aria-label") or ""
-            ph    = await loc.get_attribute("placeholder") or ""
-            return " ".join(filter(None, [role, label, ph, text])).strip()
+            text, role, label, ph = await asyncio.gather(
+                loc.inner_text(),
+                loc.get_attribute("role"),
+                loc.get_attribute("aria-label"),
+                loc.get_attribute("placeholder"),
+            )
+            return " ".join(filter(None, [
+                role or "", label or "", ph or "", (text or "").strip()[:80]
+            ])).strip()
         except Exception:
             return ""
 

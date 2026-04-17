@@ -33,7 +33,10 @@ globs:
 
 | Action name | Glue file | POM(s) used |
 |---|---|---|
-| _(TBD)_ | _(TBD)_ | `LoginPage`, `HomePage`, `HotelResultsPage`, `HotelDetailPage` |
+| `pt_login` | `login_action.py` | `LoginPage` |
+| `pt_search_hotels` | `hotel_search_action.py` | `HomePage` |
+| `pt_select_hotel` | `hotel_results_action.py` | `HotelResultsPage` |
+| `pt_book_hotel` | `hotel_detail_action.py` | `HotelDetailPage` |
 
 ---
 

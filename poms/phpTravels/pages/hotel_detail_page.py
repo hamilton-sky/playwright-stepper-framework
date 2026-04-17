@@ -37,12 +37,29 @@ class HotelDetailPage(BasePage):
         ROOM_PRICE     = ".room-price, td.price"
         ROOM_BOOK_BTN  = "a.book-now, button.book-room"
 
-        # ── Booking panel ─────────────────────────────────────────────────────
-        CHECKIN_DATE   = "input[name='checkin'], #checkin"
-        CHECKOUT_DATE  = "input[name='checkout'], #checkout"
-        ADULTS_SELECT  = "select[name='adults']"
+        # ── Booking panel — plain strings for select_option ──────────────────
+        CHECKIN_DATE    = "input[name='checkin']"
+        CHECKOUT_DATE   = "input[name='checkout']"
+        ADULTS_SELECT   = "select[name='adults']"
         CHILDREN_SELECT = "select[name='children']"
-        BOOK_NOW_BTN   = "button[type='submit'].book-now, #book_now"
+        BOOK_NOW_BTN    = "button[type='submit'].book-now"
+
+        # ── Interactive cfg lists ─────────────────────────────────────────────
+        CHECKIN_DATE_CFG = [
+            {"placeholder": "Check In",              "priority": 10},
+            {"id":          "checkin",               "priority": 20},
+            {"css":         "input[name='checkin']", "priority": 30},
+        ]
+        CHECKOUT_DATE_CFG = [
+            {"placeholder": "Check Out",              "priority": 10},
+            {"id":          "checkout",               "priority": 20},
+            {"css":         "input[name='checkout']", "priority": 30},
+        ]
+        BOOK_NOW_BTN_CFG = [
+            {"role": "button", "name": "Book Now",           "priority": 10},
+            {"id":   "book_now",                             "priority": 20},
+            {"css":  "button[type='submit'].book-now",       "priority": 30},
+        ]
 
         # ── Confirmation ──────────────────────────────────────────────────────
         CONFIRM_REF    = ".booking-ref, .confirmation-number, #booking_ref"
@@ -94,33 +111,19 @@ class HotelDetailPage(BasePage):
 
     async def fill_checkin_date(self, date: str) -> None:
         """date: format expected by the site (e.g. '25-04-2026')."""
-        await self._driver.fill(self.Locators.CHECKIN_DATE, date)
+        await self._resolve_and_fill_any(self.Locators.CHECKIN_DATE_CFG, date)
 
     async def fill_checkout_date(self, date: str) -> None:
-        await self._driver.fill(self.Locators.CHECKOUT_DATE, date)
+        await self._resolve_and_fill_any(self.Locators.CHECKOUT_DATE_CFG, date)
 
     async def fill_adults(self, count: str) -> None:
-        page = self._page
-        if page:
-            await page.select_option(self.Locators.ADULTS_SELECT, count)
-        else:
-            await self._driver.evaluate(
-                f"document.querySelector('{self.Locators.ADULTS_SELECT}').value = '{count}';"
-                f"document.querySelector('{self.Locators.ADULTS_SELECT}').dispatchEvent(new Event('change'));"
-            )
+        await self._select_option(self.Locators.ADULTS_SELECT, count)
 
     async def fill_children(self, count: str) -> None:
-        page = self._page
-        if page:
-            await page.select_option(self.Locators.CHILDREN_SELECT, count)
-        else:
-            await self._driver.evaluate(
-                f"document.querySelector('{self.Locators.CHILDREN_SELECT}').value = '{count}';"
-                f"document.querySelector('{self.Locators.CHILDREN_SELECT}').dispatchEvent(new Event('change'));"
-            )
+        await self._select_option(self.Locators.CHILDREN_SELECT, count)
 
     async def submit_booking(self) -> None:
-        await self._driver.click(self.Locators.BOOK_NOW_BTN)
+        await self._resolve_and_click_any(self.Locators.BOOK_NOW_BTN_CFG)
         await self._driver.wait_for_load_state("domcontentloaded")
         logger.info("Booking submitted for hotel: %s", self._hotel_slug)
 

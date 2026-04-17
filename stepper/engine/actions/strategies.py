@@ -748,13 +748,15 @@ class ExtractDataAction(ActionStrategy):
             locators = await page.locator(selector).all()
             extracted: list = []
             
-            for loc in locators[:limit]:
+            async def _fetch_element(loc):
                 if len(attrs) == 1:
-                    # Single attribute: return scalar
-                    extracted.append(await _fetch_attr(loc, attrs[0]))
-                else:
-                    # Multiple attributes: return dict
-                    extracted.append({attr: await _fetch_attr(loc, attr) for attr in attrs})
+                    return await _fetch_attr(loc, attrs[0])
+                values = await asyncio.gather(*[_fetch_attr(loc, attr) for attr in attrs])
+                return dict(zip(attrs, values))
+
+            extracted = list(await asyncio.gather(
+                *[_fetch_element(loc) for loc in locators[:limit]]
+            ))
             
             # Apply URL prefix if needed (converts relative hrefs to absolute URLs)
             if url_prefix:

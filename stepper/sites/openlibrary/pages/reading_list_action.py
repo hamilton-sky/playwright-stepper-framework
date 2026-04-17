@@ -17,6 +17,8 @@ Dependency direction: sites.openlibrary → stepper  (correct)
 from __future__ import annotations
 import logging
 
+
+from engine.browser.human_behaviour import HumanBehaviour
 from engine.interfaces import StepConfig, StepResult, ExecutionContext
 from engine.pages.base_page_module import PageModule
 from engine.pages.glue_action import GlueAction
@@ -44,6 +46,7 @@ class OLReadingListPage(PageModule):
         async def _execute(
             self, page, step: StepConfig,
             resolver, context: ExecutionContext,
+            behaviour: HumanBehaviour
         ) -> StepResult:
             try:
                 from poms.openLibrary.config import load_settings
@@ -53,14 +56,10 @@ class OLReadingListPage(PageModule):
                 settings     = load_settings()
                 driver       = self._driver(page)
                 reading_list = self._build_pom(ReadingListPage, driver, settings.base_url,
-                                               settings.delays, page=page, resolver=resolver)
+                                               settings.delays, page=page, resolver=resolver, behaviour=behaviour)
 
-                want_urls    = await reading_list.collect_all_book_urls(
-                    ReadingListPage._WANT_TO_READ_PATH
-                )
-                already_urls = await reading_list.collect_all_book_urls(
-                    ReadingListPage._ALREADY_READ_PATH
-                )
+                want_urls    = await reading_list.collect_all_book_urls(ReadingListPage._WANT_TO_READ_PATH)
+                already_urls = await reading_list.collect_all_book_urls(ReadingListPage._ALREADY_READ_PATH)
                 urls = want_urls + already_urls
 
                 if not urls:
@@ -70,7 +69,7 @@ class OLReadingListPage(PageModule):
                 logger.info(f"ol_clear_reading_list — removing {len(urls)} book(s)")
                 for idx, url in enumerate(urls, start=1):
                     detail = self._build_pom(BookDetailPage, driver, settings.base_url,
-                                            url, settings.delays, page=page, resolver=resolver)
+                                            url, settings.delays, page=page, resolver=resolver, behaviour=behaviour)
                     await detail.open()
                     removed = await detail.remove_from_shelf()
                     logger.info(
@@ -102,6 +101,7 @@ class OLReadingListPage(PageModule):
         async def _execute(
             self, page, step: StepConfig,
             resolver, context: ExecutionContext,
+            behaviour: HumanBehaviour
         ) -> StepResult:
             try:
                 from poms.openLibrary.config import load_settings
@@ -110,7 +110,7 @@ class OLReadingListPage(PageModule):
                 settings     = load_settings()
                 driver       = self._driver(page)
                 reading_list = self._build_pom(ReadingListPage, driver, settings.base_url,
-                                               settings.delays, page=page, resolver=resolver)
+                                               settings.delays, page=page, resolver=resolver, behaviour=behaviour)
 
                 context_key = step.extra.get("context_key", "count_before")
                 count = await reading_list.get_book_count()
@@ -139,7 +139,7 @@ class OLReadingListPage(PageModule):
         read_only   = True
 
         async def _execute(self, page, step: StepConfig,
-                           resolver, context: ExecutionContext) -> StepResult:
+                           resolver, context: ExecutionContext, behaviour: HumanBehaviour) -> StepResult:
             try:
                 from poms.openLibrary.config import load_settings
                 from poms.openLibrary.pages.reading_list_page import ReadingListPage
@@ -147,7 +147,7 @@ class OLReadingListPage(PageModule):
                 settings     = load_settings()
                 driver       = self._driver(page)
                 reading_list = self._build_pom(ReadingListPage, driver, settings.base_url,
-                                               settings.delays, page=page, resolver=resolver)
+                                               settings.delays, page=page, resolver=resolver, behaviour=behaviour)
 
                 await reading_list.open()
 
@@ -197,6 +197,7 @@ class OLReadingListPage(PageModule):
         async def _execute(
             self, page, step: StepConfig,
             resolver, context: ExecutionContext,
+            behaviour: HumanBehaviour
         ) -> StepResult:
             try:
                 from poms.openLibrary.config import load_settings
@@ -205,7 +206,7 @@ class OLReadingListPage(PageModule):
                 settings     = load_settings()
                 driver       = self._driver(page)
                 reading_list = self._build_pom(ReadingListPage, driver, settings.base_url,
-                                               settings.delays, page=page, resolver=resolver)
+                                               settings.delays, page=page, resolver=resolver, behaviour=behaviour)
 
                 current = await reading_list.get_book_count()
                 target  = int(step.extra["target_count"])

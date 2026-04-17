@@ -58,8 +58,8 @@ class BookDetailPage(BasePage):
         SHELF_DROPDOWN_BTNS   = ".read-statuses button.nostyle-btn"
 
     def __init__(self, driver, base_url: str, book_url: str,
-                 delays=None, page=None, resolver=None):
-        super().__init__(driver, base_url, delays, page, resolver)
+                 delays=None, page=None, resolver=None, **kwargs):
+        super().__init__(driver, base_url, delays, page, resolver, **kwargs)
         self._url         = book_url
         self._shelf_label: str | None = None  # set by add_to_reading_list before steps run
 
@@ -84,6 +84,7 @@ class BookDetailPage(BasePage):
             await self._driver.wait_for_selector(
                 self.Locators.SHELF_BTN_BASE, timeout=10_000
             )
+            await asyncio.sleep(self._behaviour.jitter(1000))
             logger.info("Shelf button ready")
         except Exception:
             logger.warning("Shelf button not visible on %s — continuing", self._url)
@@ -172,15 +173,20 @@ class BookDetailPage(BasePage):
             )
             if not caret:
                 return False
+            
+            await self._behaviour.hover_before_click(caret)
             await caret.click()
-            await asyncio.sleep(0.3)
-
+            
+            await asyncio.sleep(self._behaviour.jitter(300))
+            
             buttons = await self._driver.query_selector_all(
                 self.Locators.SHELF_DROPDOWN_BTNS
             )
             for btn in buttons:
                 text = (await btn.inner_text()).strip()
                 if text == self._shelf_label:
+                    
+                    await self._behaviour.hover_before_click(btn)
                     await btn.click()
                     logger.info("✓ Added to shelf via dropdown: '%s'", self._shelf_label)
                     return True
@@ -209,6 +215,7 @@ class BookDetailPage(BasePage):
             try:
                 el = await self._driver.wait_for_selector(selector, timeout=5_000)
                 if el:
+                    await self._behaviour.hover_before_click(el)
                     await el.click()
                     logger.info(f"✓ Added to shelf via driver fallback: {selector}")
                     return True
@@ -242,11 +249,12 @@ class BookDetailPage(BasePage):
             el = await self._driver.wait_for_selector(
                 self.Locators.SHELF_BTN_BASE, timeout=5_000
             )
+            
+            await self._behaviour.hover_before_click(el)
             await el.click()
         except Exception:
             return False
 
-        # 3. THE FIX: Check for the dropdown "Remove" button with a SHORT timeout
         try:
             # If Path A (dropdown) exists, this finds it in 1s.
             # If Path B (toggle) happened, this fails in 1s instead of 30s!
@@ -255,6 +263,7 @@ class BookDetailPage(BasePage):
                 timeout=1000 
             )
             if remove_el:
+                await self._behaviour.hover_before_click(remove_el)
                 await remove_el.click()
                 logger.info("✓ Removed via dropdown Path A")
                 return True
@@ -264,7 +273,7 @@ class BookDetailPage(BasePage):
             pass
 
         # 4. Final check for Path B (Direct Toggle)
-        await asyncio.sleep(0.5) 
+        await asyncio.sleep(self._behaviour.jitter(500))
         still_activated = await self._driver.query_selector(
             self.Locators.SHELF_BTN_ACTIVATED
         )

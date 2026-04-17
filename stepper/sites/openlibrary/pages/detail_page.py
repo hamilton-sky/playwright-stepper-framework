@@ -7,10 +7,12 @@ Dependency direction: sites.openlibrary → stepper  (correct)
 """
 
 from __future__ import annotations
+import asyncio
 import logging
 import warnings
 from pathlib import Path
 
+from engine.browser.human_behaviour import HumanBehaviour
 from engine.interfaces import StepConfig, StepResult, ExecutionContext
 from engine.pages.base_page_module import PageModule
 from engine.pages.glue_action import GlueAction
@@ -40,11 +42,13 @@ class OLDetailPage(PageModule):
         async def _execute(
             self, page, step: StepConfig,
             resolver, context: ExecutionContext,
+            behaviour: HumanBehaviour
         ) -> StepResult:
             try:
                 from poms.openLibrary.config import load_settings
                 from poms.openLibrary.pages.book_detail_page import BookDetailPage
-
+                
+                await behaviour.inter_step_delay() 
                 settings        = load_settings()
                 driver          = self._driver(page)
                 screenshots_dir = self._screenshots_dir
@@ -62,9 +66,11 @@ class OLDetailPage(PageModule):
                     url  = item["url"] if isinstance(item, dict) else item
                     year = item.get("year") if isinstance(item, dict) else None
                     detail = self._build_pom(BookDetailPage, driver, settings.base_url,
-                                            url, settings.delays, page=page, resolver=resolver)
+                                            url, settings.delays, page=page, resolver=resolver, behaviour=behaviour)
+                    
                     await detail.open()
-
+                    await asyncio.sleep(behaviour.jitter(1500))
+                    
                     shelf = await detail.add_to_reading_list()
                     if not shelf:
                         warnings.warn(

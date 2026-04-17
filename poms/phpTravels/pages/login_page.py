@@ -19,12 +19,29 @@ class LoginPage(BasePage):
 
     class Locators:
         """All login-page selectors. Never duplicated elsewhere."""
+        # Plain strings — used only for wait_for_selector / state reads
         EMAIL         = "input[name='username']"
         PASSWORD      = "input[name='password']"
         SUBMIT        = "button[type='submit']"
-        # Present on any authenticated page — confirms successful login
         USER_DROPDOWN = ".dropdown-toggle img.rounded-circle"
         ERROR_ALERT   = ".alert-danger"
+
+        # Interactive cfg lists — used by fill/click helpers
+        EMAIL_CFG = [
+            {"label":       "Email",                 "priority": 10},
+            {"placeholder": "Email",                 "priority": 20},
+            {"css":         "input[name='username']","priority": 30},
+        ]
+        PASSWORD_CFG = [
+            {"label":       "Password",              "priority": 10},
+            {"placeholder": "Password",              "priority": 20},
+            {"css":         "input[name='password']","priority": 30},
+        ]
+        SUBMIT_CFG = [
+            {"role": "button", "name": "Login",      "priority": 10},
+            {"role": "button", "name": "Sign In",    "priority": 20},
+            {"css":  "button[type='submit']",        "priority": 30},
+        ]
 
     @property
     def url(self) -> str:
@@ -41,24 +58,18 @@ class LoginPage(BasePage):
     # ── Raw interactions ───────────────────────────────────────────────────────
 
     async def fill_email(self, value: str) -> None:
-        await self._driver.fill(self.Locators.EMAIL, value)
+        await self._resolve_and_fill_any(self.Locators.EMAIL_CFG, value)
 
     async def fill_password(self, value: str) -> None:
-        await self._driver.fill(self.Locators.PASSWORD, value)
+        await self._resolve_and_fill_any(self.Locators.PASSWORD_CFG, value)
 
     async def submit(self) -> None:
-        await self._driver.click(self.Locators.SUBMIT)
+        await self._resolve_and_click_any(self.Locators.SUBMIT_CFG)
         await self._driver.wait_for_load_state("domcontentloaded")
 
     async def get_error_message(self) -> str | None:
         """Return the error alert text, or None if no error is visible."""
-        try:
-            el = await self._driver.query_selector(self.Locators.ERROR_ALERT)
-            if el:
-                return (await el.inner_text()).strip()
-        except Exception:
-            pass
-        return None
+        return await self._get_text_or_none(self.Locators.ERROR_ALERT)
 
     async def is_logged_in(self) -> bool:
         """True if the user avatar/dropdown is present in the nav bar."""

@@ -76,8 +76,8 @@ class BookSearchPage(BasePage):
         ]
 
     def __init__(self, driver, base_url: str, delays=None,
-                 page=None, resolver=None):
-        super().__init__(driver, base_url, delays, page=page, resolver=resolver)
+                 page=None, resolver=None, **kwargs):
+        super().__init__(driver, base_url, delays, page=page, resolver=resolver, **kwargs)
         self._query    = ""
         self._page_num = 1
 
@@ -146,6 +146,7 @@ class BookSearchPage(BasePage):
         Page cap comes from delays.max_search_pages (config-driven, not hardcoded).
         """
         collected: list[dict] = []
+        seen_urls: set[str] = set()
         max_pages = self.delays.max_search_pages  # from config, not magic number
         logger.info("Collecting up to %d books published before %d (max %d pages)",
                     limit, max_year, max_pages)
@@ -154,7 +155,10 @@ class BookSearchPage(BasePage):
             remaining = limit - len(collected)
             logger.info("Scanning page %d — need %d more book(s)", self._page_num, remaining)
             page_results = await self._collect_from_page(max_year, remaining)
-            collected.extend(page_results)
+            for item in page_results:
+                if item["url"] not in seen_urls:
+                    seen_urls.add(item["url"])
+                    collected.append(item)
             logger.info("Page %d: found %d qualifying book(s) — total so far: %d/%d",
                         self._page_num, len(page_results), len(collected), limit)
 
@@ -163,7 +167,7 @@ class BookSearchPage(BasePage):
 
             self._page_num += 1
             logger.info("Paginating to page %d…", self._page_num)
-            await asyncio.sleep(self.delays.between_pagination_ms / 1000)
+            await self._sleep(self.delays.between_pagination_ms)
 
             next_url = (
                 f"{self.base_url.rstrip('/')}/search"
@@ -186,7 +190,7 @@ class BookSearchPage(BasePage):
                     logger.warning("Page %d navigation failed on retry — stopping pagination", self._page_num)
                     break
 
-            await asyncio.sleep(self.delays.page_load_wait_ms / 1000)
+            await self._sleep(self.delays.page_load_wait_ms)
 
             # Page is already loaded — use count() for instant check, no timeout wait
             result_found = False

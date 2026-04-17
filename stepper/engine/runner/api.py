@@ -28,6 +28,8 @@ from engine.planner.planner import _dict_to_step
 
 logger = logging.getLogger(__name__)
 
+_stepper_root = Path(__file__).resolve().parent.parent.parent
+
 
 # ── Shared session ─────────────────────────────────────────────────────────────
 
@@ -60,7 +62,10 @@ class StepperSession:
         self._settings = None
 
     async def __aenter__(self) -> "StepperSession":
-        from playwright.async_api import async_playwright
+        from engine.browser.anti_detection import AntiDetection
+        from engine.browser.human_behaviour import HumanBehaviour
+        async_playwright = AntiDetection.get_playwright()
+        behaviour = HumanBehaviour()
 
         from poms.openLibrary.config import load_settings
         from engine.resolvers.element_resolver import ElementResolver, DefaultResolverFactory
@@ -74,6 +79,10 @@ class StepperSession:
         from sites.saucedemo.pages.inventory_action import SDInventoryPage
         from sites.saucedemo.pages.cart_action import SDCartPage
         from sites.saucedemo.pages.checkout_action import SDCheckoutPage
+        from sites.phptravels.pages.login_action import PTLoginPage
+        from sites.phptravels.pages.hotel_search_action import PTHotelSearchPage
+        from sites.phptravels.pages.hotel_results_action import PTHotelResultsPage
+        from sites.phptravels.pages.hotel_detail_action import PTHotelDetailPage
 
         self._settings = load_settings()
 
@@ -95,11 +104,15 @@ class StepperSession:
         SDInventoryPage.register(registry)
         SDCartPage.register(registry)
         SDCheckoutPage.register(registry)
+        PTLoginPage.register(registry)
+        PTHotelSearchPage.register(registry)
+        PTHotelResultsPage.register(registry)
+        PTHotelDetailPage.register(registry)
 
         self._reporter = CompositeReporter([
             ConsoleReporter(),
-            JsonReporter("report.json"),
-            AllureReporter("reports/allure-results"),   # always on — like logs
+            JsonReporter(str(_stepper_root / "report.json")),
+            AllureReporter(str(_stepper_root / "reports" / "allure-results")),  # always on — like logs
         ])
 
         self._pw      = await async_playwright().start()
@@ -110,20 +123,20 @@ class StepperSession:
         )
 
         context_kwargs: dict = {"viewport": {"width": 1280, "height": 800}}
+        context_kwargs.update(AntiDetection.context_kwargs())
         if self._settings.storage_state_path.exists():
             context_kwargs["storage_state"] = str(self._settings.storage_state_path)
 
         self._ctx  = await self._browser.new_context(**context_kwargs)
         self._page = await self._ctx.new_page()
-        await self._page.add_init_script(
-            "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
-        )
+        await AntiDetection.apply_page_patches(self._page)
 
         self._runner = StepRunner(
             page=self._page,
             action_factory=registry,
             resolver=resolver,
             reporter=self._reporter,
+            behaviour=behaviour,
         )
         self._runner.add_observer(LoggingObserver())
 

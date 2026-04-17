@@ -24,8 +24,8 @@ class ReadingListPage(BasePage):
     _BOOK_HREF         = "a[href*='/works/'], a[href*='/books/']"
 
     def __init__(self, driver, base_url: str, delays=None,
-                 page=None, resolver=None):
-        super().__init__(driver, base_url, delays, page, resolver)
+                 page=None, resolver=None, **kwargs):
+        super().__init__(driver, base_url, delays, page, resolver, **kwargs)
 
     @property
     def url(self) -> str:
@@ -63,7 +63,7 @@ class ReadingListPage(BasePage):
                 break
             await next_el.click()
             await self._driver.wait_for_load_state("domcontentloaded")
-            await asyncio.sleep(self.delays.between_pagination_ms / 1000)
+            await self._sleep(self.delays.between_pagination_ms)
 
         return book_urls
 
@@ -81,5 +81,5 @@ class ReadingListPage(BasePage):
                 break
             await next_el.click()
             await self._driver.wait_for_load_state("domcontentloaded")
-            await asyncio.sleep(self.delays.between_pagination_ms / 1000)
+            await self._sleep(self.delays.between_pagination_ms)
         return total

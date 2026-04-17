@@ -23,6 +23,7 @@ from typing import Optional, Any, ClassVar, TYPE_CHECKING
 # (shared with the POM resolver helpers — single source of truth).
 # Engine-only thresholds are declared here.
 # ──────────────────────────────────────────────────────────
+from engine.browser.human_behaviour import HumanBehaviour
 from poms.shared.constants import CONFIDENCE_AUTO, CONFIDENCE_WARN  # re-exported
 
 CONFIDENCE_SEMANTIC:    float = 0.80   # semantic resolver min score to count as match
@@ -212,7 +213,7 @@ class ActionStrategy(ABC):
         """Must match the 'action' field in step JSON."""
 
     async def execute(self, page, step: StepConfig, resolver,
-                      context: "ExecutionContext | None" = None) -> StepResult:
+                      context: "ExecutionContext | None" = None, behaviour: HumanBehaviour = None) -> StepResult:
         """Template method — do NOT override this."""
         ctx = context if context is not None else ExecutionContext()
         await self.pre_execute(page, step)
@@ -222,7 +223,7 @@ class ActionStrategy(ABC):
 
     @abstractmethod
     async def _execute(self, page, step: StepConfig, resolver,
-                       context: "ExecutionContext") -> StepResult:
+                       context: "ExecutionContext" ,behaviour: HumanBehaviour) -> StepResult:
         """Core logic — subclasses implement this."""
 
     async def pre_execute(self, page, step: StepConfig):

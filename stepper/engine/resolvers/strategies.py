@@ -69,8 +69,7 @@ class TextResolver(ResolverStrategy):
             # *contains* the text (e.g. "Want to Read" matching nav/footer too)
             exact = cfg.get("exact", True)
             loc = page.get_by_text(text, exact=exact)
-            count = await loc.count()
-            return [loc.nth(i) for i in range(count)] if count else []
+            return await loc.all()
         except Exception as e:
             logger.debug(f"[TextResolver] {e}")
             return []
@@ -90,8 +89,7 @@ class RoleResolver(ResolverStrategy):
         try:
             kwargs = {"name": name, "exact": exact} if name else {}
             loc = page.get_by_role(role, **kwargs)
-            count = await loc.count()
-            return [loc.nth(i) for i in range(count)] if count else []
+            return await loc.all()
         except Exception as e:
             logger.debug(f"[RoleResolver] {e}")
             return []
@@ -108,8 +106,7 @@ class PlaceholderResolver(ResolverStrategy):
             return []
         try:
             loc = page.get_by_placeholder(ph)
-            count = await loc.count()
-            return [loc.nth(i) for i in range(count)] if count else []
+            return await loc.all()
         except Exception as e:
             logger.debug(f"[PlaceholderResolver] {e}")
             return []
@@ -126,8 +123,7 @@ class IdResolver(ResolverStrategy):
             return []
         try:
             loc = page.locator(f"#{element_id}")
-            count = await loc.count()
-            return [loc.nth(i) for i in range(count)] if count else []
+            return await loc.all()
         except Exception as e:
             logger.debug(f"[IdResolver] {e}")
             return []
@@ -144,8 +140,7 @@ class CssResolver(ResolverStrategy):
             return []
         try:
             loc = page.locator(css)
-            count = await loc.count()
-            return [loc.nth(i) for i in range(count)] if count else []
+            return await loc.all()
         except Exception as e:
             logger.debug(f"[CssResolver] {e}")
             return []
@@ -162,8 +157,7 @@ class XPathResolver(ResolverStrategy):
             return []
         try:
             loc = page.locator(f"xpath={xpath}")
-            count = await loc.count()
-            return [loc.nth(i) for i in range(count)] if count else []
+            return await loc.all()
         except Exception as e:
             logger.debug(f"[XPathResolver] {e}")
             return []
@@ -180,8 +174,7 @@ class LabelResolver(ResolverStrategy):
             return []
         try:
             loc = page.get_by_label(label)
-            count = await loc.count()
-            return [loc.nth(i) for i in range(count)] if count else []
+            return await loc.all()
         except Exception as e:
             logger.debug(f"[LabelResolver] {e}")
             return []
@@ -371,7 +364,7 @@ class DescriptionFallbackResolver:
         if not snapshot:
             return []
 
-        nodes = self._flatten_snapshot(snapshot)
+        nodes = self._flatten_snapshot(snapshot, target=self.TOP_K * 10)
         if not nodes:
             return []
 
@@ -396,11 +389,18 @@ class DescriptionFallbackResolver:
             )
         return top
 
-    def _flatten_snapshot(self, node: dict, result: list | None = None) -> list[dict]:
-        """DFS traversal — collect all interactive nodes by ARIA role."""
+    def _flatten_snapshot(
+        self, node: dict, result: list | None = None, target: int | None = None
+    ) -> list[dict]:
+        """DFS traversal — collect all interactive nodes by ARIA role.
+
+        target: stop collecting once this many nodes are found. None = unlimited.
+        """
         if result is None:
             result = []
         if not isinstance(node, dict):
+            return result
+        if target is not None and len(result) >= target:
             return result
 
         role = (node.get("role") or "").lower()
@@ -409,7 +409,9 @@ class DescriptionFallbackResolver:
             result.append(node)
 
         for child in node.get("children") or []:
-            self._flatten_snapshot(child, result)
+            if target is not None and len(result) >= target:
+                break
+            self._flatten_snapshot(child, result, target)
 
         return result
 

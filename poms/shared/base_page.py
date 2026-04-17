@@ -19,6 +19,7 @@ Subclasses define:
   - domain methods (search, fill_*, click_*, etc.)
 """
 from __future__ import annotations
+import asyncio
 import logging
 
 from poms.shared.constants import CONFIDENCE_AUTO, CONFIDENCE_WARN
@@ -29,11 +30,24 @@ logger = logging.getLogger(__name__)
 class BasePage:
     """Shared base for all site page objects across every POM package."""
 
-    def __init__(self, driver, base_url: str, page=None, resolver=None):
-        self._driver   = driver
-        self.base_url  = base_url.rstrip("/")
-        self._page     = page      # Playwright Page — for resolver
-        self._resolver = resolver  # ElementResolver — 10-stage cascade (optional)
+    def __init__(self, driver, base_url: str, page=None, resolver=None,
+                 behaviour=None):
+        self._driver    = driver
+        self.base_url   = base_url.rstrip("/")
+        self._page      = page       # Playwright Page — for resolver
+        self._resolver  = resolver   # ElementResolver — 10-stage cascade (optional)
+        self._behaviour = behaviour  # HumanBehaviour — jitter/hover (optional)
+
+    def _sleep(self, base_ms: int):
+        """
+        Return a jittered sleep coroutine.  Use: await self._sleep(300)
+
+        With behaviour injected → base_ms ± jitter_factor (random each call).
+        Without behaviour       → exactly base_ms / 1000 seconds (old behaviour).
+        """
+        if self._behaviour:
+            return asyncio.sleep(self._behaviour.jitter(base_ms))
+        return asyncio.sleep(base_ms / 1000)
 
     @property
     def url(self) -> str:
@@ -85,6 +99,8 @@ class BasePage:
                     )
                 try:
                     await result.locator.scroll_into_view_if_needed(timeout=5_000)
+                    if self._behaviour:
+                        await asyncio.sleep(self._behaviour.jitter(50))
                     await result.locator.first.fill(value, timeout=5_000)
                     logger.info("✓ fill via %s (%.0f%%)", result.method, result.confidence * 100)
                     return True
@@ -126,6 +142,8 @@ class BasePage:
                         await result.locator.first.evaluate("el => el.click()")
                     else:
                         await result.locator.scroll_into_view_if_needed(timeout=5_000)
+                        if self._behaviour:
+                            await self._behaviour.hover_before_click(result.locator.first)
                         await result.locator.click(timeout=5_000)
                     logger.info("✓ click via %s (%.0f%%)", result.method, result.confidence * 100)
                     return True
@@ -172,3 +190,37 @@ class BasePage:
             if await self._resolve_and_click(cfg, description, js_click=js_click):
                 return True
         return False
+
+    async def _select_option(self, selector: str, value: str) -> None:
+        """Select a <select> option via page.select_option or JS fallback."""
+        if self._page:
+            await self._page.select_option(selector, value)
+        else:
+            await self._driver.evaluate(
+                f"document.querySelector('{selector}').value = '{value}';"
+                f"document.querySelector('{selector}').dispatchEvent(new Event('change'));"
+            )
+
+    # ── Text extraction helpers ───────────────────────────────────────────────
+
+    @staticmethod
+    async def _get_text(element) -> str:
+        """Return stripped inner text of element, or '' if element is None."""
+        if not element:
+            return ""
+        return (await element.inner_text()).strip()
+
+    async def _get_all_texts(self, selector: str) -> list[str]:
+        """Query all elements matching selector, return their stripped texts."""
+        els = await self._driver.query_selector_all(selector)
+        return [(await el.inner_text()).strip() for el in els]
+
+    async def _get_text_or_none(self, selector: str) -> str | None:
+        """Find one element by selector, return its stripped text or None."""
+        try:
+            el = await self._driver.query_selector(selector)
+            if el:
+                return (await el.inner_text()).strip()
+        except Exception:
+            pass
+        return None

@@ -13,6 +13,7 @@ Dependency direction: sites.openlibrary → stepper  (correct)
 from __future__ import annotations
 import logging
 
+from engine.browser.human_behaviour import HumanBehaviour
 from engine.interfaces import StepConfig, StepResult, ExecutionContext
 from engine.pages.base_page_module import PageModule
 from engine.pages.glue_action import GlueAction
@@ -43,6 +44,7 @@ class OLSearchPage(PageModule):
         async def _execute(
             self, page, step: StepConfig,
             resolver, context: ExecutionContext,
+            behaviour: HumanBehaviour
         ) -> StepResult:
             try:
                 from poms.openLibrary.config import load_settings
@@ -51,7 +53,7 @@ class OLSearchPage(PageModule):
                 settings    = load_settings()
                 driver      = self._driver(page)
                 search_page = self._build_pom(BookSearchPage, driver, settings.base_url,
-                                             settings.delays, page=page, resolver=resolver)
+                                             settings.delays, page=page, resolver=resolver, behaviour=behaviour)
 
                 query    = step.extra.get("query", "")
                 max_year = step.extra.get("filter", {}).get("year_max", 9999)

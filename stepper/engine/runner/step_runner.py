@@ -13,7 +13,6 @@ DIP: Depends on interfaces, not concrete classes.
 
 from __future__ import annotations
 import asyncio
-import json
 import logging
 import time
 from pathlib import Path
@@ -27,6 +26,8 @@ from engine.interfaces import (
 )
 from engine.resolvers.element_resolver import ElementResolver
 from engine.runner.when_eval import evaluate_when
+from engine.browser.anti_detection import AntiDetection
+from engine.browser.human_behaviour import HumanBehaviour
 
 logger = logging.getLogger(__name__)
 
@@ -44,11 +45,13 @@ class StepRunner:
         resolver: ElementResolver,
         reporter: ReporterStrategy,
         screenshots_dir: Path | None = None,
+        behaviour: HumanBehaviour | None = None,
     ):
         self._page            = page
         self._factory         = action_factory
         self._resolver        = resolver
         self._reporter        = reporter
+        self._behaviour       = behaviour or HumanBehaviour()
         self._observers: list[StepObserver] = []
         if screenshots_dir is not None:
             self._screenshots_dir: Path | None = Path(screenshots_dir)
@@ -89,13 +92,29 @@ class StepRunner:
             # so JSON can write "limit": "{{gap}}" and get the runtime value.
             step = _resolve_count_vars(step, ctx)
 
+            # Pre-step CAPTCHA check — fail fast with a clear message
+            captcha = await AntiDetection.detect_captcha(self._page)
+            if captcha:
+                result = StepResult(
+                    step=step, status="failed",
+                    error=f"CAPTCHA detected before step — manual intervention required ({captcha})"
+                )
+                self._reporter.record_step(result)
+                self._notify_done(idx, result)
+                results.append(result)
+                self._notify_log(f"✗ CAPTCHA wall hit at step {idx+1} — stopping", "error")
+                break
+
+            # Inter-step human-like pause (jittered)
+            await self._behaviour.inter_step_delay()
+
             t0 = time.monotonic()
             max_attempts = 1 + max(0, step.retry)
             for attempt in range(max_attempts):
                 try:
                     action = self._factory.create(step.action)
                     self._resolver.set_context_description(step.description)
-                    result = await action.execute(self._page, step, self._resolver, ctx)
+                    result = await action.execute(self._page, step, self._resolver, ctx, self._behaviour)
                 except Exception as e:
                     logger.error(f"Step {idx+1} raised: {e}")
                     result = StepResult(step=step, status="failed", error=str(e))
@@ -178,8 +197,16 @@ def _resolve_count_vars(step: StepConfig, ctx: ExecutionContext) -> StepConfig:
         return step
 
     # Cheap scan: skip deepcopy entirely when no template tokens are present.
-    # json.dumps handles nested dicts/lists; most steps have no {{ tokens.
-    if "{{" not in json.dumps(step.extra):
+    def _has_template(obj) -> bool:
+        if isinstance(obj, str):
+            return "{{" in obj
+        if isinstance(obj, dict):
+            return any(_has_template(v) for v in obj.values())
+        if isinstance(obj, list):
+            return any(_has_template(v) for v in obj)
+        return False
+
+    if not _has_template(step.extra):
         return step
 
     def _sub(obj):

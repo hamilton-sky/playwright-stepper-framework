@@ -1,0 +1,57 @@
+{
+  "name": "phpTravels — hotel booking (login → search → select → book)",
+  "description": "Full end-to-end hotel booking flow. Logs in, searches for hotels by destination and dates, selects the first result, fills the booking form, and submits.",
+  "variables": {
+    "destination": "Dubai",
+    "checkin":     "25-05-2026",
+    "checkout":    "27-05-2026",
+    "adults":      "2",
+    "children":    "0"
+  },
+  "steps": [
+    {
+      "action": "pt_login",
+      "description": "Log in with phpTravels demo credentials",
+      "continue_on_failure": false
+    },
+    {
+      "action": "pt_search_hotels",
+      "description": "Search hotels in {{destination}} for {{checkin}} → {{checkout}}",
+      "extra": {
+        "destination": "{{destination}}",
+        "checkin":     "{{checkin}}",
+        "checkout":    "{{checkout}}",
+        "adults":      "{{adults}}"
+      }
+    },
+    {
+      "action": "screenshot",
+      "description": "Capture hotel results page",
+      "extra": { "filename": "pt_hotel_results.png" }
+    },
+    {
+      "action": "pt_select_hotel",
+      "description": "Click the first available hotel"
+    },
+    {
+      "action": "screenshot",
+      "description": "Capture hotel detail page",
+      "extra": { "filename": "pt_hotel_detail.png" }
+    },
+    {
+      "action": "pt_book_hotel",
+      "description": "Fill booking form and submit",
+      "extra": {
+        "checkin":  "{{checkin}}",
+        "checkout": "{{checkout}}",
+        "adults":   "{{adults}}",
+        "children": "{{children}}"
+      }
+    },
+    {
+      "action": "screenshot",
+      "description": "Capture booking confirmation",
+      "extra": { "filename": "pt_booking_confirmation.png" }
+    }
+  ]
+}

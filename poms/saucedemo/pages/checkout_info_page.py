@@ -77,10 +77,4 @@ class CheckoutInfoPage(BasePage):
         await self._driver.wait_for_load_state("domcontentloaded")
 
     async def get_error_message(self) -> str | None:
-        try:
-            el = await self._driver.query_selector(self.Locators.ERROR_MSG)
-            if el:
-                return (await el.inner_text()).strip()
-        except Exception:
-            pass
-        return None
+        return await self._get_text_or_none(self.Locators.ERROR_MSG)
