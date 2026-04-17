@@ -49,6 +49,11 @@ class IElementHandle(ABC):
 
     @abstractmethod
     async def click(self) -> None: ...
+    
+    @abstractmethod
+    async def hover(self, timeout: int = 30_000) -> None:
+        """Hover over the element."""
+        ...
 
     @abstractmethod
     async def query_selector(self, selector: str) -> "IElementHandle | None": ...

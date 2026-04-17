@@ -31,6 +31,10 @@ class PlaywrightElementHandle(IElementHandle):
 
     async def click(self) -> None:
         await self._h.click()
+        
+    async def hover(self, timeout: int = 30_000) -> None:
+        """Pass the timeout through to the real Playwright handle."""
+        await self._h.hover(timeout=timeout)
 
     async def query_selector(self, selector: str) -> IElementHandle | None:
         h = await self._h.query_selector(selector)

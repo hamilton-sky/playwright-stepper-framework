@@ -127,6 +127,7 @@ class HumanBehaviour:
         Hover over a locator for a jittered dwell time before the caller clicks.
         """
         if not self._cfg.hover_before_click:
+            logger.warning("HumanBehaviour: Hover is DISABLED in config") # Add this to debug config issues
             return
         try:
             # Mark the start time
@@ -140,8 +141,8 @@ class HumanBehaviour:
             
             await asyncio.sleep(delay_s)
         except Exception as exc:
-            logger.debug("HumanBehaviour: hover skipped — %s", exc)
-
+            logger.info("HumanBehaviour: hover skipped — %s", exc)
+    
     async def inter_step_delay(self) -> None:
         """
         Insert a jittered pause between workflow steps.

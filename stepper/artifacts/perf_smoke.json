@@ -1,7 +1,7 @@
 {
-  "load_time_ms": 5108,
-  "dom_content_loaded_ms": 4985,
-  "first_paint_ms": 4808,
+  "load_time_ms": 2880,
+  "dom_content_loaded_ms": 2726,
+  "first_paint_ms": 2428,
   "url": "https://openlibrary.org/search?q=Dune",
   "threshold_ms": 5000
 }
