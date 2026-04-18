@@ -125,23 +125,31 @@ class HumanBehaviour:
     async def hover_before_click(self, locator) -> None:
         """
         Hover over a locator for a jittered dwell time before the caller clicks.
+        Logs the viewport coordinates and the duration of the hover.
         """
         if not self._cfg.hover_before_click:
-            logger.warning("HumanBehaviour: Hover is DISABLED in config") # Add this to debug config issues
+            logger.warning("HumanBehaviour: Hover is DISABLED in config")
             return
         try:
-            # Mark the start time
+            # 1. Get the coordinates for logging
+            box = await locator.bounding_box()
+            coord_str = f"at ({box['x']:.0f}, {box['y']:.0f})" if box else "at unknown position"
+            
+            # 2. Perform the hover action
             await locator.hover(timeout=3_000)
             
-            # Calculate the jittered delay
-            delay_s = self.jitter(self._cfg.hover_ms)
+            # 3. Calculate jittered dwell time in milliseconds
+            dwell_ms = self.jitter(self._cfg.hover_ms) * 1000
             
-            # LOG THE TIMING HERE
-            logger.info(f"🖱️ HumanBehaviour: hovered and dwelling for {delay_s*1000:.0f}ms")
+            # 4. Log the timing AND the viewport coordinates
+            logger.info(f"🖱️ HumanBehaviour: hovered {coord_str} for {dwell_ms:.0f}ms")
             
-            await asyncio.sleep(delay_s)
+            # 5. Wait for the calculated dwell time
+            await asyncio.sleep(dwell_ms / 1000)
+            
         except Exception as exc:
-            logger.info("HumanBehaviour: hover skipped — %s", exc)
+            # Using info level here to ensure you see why hovers are failing in production
+            logger.info(f"⚠️ HumanBehaviour: hover failed: {exc}")
     
     async def inter_step_delay(self) -> None:
         """
