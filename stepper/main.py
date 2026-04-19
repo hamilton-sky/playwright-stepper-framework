@@ -109,6 +109,17 @@ def _build_reporters(run_label: str, cfg_browser: str, headless: bool, stepper_r
     return CompositeReporter(reporters), test_reporter
 
 
+def _register_all_sites(registry, screenshots_dir=None) -> None:
+    import importlib
+    for reg_path in sorted((_stepper_root / "sites").glob("*/register.py")):
+        module_name = f"sites.{reg_path.parent.name}.register"
+        try:
+            mod = importlib.import_module(module_name)
+            mod.register(registry, screenshots_dir=screenshots_dir)
+        except Exception as exc:
+            logger.warning(f"Could not register site {reg_path.parent.name}: {exc}")
+
+
 async def _launch_browser(pw, cfg_browser: str, headless: bool, slow_mo: int):
     _launchers = {"chromium": pw.chromium, "firefox": pw.firefox, "webkit": pw.webkit}
     return await _launchers.get(cfg_browser, pw.chromium).launch(
@@ -198,18 +209,8 @@ async def run(
         # Build action registry now that we have the run-specific screenshots dir.
         action_registry = build_default_registry(screenshots_dir=screenshots_dir)
 
-        # Each site registers its custom actions into the shared registry.
-        # Adding a new site = add two lines here. Zero other changes. (OCP)
-        from sites.openlibrary.pages.search_page import OLSearchPage
-        from sites.openlibrary.pages.detail_page import OLDetailPage
-        from sites.openlibrary.pages.reading_list_action import OLReadingListPage
-        from sites.openlibrary.pages.login_action import OLLoginPage
-        
-        
-        OLSearchPage.register(action_registry)
-        OLDetailPage.register(action_registry, screenshots_dir=screenshots_dir)
-        OLReadingListPage.register(action_registry)
-        OLLoginPage.register(action_registry)
+        # Adding a new site = drop a register.py in stepper/sites/<site>/. Zero other changes. (OCP)
+        _register_all_sites(action_registry, screenshots_dir=screenshots_dir)
 
         context_kwargs: dict = {"viewport": {"width": 1280, "height": 800}}
         if storage_state_path and Path(str(storage_state_path)).exists():
