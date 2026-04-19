@@ -55,11 +55,13 @@ stepper/main.py
 ### Decision 3: Fix temporal coupling by reordering, not by indirection
 - **Options**: A) move `RunWorkflowAction` registration after `StepRunner` construction,
   B) `_runner_ref = []` cell with a lambda, C) restructure StepRunner to accept run_callable post-construction
-- **Chosen**: A
-- **Rationale**: The coupling exists only because the original code registered the action
-  before the runner was constructed. Moving two blocks into correct order eliminates the
+- **Chosen**: A — **DONE** (Phase 7)
+- **Rationale**: The coupling existed only because the original code registered the action
+  before the runner was constructed. Moving the two blocks into correct order eliminated the
   problem at its source. Option B trades one ordering constraint for another (`IndexError`
   on `_runner_ref[0]` is the same fragility in a less obvious form). Option C is out of scope.
+- **Result**: Temporal-coupling comment removed; `RunWorkflowAction` registered after
+  `StepRunner` construction; no lambda or cell indirection.
 
 ## New Files
 - `stepper/sites/openlibrary/register.py`
