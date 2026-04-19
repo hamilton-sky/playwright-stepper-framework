@@ -1,6 +1,6 @@
 # Refactor main.py — Progress
 
-## Status: IN PROGRESS
+## Status: COMPLETE
 
 ## Conversation Breakdown
 
@@ -8,7 +8,7 @@
 |------|--------|-------|--------|--------|
 | 1 | 1–4 | Extract settings, resolver, reporters, browser helpers in main.py | DONE | `python stepper/main.py --workflow stepper/sites/openlibrary/workflows/search_and_add.json --show` |
 | 2 | 5–6 | Create per-site register.py files + auto-discovery in main.py | DONE | `python stepper/main.py --workflow stepper/sites/openlibrary/workflows/search_and_add.json` |
-| 3 | 7 | Fix RunWorkflowAction temporal coupling | TODO | `python stepper/main.py --workflow stepper/sites/openlibrary/workflows/search_and_add.json` |
+| 3 | 7 | Fix RunWorkflowAction temporal coupling | DONE | `python stepper/main.py --workflow stepper/sites/openlibrary/workflows/search_and_add.json` |
 
 See **CONVERSATION_PROMPTS.md** for exact prompts to paste in each conversation.
 
@@ -22,7 +22,7 @@ See **CONVERSATION_PROMPTS.md** for exact prompts to paste in each conversation.
 | 4 | Extract browser launch | main.py | `_launch_browser(pw, …)` deduplicates launcher dict | 1 | DONE | `stepper/main.py` |
 | 5 | Per-site register.py | Glue | One `register(registry)` per site folder | 2 | DONE | `stepper/sites/*/register.py` |
 | 6 | Auto-discovery | main.py | `_register_all_sites()` globs for register.py files | 2 | DONE | `stepper/main.py` |
-| 7 | Temporal coupling fix | main.py | Reorder `RunWorkflowAction` registration to after `StepRunner` construction; remove coupling comment | 3 | TODO | `stepper/main.py` |
+| 7 | Temporal coupling fix | main.py | Reorder `RunWorkflowAction` registration to after `StepRunner` construction; remove coupling comment | 3 | DONE | `stepper/main.py` |
 
 ## Prerequisites
 - All existing exam tests pass: `pytest exam/`

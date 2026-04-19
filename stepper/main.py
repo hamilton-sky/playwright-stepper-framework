@@ -237,9 +237,6 @@ async def run(
         )
         runner.add_observer(LoggingObserver())
 
-        # TEMPORAL COUPLING: RunWorkflowAction MUST be registered after StepRunner is
-        # constructed. It closes over runner.run, so the runner must already exist.
-        # Moving this block above the StepRunner construction will cause a NameError.
         from engine.actions.strategies import RunWorkflowAction
         base_dir = Path(workflow_path).parent if workflow_path else Path.cwd()
         action_registry.register(RunWorkflowAction(run_steps_callable=runner.run, base_dir=base_dir))
