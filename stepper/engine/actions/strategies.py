@@ -1135,4 +1135,43 @@ class ParallelAction(ActionStrategy):
         return list(await asyncio.gather(*[run_one(s) for s in sub_steps]))
 
 
+class LoadTestDataAction(ActionStrategy):
+    """
+    Load a JSON array from disk into context.collected_items.
+
+    Expected step.extra:
+      path: str   # path to a JSON file containing a list of dicts
+    """
+    action_name = "load_test_data"
+
+    async def _execute(self, page, step: StepConfig, resolver,
+                       context: ExecutionContext) -> StepResult:
+        path_str = (step.extra or {}).get("path")
+        if not path_str:
+            return StepResult(step=step, status="failed",
+                              error="load_test_data: missing extra.path")
+
+        path = Path(path_str)
+        if not path.is_absolute():
+            logger.warning(
+                "load_test_data: resolving relative path '%s' from cwd %s",
+                path_str, Path.cwd()
+            )
+            path = (Path.cwd() / path).resolve()
+
+        if not path.exists():
+            return StepResult(step=step, status="failed",
+                              error=f"load_test_data: file not found: {path}")
+
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+
+        if not isinstance(data, list):
+            return StepResult(step=step, status="failed",
+                              error="load_test_data: expected a JSON array")
+
+        context.collected_items = data
+        logger.info("load_test_data: loaded %d rows from %s", len(data), path)
+        return StepResult(step=step, status="passed")
+
 # _dict_to_step_config is imported from engine.utils at the top of this file.

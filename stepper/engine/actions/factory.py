@@ -68,6 +68,7 @@ def build_default_registry(
         ForEachItemAction,
         ExtractDataAction, PaginateAction,
         EnsureLoginAction, ParallelAction,
+        LoadTestDataAction,
     )
 
     registry     = ActionRegistry()
@@ -94,4 +95,5 @@ def build_default_registry(
         .register(ExtractDataAction())
         .register(paginate)
         .register(parallel)
+        .register(LoadTestDataAction())
     )

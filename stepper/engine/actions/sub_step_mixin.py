@@ -28,6 +28,12 @@ def _apply_substitutions(obj, subs: dict):
     Non-string scalar fields (int, bool, None) are passed through untouched.
     """
     if isinstance(obj, str):
+        # Pure reference: preserve original type (mirrors _substitute in planner.py)
+        stripped = obj.strip()
+        if stripped.startswith("{{") and stripped.endswith("}}"):
+            key = stripped[2:-2].strip()
+            if key in subs:
+                return subs[key]
         for k, v in subs.items():
             token = f"{{{{{k}}}}}"
             if token in obj:

@@ -1,0 +1,35 @@
+{
+  "name": "OpenLibrary — data-driven search and add (iterates testdata.json)",
+  "settings": {
+    "continue_on_failure": true
+  },
+  "steps": [
+    {
+      "action": "load_test_data",
+      "description": "Load test scenarios from testdata.json",
+      "extra": {
+        "path": "poms/openLibrary/data/testdata.json"
+      }
+    },
+    {
+      "action": "for_each_item",
+      "description": "Run ol_search_and_add once per data row",
+      "extra": {
+        "steps": [
+          {
+            "action": "run_workflow",
+            "description": "Search and add for {{item.query}}",
+            "extra": {
+              "path": "ol_search_and_add.json",
+              "vars": {
+                "query":    "{{item.query}}",
+                "max_year": "{{item.max_year}}",
+                "limit":    "{{item.limit}}"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
