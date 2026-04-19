@@ -13,6 +13,7 @@ or poms/phpTravels/config.py defaults.
 from __future__ import annotations
 import logging
 
+from engine.browser.human_behaviour import HumanBehaviour
 from engine.interfaces import StepConfig, StepResult, ExecutionContext
 from engine.pages.base_page_module import PageModule
 from engine.pages.glue_action import GlueAction
@@ -40,6 +41,7 @@ class PTLoginPage(PageModule):
         async def _execute(
             self, page, step: StepConfig,
             resolver, context: ExecutionContext,
+            behaviour: HumanBehaviour,
         ) -> StepResult:
             try:
                 from poms.phpTravels.config import load_settings
@@ -48,7 +50,7 @@ class PTLoginPage(PageModule):
                 settings   = load_settings()
                 driver     = self._driver(page)
                 login_page = self._build_pom(LoginPage, driver, settings.base_url,
-                                             page=page, resolver=resolver)
+                                             page=page, resolver=resolver, behaviour=behaviour)
 
                 if await login_page.is_logged_in():
                     logger.info("pt_login ✓ — already authenticated")

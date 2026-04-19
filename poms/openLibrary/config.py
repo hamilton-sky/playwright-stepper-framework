@@ -39,7 +39,7 @@ DEFAULTS = {
     "slow_mo_ms": 0,
     "browser": "chromium",
     "screenshots_dir": "artifacts/screenshots",
-    "storage_state_path": "artifacts/storage_state.json",
+    "storage_state_path": "stepper/sites/openlibrary/artifacts/storage_state.json",
     "performance_output": "artifacts/performance.json",
     "report_output": "artifacts/exam_report.json",
     "logs_dir": "artifacts/logs",
@@ -71,6 +71,7 @@ def _parse_bool(value: str) -> bool:
 # Find openlibrary config file location (in parent openlibrary module)
 _SHARED_POMS_DIR = Path(__file__).resolve().parent
 _OPENLIBRARY_DIR = _SHARED_POMS_DIR.parent
+_PROJECT_ROOT    = _OPENLIBRARY_DIR.parent
 
 
 def load_settings(
@@ -115,9 +116,9 @@ def load_settings(
     shelf_paths = tuple(str(p) for p in raw_shelf_paths)
 
     def _abs(p: str | Path) -> Path:
-        """Resolve relative paths against the openlibrary directory, not CWD."""
+        """Resolve relative paths against the project root, not CWD."""
         resolved = Path(p)
-        return resolved if resolved.is_absolute() else _OPENLIBRARY_DIR / resolved
+        return resolved if resolved.is_absolute() else _PROJECT_ROOT / resolved
 
     return Settings(
         base_url=str(data["base_url"]),

@@ -20,6 +20,7 @@ After this step the browser is on the hotel results page.
 from __future__ import annotations
 import logging
 
+from engine.browser.human_behaviour import HumanBehaviour
 from engine.interfaces import StepConfig, StepResult, ExecutionContext
 from engine.pages.base_page_module import PageModule
 from engine.pages.glue_action import GlueAction
@@ -47,6 +48,7 @@ class PTHotelSearchPage(PageModule):
         async def _execute(
             self, page, step: StepConfig,
             resolver, context: ExecutionContext,
+            behaviour: HumanBehaviour,
         ) -> StepResult:
             try:
                 from poms.phpTravels.config import load_settings
@@ -55,7 +57,7 @@ class PTHotelSearchPage(PageModule):
                 settings = load_settings()
                 driver   = self._driver(page)
                 home     = self._build_pom(HomePage, driver, settings.base_url,
-                                           page=page, resolver=resolver)
+                                           page=page, resolver=resolver, behaviour=behaviour)
 
                 destination = step.extra.get("destination", "")
                 checkin     = step.extra.get("checkin", "")

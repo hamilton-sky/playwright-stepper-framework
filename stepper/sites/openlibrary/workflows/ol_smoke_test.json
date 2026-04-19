@@ -38,7 +38,7 @@
       "url": "https://openlibrary.org/search?q={{query}}",
       "extra": {
         "threshold_ms": "{{threshold_ms}}",
-        "output_path":  "artifacts/perf_smoke.json"
+        "output_path":  "sites/openlibrary/artifacts/perf_smoke.json"
       }
     },
     {

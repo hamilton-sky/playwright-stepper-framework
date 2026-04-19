@@ -93,7 +93,7 @@ async def run(
             logging.getLogger().addHandler(log_handler)
             screenshots_dir = test_reporter.manager.get_screenshots_dir()
         else:
-            screenshots_dir = _stepper_root / "artifacts" / "screenshots"
+            screenshots_dir = _stepper_root / "sites" / "openlibrary" / "artifacts" / "screenshots"
 
         screenshots_dir.mkdir(parents=True, exist_ok=True)
 

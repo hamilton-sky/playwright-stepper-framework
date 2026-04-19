@@ -540,6 +540,7 @@ class VisualCompareAction(ActionStrategy):
 
     Baselines are stored in:  stepper/artifacts/baselines/<snapshot_name>.png
     Diff images are stored in: stepper/artifacts/baselines/<snapshot_name>.diff.png
+    (engine-level; site-specific artifacts live under stepper/sites/<site>/artifacts/)
 
     JSON example:
         {
@@ -1117,7 +1118,7 @@ class ParallelAction(ActionStrategy):
         async def run_one(sub_step: StepConfig) -> StepResult:
             async with async_playwright() as pw:
                 browser = await pw.chromium.launch(headless=True)
-                storage = _stepper_root / "artifacts" / "storage_state.json"
+                storage = _stepper_root / "sites" / "openlibrary" / "artifacts" / "storage_state.json"
                 ctx_kwargs = {}
                 if storage.exists():
                     ctx_kwargs["storage_state"] = str(storage)

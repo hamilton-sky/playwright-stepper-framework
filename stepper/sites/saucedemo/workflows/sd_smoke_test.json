@@ -27,7 +27,7 @@
       "url": "https://www.saucedemo.com/inventory.html",
       "extra": {
         "threshold_ms": "{{threshold_ms}}",
-        "output_path": "artifacts/saucedemo/perf_smoke.json"
+        "output_path": "sites/saucedemo/artifacts/perf_smoke.json"
       }
     },
     {

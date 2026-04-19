@@ -15,6 +15,7 @@ The selected hotel name is stored in context output["selected_hotel"].
 from __future__ import annotations
 import logging
 
+from engine.browser.human_behaviour import HumanBehaviour
 from engine.interfaces import StepConfig, StepResult, ExecutionContext
 from engine.pages.base_page_module import PageModule
 from engine.pages.glue_action import GlueAction
@@ -41,6 +42,7 @@ class PTHotelResultsPage(PageModule):
         async def _execute(
             self, page, step: StepConfig,
             resolver, context: ExecutionContext,
+            behaviour: HumanBehaviour,
         ) -> StepResult:
             try:
                 from poms.phpTravels.config import load_settings
@@ -49,7 +51,7 @@ class PTHotelResultsPage(PageModule):
                 settings = load_settings()
                 driver   = self._driver(page)
                 results  = self._build_pom(HotelResultsPage, driver, settings.base_url,
-                                           page=page, resolver=resolver)
+                                           page=page, resolver=resolver, behaviour=behaviour)
 
                 hotel_name = step.extra.get("hotel_name", "")
 

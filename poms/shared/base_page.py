@@ -98,7 +98,7 @@ class BasePage:
                         result.confidence * 100,
                     )
                 try:
-                    await result.locator.scroll_into_view_if_needed(timeout=5_000)
+                    await result.locator.first.scroll_into_view_if_needed(timeout=5_000)
                     if self._behaviour:
                         await asyncio.sleep(self._behaviour.jitter(50))
                     await result.locator.first.fill(value, timeout=5_000)
@@ -141,10 +141,10 @@ class BasePage:
                     if js_click:
                         await result.locator.first.evaluate("el => el.click()")
                     else:
-                        await result.locator.scroll_into_view_if_needed(timeout=5_000)
+                        await result.locator.first.scroll_into_view_if_needed(timeout=5_000)
                         if self._behaviour:
                             await self._behaviour.hover_before_click(result.locator.first)
-                        await result.locator.click(timeout=5_000)
+                        await result.locator.first.click(timeout=5_000)
                     logger.info("✓ click via %s (%.0f%%)", result.method, result.confidence * 100)
                     return True
                 except Exception as e:

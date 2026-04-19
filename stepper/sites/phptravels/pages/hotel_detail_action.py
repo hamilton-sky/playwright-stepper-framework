@@ -20,6 +20,7 @@ Stores booking_reference in context output when the confirmation is detected.
 from __future__ import annotations
 import logging
 
+from engine.browser.human_behaviour import HumanBehaviour
 from engine.interfaces import StepConfig, StepResult, ExecutionContext
 from engine.pages.base_page_module import PageModule
 from engine.pages.glue_action import GlueAction
@@ -46,6 +47,7 @@ class PTHotelDetailPage(PageModule):
         async def _execute(
             self, page, step: StepConfig,
             resolver, context: ExecutionContext,
+            behaviour: HumanBehaviour,
         ) -> StepResult:
             try:
                 from poms.phpTravels.config import load_settings
@@ -54,7 +56,7 @@ class PTHotelDetailPage(PageModule):
                 settings = load_settings()
                 driver   = self._driver(page)
                 detail   = self._build_pom(HotelDetailPage, driver, settings.base_url,
-                                           page=page, resolver=resolver)
+                                           page=page, resolver=resolver, behaviour=behaviour)
 
                 checkin  = step.extra.get("checkin", "")
                 checkout = step.extra.get("checkout", "")

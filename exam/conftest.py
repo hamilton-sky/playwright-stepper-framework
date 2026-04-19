@@ -4,7 +4,7 @@ conftest.py -- Pytest fixtures for the OpenLibrary exam solution.
 Provides browser, page, and auth fixtures used by tests/test_openlibrary_exam.py.
 
 Authentication order:
-  1. If artifacts/storage_state.json exists -> loads saved cookies (instant).
+  1. If stepper/sites/openlibrary/artifacts/storage_state.json exists -> loads saved cookies (instant).
   2. Else if OPENLIBRARY_USERNAME + OPENLIBRARY_PASSWORD are set -> auto-login,
      then saves the session so subsequent runs are instant.
   3. Else -> auth-dependent tests are skipped with a clear message.
