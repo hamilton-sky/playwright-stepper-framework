@@ -16,6 +16,7 @@ import json
 import logging
 import os
 from pathlib import Path
+from typing import NamedTuple
 
 
 def _load_env() -> None:
@@ -58,6 +59,65 @@ logger = logging.getLogger(__name__)
 _stepper_root = Path(__file__).resolve().parent
 
 
+class _RunSettings(NamedTuple):
+    use_visual_ai: bool
+    slow_mo: int
+    browser: str
+    storage_state_path: str | None
+
+
+def _load_settings_safe() -> _RunSettings:
+    try:
+        settings = load_settings()
+        validate_ai_config(settings)
+        return _RunSettings(
+            use_visual_ai=settings.use_visual_ai,
+            slow_mo=settings.slow_mo_ms,
+            browser=settings.browser,
+            storage_state_path=settings.storage_state_path,
+        )
+    except Exception:
+        return _RunSettings(use_visual_ai=False, slow_mo=300, browser="chromium", storage_state_path=None)
+
+
+def _build_resolver(use_visual_ai: bool) -> "ElementResolver":
+    ai_client = None
+    if use_visual_ai:
+        import anthropic
+        ai_client = anthropic.Anthropic()
+    resolver_factory = DefaultResolverFactory()
+    return ElementResolver(
+        strategies=resolver_factory.build_cascade(),
+        ai_client=ai_client,
+        use_visual_ai=use_visual_ai,
+    )
+
+
+def _build_reporters(run_label: str, cfg_browser: str, headless: bool, stepper_root: Path):
+    test_reporter = TestReportReporter(
+        reports_base=str(stepper_root / "reports"),
+        test_name=run_label,
+        browser=cfg_browser,
+        headless=not headless,
+    )
+    reporters = [
+        ConsoleReporter(),
+        JsonReporter(str(stepper_root / "report.json")),
+        test_reporter,
+        AllureReporter(str(stepper_root / "reports" / "allure-results")),
+    ]
+    return CompositeReporter(reporters), test_reporter
+
+
+async def _launch_browser(pw, cfg_browser: str, headless: bool, slow_mo: int):
+    _launchers = {"chromium": pw.chromium, "firefox": pw.firefox, "webkit": pw.webkit}
+    return await _launchers.get(cfg_browser, pw.chromium).launch(
+        headless=headless,
+        slow_mo=slow_mo,
+        args=["--disable-blink-features=AutomationControlled"],
+    )
+
+
 def _serve_allure() -> None:
     import subprocess
     allure_dir = str(_stepper_root / "reports" / "allure-results")
@@ -90,47 +150,18 @@ async def run(
     logger.info(f"Planned {len(steps)} steps")
 
     # ── 2. Infrastructure ─────────────────────────────────────────────────────
-    try:
-        settings = load_settings()
-        validate_ai_config(settings)
-        use_visual_ai      = settings.use_visual_ai
-        slow_mo            = settings.slow_mo_ms
-        cfg_browser        = settings.browser
-        storage_state_path = settings.storage_state_path
-    except Exception:
-        use_visual_ai      = False
-        slow_mo            = 300
-        cfg_browser        = "chromium"
-        storage_state_path = None
+    s = _load_settings_safe()
+    use_visual_ai      = s.use_visual_ai
+    slow_mo            = s.slow_mo
+    cfg_browser        = s.browser
+    storage_state_path = s.storage_state_path
 
     if resolver is None:
-        ai_client = None
-        if use_visual_ai:
-            import anthropic
-            ai_client = anthropic.Anthropic()
-
-        resolver_factory = DefaultResolverFactory()
-        resolver = ElementResolver(
-            strategies=resolver_factory.build_cascade(),
-            ai_client=ai_client,
-            use_visual_ai=use_visual_ai,
-        )
+        resolver = _build_resolver(use_visual_ai)
 
     # ── 3. Reporters — absolute paths so output is always inside stepper/ ─────
     run_label = Path(workflow_path).stem if workflow_path else "task"
-    test_reporter = TestReportReporter(
-        reports_base=str(_stepper_root / "reports"),
-        test_name=run_label,
-        browser=cfg_browser,
-        headless=not headless,
-    )
-    reporters = [
-        ConsoleReporter(),
-        JsonReporter(str(_stepper_root / "report.json")),
-        test_reporter,
-        AllureReporter(str(_stepper_root / "reports" / "allure-results")),
-    ]
-    reporter = CompositeReporter(reporters)
+    reporter, test_reporter = _build_reporters(run_label, cfg_browser, headless, _stepper_root)
 
     # ── 4. Run ───────────────────────────────────────────────────────────────
     _owns_browser = _browser is None
@@ -138,12 +169,7 @@ async def run(
 
     if _owns_browser:
         _pw_instance = await async_playwright().start()
-        _launchers = {"chromium": _pw_instance.chromium, "firefox": _pw_instance.firefox, "webkit": _pw_instance.webkit}
-        browser = await _launchers.get(cfg_browser, _pw_instance.chromium).launch(
-            headless=headless,
-            slow_mo=slow_mo,
-            args=["--disable-blink-features=AutomationControlled"],
-        )
+        browser = await _launch_browser(_pw_instance, cfg_browser, headless, slow_mo)
     else:
         browser = _browser
 
@@ -249,34 +275,15 @@ async def run(
 async def _run_data_rows(rows: list[dict], cli_vars: dict, args) -> None:
     """Open one playwright instance and browser; run each data row in a fresh context."""
     # Build resolver once — reused across all rows (ElementResolver is stateless)
-    try:
-        settings = load_settings()
-        validate_ai_config(settings)
-        use_visual_ai = settings.use_visual_ai
-        slow_mo       = settings.slow_mo_ms
-        cfg_browser   = settings.browser
-    except Exception:
-        use_visual_ai = False
-        slow_mo       = 300
-        cfg_browser   = "chromium"
+    s = _load_settings_safe()
+    use_visual_ai = s.use_visual_ai
+    slow_mo       = s.slow_mo
+    cfg_browser   = s.browser
 
-    ai_client = None
-    if use_visual_ai:
-        import anthropic
-        ai_client = anthropic.Anthropic()
-
-    resolver_factory = DefaultResolverFactory()
-    resolver = ElementResolver(
-        strategies=resolver_factory.build_cascade(),
-        ai_client=ai_client,
-        use_visual_ai=use_visual_ai,
-    )
+    resolver = _build_resolver(use_visual_ai)
 
     async with async_playwright() as pw:
-        _launchers = {"chromium": pw.chromium, "firefox": pw.firefox, "webkit": pw.webkit}
-        browser = await _launchers.get(cfg_browser, pw.chromium).launch(
-            headless=not args.show, slow_mo=slow_mo
-        )
+        browser = await _launch_browser(pw, cfg_browser, not args.show, slow_mo)
         for i, row in enumerate(rows, 1):
             merged = {**row, **cli_vars}   # cli_vars wins over row values
             logger.info(f"[data-driven] row {i}/{len(rows)}: {merged}")
