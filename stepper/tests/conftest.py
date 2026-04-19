@@ -14,9 +14,9 @@ for _p in (_repo_root, _stepper_dir):
 
 from engine.resolvers.element_resolver import ElementResolver, DefaultResolverFactory
 from poms.openLibrary.config import load_settings, validate_ai_config
-from main import _load_env
+from bootstrap.settings import load_env
 
-_load_env()   # load .env before any fixture reads os.environ
+load_env()   # load .env before any fixture reads os.environ
 
 
 def pytest_addoption(parser):

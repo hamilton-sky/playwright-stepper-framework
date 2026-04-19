@@ -28,8 +28,9 @@ from bootstrap.settings  import load_env, load_settings_safe
 from bootstrap.infra     import build_resolver, launch_browser, register_all_sites
 from bootstrap.reporting import build_reporters, serve_allure
 
-from engine.actions.factory    import build_default_registry
-from engine.runner.step_runner import StepRunner, LoggingObserver
+from engine.actions.factory      import build_default_registry
+from engine.actions.strategies   import RunWorkflowAction
+from engine.runner.step_runner   import StepRunner, LoggingObserver
 
 logger = logging.getLogger(__name__)
 
@@ -125,7 +126,6 @@ async def run(
         )
         runner.add_observer(LoggingObserver())
 
-        from engine.actions.strategies import RunWorkflowAction
         base_dir = Path(workflow_path).parent if workflow_path else Path.cwd()
         action_registry.register(RunWorkflowAction(run_steps_callable=runner.run, base_dir=base_dir))
 
