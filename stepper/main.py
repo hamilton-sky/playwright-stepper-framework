@@ -178,6 +178,8 @@ async def run(
         from sites.openlibrary.pages.detail_page import OLDetailPage
         from sites.openlibrary.pages.reading_list_action import OLReadingListPage
         from sites.openlibrary.pages.login_action import OLLoginPage
+        
+        
         OLSearchPage.register(action_registry)
         OLDetailPage.register(action_registry, screenshots_dir=screenshots_dir)
         OLReadingListPage.register(action_registry)

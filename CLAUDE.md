@@ -69,8 +69,8 @@ pytest exam/tests/test_openlibrary_exam.py -k <test_name>
 # Run a workflow
 python stepper/main.py --workflow stepper/sites/openlibrary/workflows/<file>.json
 
-# Run headless
-python stepper/main.py --workflow <file>.json --headless
+# Show browser window (headless is the default)
+python stepper/main.py --workflow <file>.json --show
 ```
 
 ---

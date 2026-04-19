@@ -46,6 +46,11 @@ python main.py --workflow sites/openlibrary/workflows/ol_search_and_add.json
 python main.py --workflow sites/openlibrary/workflows/ol_search_and_add.json --show
 ```
 
+**Option D — Record video + serve Allure report:**
+```bash
+python main.py --workflow sites/openlibrary/workflows/ol_search_and_add.json --video --allure-serve
+```
+
 ---
 
 # Part I — Exam Solution (POM Approach)
