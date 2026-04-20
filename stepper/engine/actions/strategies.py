@@ -16,10 +16,8 @@ import copy
 import json
 import logging
 import os
-from datetime import datetime
 from pathlib import Path
 
-from playwright.async_api import async_playwright
 
 # Absolute path to stepper/ — used to resolve relative output paths in workflow
 # JSON files so files always land inside stepper/ regardless of cwd.
@@ -228,8 +226,8 @@ class ScreenshotAction(ActionStrategy):
 
     async def _execute(self, page, step: StepConfig, resolver,
                        context: ExecutionContext) -> StepResult:
-        ts   = datetime.now().strftime("%H%M%S")
-        name = step.extra.get("filename") or f"{ts}_step.png"
+        label = (step.description or step.action).lower().replace(" ", "_")[:40]
+        name = step.extra.get("filename") or f"screenshot_{label}.png"
         path = str(self._screenshots_dir / name)
         await page.screenshot(path=path, full_page=False)
         logger.info(f"📸 screenshot: {path}")
@@ -711,9 +709,6 @@ class ExtractDataAction(ActionStrategy):
 
     async def _execute(self, page, step: StepConfig, resolver,
                        context: ExecutionContext) -> StepResult:
-        import time
-        start = time.monotonic()
-        
         try:
             selector = step.extra.get("selector")
             if not selector:
@@ -830,10 +825,6 @@ class PaginateAction(ActionStrategy):
 
     async def _execute(self, page, step: StepConfig, resolver,
                        context: ExecutionContext) -> StepResult:
-        import time
-        import re
-        start = time.monotonic()
-        
         try:
             extract_config = step.extra.get("extract_config")
             if not extract_config or "selector" not in extract_config:
@@ -1038,14 +1029,12 @@ class ParallelAction(ActionStrategy):
     action_name = "parallel"
     read_only   = True   # parallel itself is read-only (enforces it on children)
 
-    def __init__(self, action_factory):
+    def __init__(self, action_factory, browser_launcher=None):
         self._factory = action_factory
+        self._launcher = browser_launcher
 
     async def _execute(self, page, step: StepConfig, resolver,
                        context: ExecutionContext) -> StepResult:
-        import asyncio
-        from playwright.async_api import async_playwright
-
         sub_steps_raw = step.extra.get("steps", [])
         mode          = step.extra.get("mode", "tabs")
 
@@ -1077,6 +1066,11 @@ class ParallelAction(ActionStrategy):
         # ── Execute in parallel ───────────────────────────────────────────────
         try:
             if mode == "isolated_browser":
+                if self._launcher is None:
+                    return StepResult(
+                        step=step, status="failed",
+                        error="parallel isolated_browser mode requires a browser_launcher — none was injected",
+                    )
                 results = await self._run_isolated_browsers(sub_steps, resolver, context)
             else:
                 results = await self._run_tabs(page, sub_steps, resolver, context)
@@ -1112,25 +1106,16 @@ class ParallelAction(ActionStrategy):
 
     async def _run_isolated_browsers(self, sub_steps: list[StepConfig],
                                      resolver, context: ExecutionContext) -> list[StepResult]:
-        """Spawn one isolated browser per sub-step, each loaded with storage_state."""
-        from pathlib import Path
-
+        """Spawn one isolated browser per sub-step via the injected IBrowserLauncher."""
         async def run_one(sub_step: StepConfig) -> StepResult:
-            async with async_playwright() as pw:
-                browser = await pw.chromium.launch(headless=True)
-                storage = _stepper_root / "sites" / "openlibrary" / "artifacts" / "storage_state.json"
-                ctx_kwargs = {}
-                if storage.exists():
-                    ctx_kwargs["storage_state"] = str(storage)
-                ctx = await browser.new_context(**ctx_kwargs)
-                tab = await ctx.new_page()
-                try:
-                    action = self._factory.create(sub_step.action)
-                    return await action.execute(tab, sub_step, resolver, context)
-                except Exception as e:
-                    return StepResult(step=sub_step, status="failed", error=str(e))
-                finally:
-                    await browser.close()
+            handle, tab = await self._launcher.create_page()
+            try:
+                action = self._factory.create(sub_step.action)
+                return await action.execute(tab, sub_step, resolver, context)
+            except Exception as e:
+                return StepResult(step=sub_step, status="failed", error=str(e))
+            finally:
+                await self._launcher.release(handle)
 
         return list(await asyncio.gather(*[run_one(s) for s in sub_steps]))
 

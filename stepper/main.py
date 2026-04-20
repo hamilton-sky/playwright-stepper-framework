@@ -97,7 +97,15 @@ async def run(
 
         screenshots_dir.mkdir(parents=True, exist_ok=True)
 
-        action_registry = build_default_registry(screenshots_dir=screenshots_dir)
+        from poms.shared.driver import PlaywrightBrowserLauncher
+        browser_launcher = PlaywrightBrowserLauncher(
+            headless=headless,
+            storage_state_path=Path(str(s.storage_state_path)) if s.storage_state_path else None,
+        )
+        action_registry = build_default_registry(
+            screenshots_dir=screenshots_dir,
+            browser_launcher=browser_launcher,
+        )
         register_all_sites(action_registry, _stepper_root, screenshots_dir=screenshots_dir)
 
         context_kwargs: dict = {"viewport": {"width": 1280, "height": 800}}

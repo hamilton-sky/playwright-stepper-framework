@@ -128,3 +128,20 @@ class IBrowserDriver(ABC):
     @property
     @abstractmethod
     def current_url(self) -> str: ...
+
+
+class IBrowserLauncher(ABC):
+    """
+    Spawns isolated browser pages for parallel execution.
+    Owns headless flag and storage_state — engine stays ignorant of both.
+    """
+
+    @abstractmethod
+    async def create_page(self) -> tuple[Any, Any]:
+        """Returns (handle, page). Pass handle to release() when done."""
+        ...
+
+    @abstractmethod
+    async def release(self, handle: Any) -> None:
+        """Close the browser and release all resources for a handle from create_page."""
+        ...

@@ -87,7 +87,8 @@ class JsonReporter(ReporterStrategy):
                     "status":      r.status,
                     "confidence":  round(r.confidence, 3),
                     "screenshot":  r.screenshot,
-                    "error":       r.error,
+                    "error":       r.error if r.status != "skipped" else "",
+                    "skip_reason": r.skip_reason if r.status == "skipped" else "",
                     "output":      r.output or None,
                 }
                 for r in self._results
@@ -127,7 +128,8 @@ class AllureReporter(ReporterStrategy):
         self._results: list[StepResult] = []
 
     def start_suite(self, name: str):
-        self._suite    = name
+        from pathlib import Path as _Path
+        self._suite    = _Path(name).stem if name else name
         self._start_ms = int(datetime.now().timestamp() * 1000)
         self._results  = []
 
@@ -151,7 +153,8 @@ class AllureReporter(ReporterStrategy):
             "start":  t,
             "stop":   t + step_duration,
             "stage":  "finished",
-            "statusDetails": {"message": r.error} if r.error else {},
+            "statusDetails": ({"message": r.skip_reason} if r.status == "skipped" and r.skip_reason
+                              else {"message": r.error} if r.error else {}),
             }
 
         # Check for the list of screenshots instead of just the single string

@@ -80,7 +80,7 @@ class StepRunner:
                 if not should_run:
                     result = StepResult(
                         step=step, status="skipped",
-                        error=f"when={step.when} evaluated to false"
+                        skip_reason=f"when={step.when} evaluated to false"
                     )
                     self._reporter.record_step(result)
                     self._notify_done(idx, result)

@@ -163,7 +163,7 @@ class TestReportManager:
         if not self.current_test_dir:
             raise RuntimeError("No test report directory created yet")
         
-        perf_file = self.current_test_dir / "performance.json"
+        perf_file = self.current_test_dir / "step_timings.json"
         metrics["test_id"] = self.current_test_id
         metrics["recorded_at"] = datetime.now().isoformat()
         
@@ -171,7 +171,7 @@ class TestReportManager:
             json.dumps(metrics, indent=2, default=str),
             encoding="utf-8"
         )
-        logger.info(f"Saved performance metrics: {perf_file}")
+        logger.info(f"Saved step timings: {perf_file}")
     
     def copy_screenshot(self, source_path: Path, step_name: str, step_num: int) -> Path:
         """
@@ -253,7 +253,7 @@ class TestReportManager:
             "total_failed": total_failed,
             "success_rate": (
                 total_passed / (total_passed + total_failed)
-                if (total_passed + total_failed) > 0 else 0.0
+                if (total_passed + total_failed) > 0 else 1.0
             ),
             "tests": all_tests,
         }

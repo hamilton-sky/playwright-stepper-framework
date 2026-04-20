@@ -89,9 +89,11 @@ class TestReportReporter(ReporterStrategy):
         total_duration_ms = int((end_time - self._start_time).total_seconds() * 1000)
         
         # Save metadata
+        from pathlib import Path as _Path
+        suite_stem = _Path(self._suite_name).stem if self._suite_name else self._suite_name
         self.manager.save_metadata({
             "test_name": self._test_name,
-            "suite_name": self._suite_name,
+            "suite_name": suite_stem,
             "browser": self._browser,
             "headless": self._headless,
             "total_duration_ms": total_duration_ms,
@@ -104,14 +106,14 @@ class TestReportReporter(ReporterStrategy):
         skipped = sum(1 for r in self._results if r.status == "skipped")
         
         summary = {
-            "suite": self._suite_name,
+            "suite": suite_stem,
             "started_at": self._start_time.isoformat(),
             "total_steps": len(self._results),
             "passed": passed,
             "failed": failed,
             "skipped": skipped,
             "total_duration_ms": total_duration_ms,
-            "success_rate": passed / len(self._results) if self._results else 0.0,
+            "success_rate": passed / (passed + failed) if (passed + failed) > 0 else 1.0,
         }
         self.manager.save_summary(summary)
         
@@ -127,7 +129,8 @@ class TestReportReporter(ReporterStrategy):
                 "screenshots": [Path(s).name for s in r.screenshots] if r.screenshots else (
                     [Path(r.screenshot).name] if r.screenshot else []
                 ),
-                "error": r.error,
+                "error": r.error if r.status != "skipped" else "",
+                "skip_reason": r.skip_reason if r.status == "skipped" else "",
                 "output": r.output or None,
             }
             for i, r in enumerate(self._results)
@@ -135,9 +138,10 @@ class TestReportReporter(ReporterStrategy):
         self.manager.save_step_results(step_results)
         
         # Collect performance metrics
+        active_steps = [r for r in self._results if r.status != "skipped"]
         performance = {
             "total_duration_ms": total_duration_ms,
-            "avg_step_duration_ms": total_duration_ms / len(self._results) if self._results else 0,
+            "avg_step_duration_ms": total_duration_ms / len(active_steps) if active_steps else 0,
             "steps": [
                 {
                     "num": i + 1,
@@ -151,12 +155,6 @@ class TestReportReporter(ReporterStrategy):
         
         # Generate cross-test summary
         self.manager.generate_cross_test_summary()
-
-        # Copy flat report.json into attachments/ for per-run archiving
-        import shutil
-        flat_report = Path("report.json")
-        if flat_report.exists() and self.manager.current_test_dir:
-            shutil.copy(flat_report, self.manager.current_test_dir / "attachments" / "report.json")
 
         test_dir = self.manager.current_test_dir
         result_msg = f"{passed}/{len(self._results)} passed"

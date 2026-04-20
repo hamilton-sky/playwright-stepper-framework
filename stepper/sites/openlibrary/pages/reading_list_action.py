@@ -64,7 +64,7 @@ class OLReadingListPage(PageModule):
 
                 if not urls:
                     logger.info("ol_clear_reading_list — shelf already empty")
-                    return StepResult(step=step, status="passed")
+                    return StepResult(step=step, status="passed", output={"removed": 0})
 
                 logger.info(f"ol_clear_reading_list — removing {len(urls)} book(s)")
                 for idx, url in enumerate(urls, start=1):
@@ -77,7 +77,7 @@ class OLReadingListPage(PageModule):
                     )
 
                 logger.info("ol_clear_reading_list ✓")
-                return StepResult(step=step, status="passed")
+                return StepResult(step=step, status="passed", output={"removed": len(urls)})
 
             except Exception as e:
                 logger.error(f"ol_clear_reading_list failed: {e}")
@@ -117,7 +117,7 @@ class OLReadingListPage(PageModule):
                 context.set_count(context_key, count)
 
                 logger.info(f"ol_store_count ✓ — {context_key}={count}")
-                return StepResult(step=step, status="passed")
+                return StepResult(step=step, status="passed", output={context_key: count})
 
             except Exception as e:
                 logger.error(f"ol_store_count failed: {e}")
@@ -168,7 +168,7 @@ class OLReadingListPage(PageModule):
                                       error=f"Reading list: expected {expected} books, got {actual}")
 
                 logger.info(f"ol_assert_count ✓ — {actual} books == {expected}")
-                return StepResult(step=step, status="passed")
+                return StepResult(step=step, status="passed", output={"actual": actual, "expected": expected})
 
             except Exception as e:
                 logger.error(f"ol_assert_count failed: {e}")
@@ -216,7 +216,8 @@ class OLReadingListPage(PageModule):
                         "ol_ensure_count ✓ — already at %d/%d, skipping top-up",
                         current, target,
                     )
-                    return StepResult(step=step, status="passed")
+                    return StepResult(step=step, status="passed",
+                                      output={"current": current, "target": target, "gap": 0})
 
                 gap = target - current
                 context.set_count("gap", gap)
@@ -224,7 +225,8 @@ class OLReadingListPage(PageModule):
                     "ol_ensure_count — shelf has %d/%d, gap=%d stored in context",
                     current, target, gap,
                 )
-                return StepResult(step=step, status="passed")
+                return StepResult(step=step, status="passed",
+                                  output={"current": current, "target": target, "gap": gap})
 
             except Exception as e:
                 logger.error("ol_ensure_count failed: %s", e)

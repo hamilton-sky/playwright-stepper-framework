@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 
 
 def build_reporters(run_label: str, cfg_browser: str, headless: bool, stepper_root: Path):
-    from engine.reporter.reporters import CompositeReporter, ConsoleReporter, JsonReporter, AllureReporter
+    from engine.reporter.reporters import CompositeReporter, ConsoleReporter, AllureReporter
     from engine.reporter.test_report_reporter import TestReportReporter
     test_reporter = TestReportReporter(
         reports_base=str(stepper_root / "reports"),
@@ -17,7 +17,6 @@ def build_reporters(run_label: str, cfg_browser: str, headless: bool, stepper_ro
     )
     reporters = [
         ConsoleReporter(),
-        JsonReporter(str(stepper_root / "report.json")),
         test_reporter,
         AllureReporter(str(stepper_root / "reports" / "allure-results")),
     ]

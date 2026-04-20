@@ -79,6 +79,7 @@ class StepResult:
     step: StepConfig
     status: str            # "passed" | "failed" | "skipped" | "warned"
     error: str = ""
+    skip_reason: str = ""  # populated only when status="skipped"; error stays empty
     screenshot: str = ""
     screenshots: list[str] = field(default_factory=list)  # all screenshots from multi-shot actions
     confidence: float = 0.0

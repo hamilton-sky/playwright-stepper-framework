@@ -12,9 +12,12 @@ Pattern: Adapter
 
 from __future__ import annotations
 
+from pathlib import Path
+from typing import Any
+
 from playwright.async_api import Page, ElementHandle
 
-from poms.shared.interfaces import IBrowserDriver, IElementHandle
+from poms.shared.interfaces import IBrowserDriver, IBrowserLauncher, IElementHandle
 
 
 class PlaywrightElementHandle(IElementHandle):
@@ -118,3 +121,32 @@ class PlaywrightDriver(IBrowserDriver):
     @property
     def current_url(self) -> str:
         return self._page.url
+
+
+class PlaywrightBrowserLauncher(IBrowserLauncher):
+    """
+    Concrete IBrowserLauncher — spawns isolated Playwright browsers.
+
+    Owns the headless flag and storage_state path so the engine never
+    needs to know about either.
+    """
+
+    def __init__(self, headless: bool = True, storage_state_path: Path | None = None):
+        self._headless = headless
+        self._storage_state_path = storage_state_path
+
+    async def create_page(self) -> tuple[Any, Any]:
+        from playwright.async_api import async_playwright
+        pw = await async_playwright().start()
+        browser = await pw.chromium.launch(headless=self._headless)
+        ctx_kwargs: dict = {}
+        if self._storage_state_path and self._storage_state_path.exists():
+            ctx_kwargs["storage_state"] = str(self._storage_state_path)
+        ctx = await browser.new_context(**ctx_kwargs)
+        page = await ctx.new_page()
+        return (pw, browser), page
+
+    async def release(self, handle: Any) -> None:
+        pw, browser = handle
+        await browser.close()
+        await pw.stop()

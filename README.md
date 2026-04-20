@@ -370,9 +370,9 @@ pytest tests/ -v --workflow ol_search_and_add.json --data ../poms/openLibrary/da
 
 ## Showcase Workflows
 
-Twelve ready-to-run JSON workflows demonstrating every engine capability:
+Fourteen ready-to-run JSON workflows demonstrating every engine capability:
 
-**OpenLibrary (9 workflows)**
+**OpenLibrary (10 workflows)**
 
 | Workflow | What it showcases | Command (run from `stepper/`) |
 |---|---|---|
@@ -384,6 +384,7 @@ Twelve ready-to-run JSON workflows demonstrating every engine capability:
 | `ol_parallel_perf.json` | Three pages benchmarked concurrently in separate tabs | `python main.py --workflow sites/openlibrary/workflows/ol_parallel_perf.json` |
 | `ol_smoke_test.json` | `when`-guarded + `continue_on_failure` soft-fail | `python main.py --workflow sites/openlibrary/workflows/ol_smoke_test.json` |
 | `ol_idempotency_test.json` | Add same books twice → count must not grow | `python main.py --workflow sites/openlibrary/workflows/ol_idempotency_test.json` |
+| `ol_data_driven.json` | Data-driven runs via `--data testdata.json` | `python main.py --workflow sites/openlibrary/workflows/ol_data_driven.json --data ../poms/openLibrary/data/testdata.json` |
 | `login.json` | Generic reusable login subflow | `python main.py --workflow sites/openlibrary/workflows/login.json` |
 
 **SauceDemo (3 workflows)**
@@ -393,6 +394,12 @@ Twelve ready-to-run JSON workflows demonstrating every engine capability:
 | `sd_happy_path.json` | Login → add to cart → checkout | `python main.py --workflow sites/saucedemo/workflows/sd_happy_path.json` |
 | `sd_multi_product.json` | Add multiple products, verify cart | `python main.py --workflow sites/saucedemo/workflows/sd_multi_product.json` |
 | `sd_smoke_test.json` | Smoke check with `continue_on_failure` | `python main.py --workflow sites/saucedemo/workflows/sd_smoke_test.json` |
+
+**phpTravels (1 workflow)**
+
+| Workflow | What it showcases | Command (run from `stepper/`) |
+|---|---|---|
+| `hotel_booking.json` | Login → search hotels → select → book | `python main.py --workflow sites/phptravels/workflows/hotel_booking.json` |
 
 ---
 
@@ -500,7 +507,7 @@ playwright-stepper-framework/
 │   │   │   └── checkout_complete_page.py
 │   │   └── data/
 │   │       └── testdata.json
-│   └── phpTravels/                   # phpTravels POMs [scaffolded — not integrated; POM layer only, no glue or workflows]
+│   └── phpTravels/                   # phpTravels POMs
 │
 ├── exam/                             # Pytest exam suite — calls poms/ directly
 │   ├── flows.py                      # 4 exam function signatures (orchestration layer)
@@ -511,6 +518,10 @@ playwright-stepper-framework/
 │
 ├── stepper/                          # Stepper framework + site integrations
 │   ├── main.py                       # DIP root — wires registry, resolver, runner, reporter
+│   ├── bootstrap/                    # Startup helpers extracted from main.py
+│   │   ├── infra.py                  # build_resolver(), launch_browser(), register_all_sites()
+│   │   ├── reporting.py              # build_reporters(), serve_allure()
+│   │   └── settings.py               # load_env(), load_settings_safe() → RunSettings
 │   ├── engine/                       # Core engine (site-agnostic)
 │   │   ├── interfaces.py             # StepConfig, StepResult, ExecutionContext (all abstract)
 │   │   ├── actions/
@@ -521,6 +532,9 @@ playwright-stepper-framework/
 │   │   │   │                         #   measure_performance, visual_compare,
 │   │   │   │                         #   run_workflow, parallel
 │   │   │   └── sub_step_mixin.py     # SubStepRunnerMixin — shared nested-step logic
+│   │   ├── browser/
+│   │   │   ├── human_behaviour.py    # Per-action jitter, hover dwell, inter-step pauses
+│   │   │   └── anti_detection.py     # Setup-time bot-fingerprint suppression
 │   │   ├── resolvers/
 │   │   │   ├── element_resolver.py   # Cascade executor + DefaultResolverFactory
 │   │   │   ├── strategies.py         # Role → Label → Placeholder → Text → Id → Css → XPath
@@ -548,6 +562,7 @@ playwright-stepper-framework/
 │   │   │   ├── detail_page.py        # ol_add_to_shelf
 │   │   │   └── reading_list_action.py  # ol_clear_reading_list, ol_store_count,
 │   │   │                               #   ol_assert_count, ol_ensure_count
+│   │   ├── register.py               # Auto-discovered by register_all_sites()
 │   │   └── workflows/                # JSON orchestration — zero selectors
 │   │       ├── ol_search_and_add.json
 │   │       ├── ol_add_only.json
@@ -557,18 +572,30 @@ playwright-stepper-framework/
 │   │       ├── ol_parallel_perf.json
 │   │       ├── ol_smoke_test.json
 │   │       ├── ol_idempotency_test.json
+│   │       ├── ol_data_driven.json
 │   │       └── login.json
 │   │
-│   └── sites/saucedemo/
+│   ├── sites/saucedemo/
+│   │   ├── pages/                    # Glue layer
+│   │   │   ├── login_action.py       # sd_login
+│   │   │   ├── inventory_action.py   # sd_add_to_cart, sd_sort_products
+│   │   │   ├── cart_action.py        # sd_view_cart
+│   │   │   └── checkout_action.py    # sd_checkout
+│   │   ├── register.py               # Auto-discovered by register_all_sites()
+│   │   └── workflows/
+│   │       ├── sd_happy_path.json
+│   │       ├── sd_multi_product.json
+│   │       └── sd_smoke_test.json
+│   │
+│   └── sites/phptravels/
 │       ├── pages/                    # Glue layer
-│       │   ├── login_action.py       # sd_login
-│       │   ├── inventory_action.py   # sd_add_to_cart, sd_sort_products
-│       │   ├── cart_action.py        # sd_view_cart
-│       │   └── checkout_action.py    # sd_checkout
+│       │   ├── login_action.py       # pt_login
+│       │   ├── hotel_search_action.py  # pt_search_hotels
+│       │   ├── hotel_results_action.py # pt_select_hotel
+│       │   └── hotel_detail_action.py  # pt_book_hotel
+│       ├── register.py               # Auto-discovered by register_all_sites()
 │       └── workflows/
-│           ├── sd_happy_path.json
-│           ├── sd_multi_product.json
-│           └── sd_smoke_test.json
+│           └── hotel_booking.json
 │
 └── requirements.txt
 ```

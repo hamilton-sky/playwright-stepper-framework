@@ -31,6 +31,9 @@ playwright-stepper-framework/
 │   │   │   ├── factory.py        # ActionRegistry (factory + registry pattern)
 │   │   │   ├── strategies.py     # Navigate, Click, Fill, ForEach, Parallel, etc.
 │   │   │   └── sub_step_mixin.py # SubStepRunnerMixin — shared logic for nested steps
+│   │   ├── browser/
+│   │   │   ├── human_behaviour.py  # Per-action jitter, hover dwell, inter-step pauses
+│   │   │   └── anti_detection.py   # Setup-time bot-fingerprint suppression
 │   │   ├── resolvers/
 │   │   │   ├── element_resolver.py   # Cascade orchestrator (det → semantic → AI)
 │   │   │   ├── strategies.py         # 7 deterministic resolver strategies
@@ -51,6 +54,11 @@ playwright-stepper-framework/
 │   │   │   └── page_objects.py      # POM registry
 │   │   └── utils.py
 │   │
+│   ├── bootstrap/                # Startup helpers extracted from main.py
+│   │   ├── infra.py              # build_resolver(), launch_browser(), register_all_sites()
+│   │   ├── reporting.py          # build_reporters(), serve_allure()
+│   │   └── settings.py           # load_env(), load_settings_safe() → RunSettings
+│   │
 │   ├── sites/openlibrary/        # Site-specific action layer
 │   │   ├── pages/
 │   │   │   ├── search_page.py        # Registers ol_collect_books
@@ -58,10 +66,12 @@ playwright-stepper-framework/
 │   │   │   ├── login_action.py       # Registers ol_ensure_login
 │   │   │   └── reading_list_action.py  # Registers ol_clear_reading_list,
 │   │   │                               #   ol_store_count, ol_assert_count, ol_ensure_count
-│   │   └── workflows/                # 9 JSON workflows
+│   │   ├── register.py               # Auto-discovered by register_all_sites()
+│   │   └── workflows/                # 10 JSON workflows
 │   │       ├── ol_search_and_add.json
 │   │       ├── ol_smoke_test.json
 │   │       ├── ol_parallel_perf.json
+│   │       ├── ol_data_driven.json   # Data-driven via --data flag
 │   │       └── … (+ ol_add_only, ol_ensure_count, ol_regression_roundtrip,
 │   │              ol_multi_author, ol_idempotency_test, login)
 │   │
@@ -71,10 +81,21 @@ playwright-stepper-framework/
 │   │   │   ├── inventory_action.py   # Registers sd_add_to_cart, sd_sort_products
 │   │   │   ├── cart_action.py        # Registers sd_view_cart
 │   │   │   └── checkout_action.py    # Registers sd_checkout
+│   │   ├── register.py               # Auto-discovered by register_all_sites()
 │   │   └── workflows/
 │   │       ├── sd_happy_path.json
 │   │       ├── sd_multi_product.json
 │   │       └── sd_smoke_test.json
+│   │
+│   ├── sites/phptravels/         # phpTravels site integration (fully wired)
+│   │   ├── pages/
+│   │   │   ├── login_action.py       # Registers pt_login
+│   │   │   ├── hotel_search_action.py  # Registers pt_search_hotels
+│   │   │   ├── hotel_results_action.py # Registers pt_select_hotel
+│   │   │   └── hotel_detail_action.py  # Registers pt_book_hotel
+│   │   ├── register.py               # Auto-discovered by register_all_sites()
+│   │   └── workflows/
+│   │       └── hotel_booking.json
 │   │
 │   ├── tests/                    # Stepper engine test suite
 │   │   ├── conftest.py           # --headed flag registration

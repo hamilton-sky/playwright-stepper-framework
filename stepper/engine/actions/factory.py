@@ -48,6 +48,7 @@ class ActionRegistry(ActionFactory):
 
 def build_default_registry(
     screenshots_dir: Path = Path("artifacts/screenshots"),
+    browser_launcher=None,
 ) -> ActionRegistry:
     """
     Builds the default registry with all Phase 1 + Phase 2 actions.
@@ -75,7 +76,7 @@ def build_default_registry(
     for_each     = ForEachItemAction(action_factory=registry, screenshots_dir=screenshots_dir)
     ensure_login = EnsureLoginAction(action_factory=registry)
     paginate     = PaginateAction(action_factory=registry)
-    parallel     = ParallelAction(action_factory=registry)
+    parallel     = ParallelAction(action_factory=registry, browser_launcher=browser_launcher)
 
     return (
         registry
