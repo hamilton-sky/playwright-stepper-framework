@@ -68,6 +68,10 @@ class HealerStrategy(ABC):
         step: "StepConfig",
         error: str,
         dom: DomPayload,
+        *,
+        all_steps: list | None = None,
+        current_index: int | None = None,
+        context_vars: dict | None = None,
     ) -> list["StepConfig"]:
         """
         Produce replacement steps for a failed step.

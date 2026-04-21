@@ -11,16 +11,35 @@ playwright-stepper-framework/
 │   │   ├── interfaces.py         # POM contracts (IBrowserDriver, IElementHandle)
 │   │   ├── base_page.py          # SharedBasePage — resolver helpers
 │   │   ├── constants.py          # CONFIDENCE_AUTO / CONFIDENCE_WARN thresholds
+│   │   ├── locator.py            # Shared locator utilities
 │   │   └── performance.py        # Performance metrics
 │   ├── openLibrary/              # OpenLibrary POMs
 │   │   ├── config.py             # Settings loader (YAML + env vars)
 │   │   └── pages/                # Pure POMs — selectors live here and nowhere else
+│   │       ├── base_page.py
 │   │       ├── login_page.py
 │   │       ├── book_search_page.py   # collect_books_under_year → list[dict{url,year}]
 │   │       ├── book_detail_page.py
 │   │       └── reading_list_page.py
 │   ├── saucedemo/                # SauceDemo POMs
-│   └── phpTravels/               # phpTravels POMs [scaffolded — not integrated]
+│   │   ├── config.py
+│   │   └── pages/
+│   │       ├── base_page.py
+│   │       ├── login_page.py
+│   │       ├── inventory_page.py
+│   │       ├── product_page.py
+│   │       ├── cart_page.py
+│   │       ├── checkout_info_page.py
+│   │       ├── checkout_overview_page.py
+│   │       └── checkout_complete_page.py
+│   └── phpTravels/               # phpTravels POMs
+│       ├── config.py
+│       └── pages/
+│           ├── base_page.py
+│           ├── login_page.py
+│           ├── home_page.py
+│           ├── hotel_results_page.py
+│           └── hotel_detail_page.py
 │
 ├── stepper/                      # The Automation Engine
 │   ├── main.py                   # Entry point — wires everything together
@@ -29,11 +48,20 @@ playwright-stepper-framework/
 │   │   ├── interfaces.py         # Strategy/Observer abstractions + StepConfig
 │   │   ├── actions/
 │   │   │   ├── factory.py        # ActionRegistry (factory + registry pattern)
-│   │   │   ├── strategies.py     # Navigate, Click, Fill, ForEach, Parallel, etc.
+│   │   │   ├── strategies.py     # Navigate, Click, Fill, ForEach, Parallel,
+│   │   │   │                     #   LoadTestData, etc.
 │   │   │   └── sub_step_mixin.py # SubStepRunnerMixin — shared logic for nested steps
+│   │   ├── ai/
+│   │   │   ├── providers.py      # AI provider adapters (Groq, Gemini, Claude)
+│   │   │   └── service.py        # Unified AI service interface
 │   │   ├── browser/
 │   │   │   ├── human_behaviour.py  # Per-action jitter, hover dwell, inter-step pauses
 │   │   │   └── anti_detection.py   # Setup-time bot-fingerprint suppression
+│   │   ├── healer/               # Self-healing element resolution
+│   │   │   ├── ai_healer.py      # AI-powered locator repair
+│   │   │   ├── annotator.py      # DOM annotation for healing context
+│   │   │   ├── dom_snapshot.py   # DOM snapshot capture
+│   │   │   └── interfaces.py     # Healer contracts
 │   │   ├── resolvers/
 │   │   │   ├── element_resolver.py   # Cascade orchestrator (det → semantic → AI)
 │   │   │   ├── strategies.py         # 7 deterministic resolver strategies
@@ -43,7 +71,9 @@ playwright-stepper-framework/
 │   │   │   ├── when_eval.py      # Conditional step evaluation
 │   │   │   └── api.py            # Programmatic API
 │   │   ├── planner/
-│   │   │   └── planner.py        # Claude AI planner / JSON file planner
+│   │   │   ├── planner.py        # Claude AI planner / JSON file planner
+│   │   │   ├── schema_extractor.py  # Extracts JSON schema from workflow
+│   │   │   └── validator.py      # Validates planner output against schema
 │   │   ├── reporter/
 │   │   │   ├── reporters.py      # Console, JSON, Allure reporters
 │   │   │   ├── test_report_manager.py
@@ -85,7 +115,9 @@ playwright-stepper-framework/
 │   │   └── workflows/
 │   │       ├── sd_happy_path.json
 │   │       ├── sd_multi_product.json
-│   │       └── sd_smoke_test.json
+│   │       ├── sd_smoke_test.json
+│   │       ├── sd_heal_test.json     # Self-healing locator test
+│   │       └── sd_full_heal_flow.json  # Full self-healing demonstration flow
 │   │
 │   ├── sites/phptravels/         # phpTravels site integration (fully wired)
 │   │   ├── pages/
@@ -283,6 +315,7 @@ playwright-stepper-framework/
   visual_compare      → screenshot diff against stored baseline (pixel-level)
   parallel            → run read-only actions concurrently in separate tabs
   run_workflow        → nested sub-workflow execution
+  load_test_data      → load JSON test-data file → context.test_data
 
   SITE-SPECIFIC ACTIONS (OpenLibrary)
   ────────────────────────────────────

@@ -31,6 +31,7 @@ from engine.browser.human_behaviour import HumanBehaviour
 from engine.healer.interfaces import HealerStrategy
 from engine.healer.dom_snapshot import DOMSnapshotCascade
 from engine.healer.annotator import HealAnnotator
+from engine.healer.visual_bridge import VisualBridge
 
 logger = logging.getLogger(__name__)
 
@@ -178,8 +179,25 @@ class StepRunner:
                         "warning",
                     )
                     try:
+                        bridge_result = await VisualBridge.check(self._page, step)
+                        if bridge_result == "hidden":
+                            result = dataclasses.replace(result, status="failed",
+                                error="element found but not visible — state/timing issue (visual bridge)")
+                            self._notify_log("⚕ Visual bridge: element hidden — skipping healer", "warning")
+                            break
+                        if bridge_result == "disabled":
+                            result = dataclasses.replace(result, status="failed",
+                                error="element found but disabled — check flow state (visual bridge)")
+                            self._notify_log("⚕ Visual bridge: element disabled — skipping healer", "warning")
+                            break
+
                         dom = await DOMSnapshotCascade.capture(self._page, step)
-                        replacement_steps = await self._healer.heal(step, result.error, dom)
+                        replacement_steps = await self._healer.heal(
+                            step, result.error, dom,
+                            all_steps=steps,
+                            current_index=idx,
+                            context_vars=dict(ctx.counts) if ctx.counts else None,
+                        )
 
                         # Run replacements without healer to prevent infinite recursion
                         replacement_runner = StepRunner(

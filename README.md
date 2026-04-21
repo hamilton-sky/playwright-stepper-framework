@@ -370,7 +370,7 @@ pytest tests/test_workflow.py::test_data_driven -v --workflow ol_search_and_add.
 
 ## Showcase Workflows
 
-Fourteen ready-to-run JSON workflows demonstrating every engine capability:
+Sixteen ready-to-run JSON workflows demonstrating every engine capability:
 
 **OpenLibrary (10 workflows)**
 
@@ -387,13 +387,15 @@ Fourteen ready-to-run JSON workflows demonstrating every engine capability:
 | `ol_data_driven.json` | Data-driven runs via `--data testdata.json` | `python main.py --workflow sites/openlibrary/workflows/ol_data_driven.json --data ../poms/openLibrary/data/testdata.json` |
 | `login.json` | Generic reusable login subflow | `python main.py --workflow sites/openlibrary/workflows/login.json` |
 
-**SauceDemo (3 workflows)**
+**SauceDemo (5 workflows)**
 
 | Workflow | What it showcases | Command (run from `stepper/`) |
 |---|---|---|
 | `sd_happy_path.json` | Login → add to cart → checkout | `python main.py --workflow sites/saucedemo/workflows/sd_happy_path.json` |
 | `sd_multi_product.json` | Add multiple products, verify cart | `python main.py --workflow sites/saucedemo/workflows/sd_multi_product.json` |
 | `sd_smoke_test.json` | Smoke check with `continue_on_failure` | `python main.py --workflow sites/saucedemo/workflows/sd_smoke_test.json` |
+| `sd_heal_test.json` | Self-healing locator resolution under UI change | `python main.py --workflow sites/saucedemo/workflows/sd_heal_test.json` |
+| `sd_full_heal_flow.json` | Full self-healing demonstration flow | `python main.py --workflow sites/saucedemo/workflows/sd_full_heal_flow.json` |
 
 **phpTravels (1 workflow)**
 
@@ -436,6 +438,7 @@ Fourteen ready-to-run JSON workflows demonstrating every engine capability:
 | `ensure_login` | Generic login subflow — accepts `login_steps` list in config |
 | `run_workflow` | Execute a sub-workflow JSON file then return to parent flow |
 | `parallel` | Run multiple `read_only` sub-steps concurrently in separate tabs |
+| `load_test_data` | Load a JSON test-data file into `context.test_data` |
 
 ---
 
@@ -479,6 +482,7 @@ playwright-stepper-framework/
 │   │   ├── driver.py                 # PlaywrightDriver — implements IBrowserDriver
 │   │   ├── base_page.py              # SharedBasePage — resolver helpers
 │   │   ├── constants.py              # CONFIDENCE_AUTO / CONFIDENCE_WARN — single source of truth
+│   │   ├── locator.py                # Shared locator utilities
 │   │   └── performance.py            # measure_page_performance() — raw timing via JS API
 │   ├── openLibrary/
 │   │   ├── config.py                 # 3-tier settings: defaults → config.yaml → ENV
@@ -530,11 +534,19 @@ playwright-stepper-framework/
 │   │   │   │                         #   wait, store_count, assert_count, for_each_item,
 │   │   │   │                         #   extract_data, paginate, ensure_login,
 │   │   │   │                         #   measure_performance, visual_compare,
-│   │   │   │                         #   run_workflow, parallel
+│   │   │   │                         #   run_workflow, parallel, load_test_data
 │   │   │   └── sub_step_mixin.py     # SubStepRunnerMixin — shared nested-step logic
+│   │   ├── ai/
+│   │   │   ├── providers.py          # AI provider adapters (Groq, Gemini, Claude)
+│   │   │   └── service.py            # Unified AI service interface
 │   │   ├── browser/
 │   │   │   ├── human_behaviour.py    # Per-action jitter, hover dwell, inter-step pauses
 │   │   │   └── anti_detection.py     # Setup-time bot-fingerprint suppression
+│   │   ├── healer/               # Self-healing element resolution
+│   │   │   ├── ai_healer.py      # AI-powered locator repair
+│   │   │   ├── annotator.py      # DOM annotation for healing context
+│   │   │   ├── dom_snapshot.py   # DOM snapshot capture
+│   │   │   └── interfaces.py     # Healer contracts
 │   │   ├── resolvers/
 │   │   │   ├── element_resolver.py   # Cascade executor + DefaultResolverFactory
 │   │   │   ├── strategies.py         # Role → Label → Placeholder → Text → Id → Css → XPath
@@ -553,7 +565,9 @@ playwright-stepper-framework/
 │   │   │   ├── glue_action.py        # GlueAction base — enforces resolver injection
 │   │   │   └── page_objects.py       # POM registry
 │   │   └── planner/
-│   │       └── planner.py            # JsonFilePlanner (loads JSON) + ClaudePlanner (AI)
+│   │       ├── planner.py            # JsonFilePlanner (loads JSON) + ClaudePlanner (AI)
+│   │       ├── schema_extractor.py   # Extracts JSON schema from workflow
+│   │       └── validator.py          # Validates planner output against schema
 │   │
 │   ├── sites/openlibrary/
 │   │   ├── pages/                    # Glue layer — wires POMs into Stepper actions
@@ -585,7 +599,9 @@ playwright-stepper-framework/
 │   │   └── workflows/
 │   │       ├── sd_happy_path.json
 │   │       ├── sd_multi_product.json
-│   │       └── sd_smoke_test.json
+│   │       ├── sd_smoke_test.json
+│   │       ├── sd_heal_test.json
+│   │       └── sd_full_heal_flow.json
 │   │
 │   └── sites/phptravels/
 │       ├── pages/                    # Glue layer

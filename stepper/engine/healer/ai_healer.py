@@ -34,6 +34,8 @@ Rules:
 5. Return a JSON array with exactly ONE replacement step.
 6. Use ONLY these registered actions:
 {action_block}
+7. If workflow_context is provided, use nearby_steps to infer which page/phase the \
+automation is in — this narrows which element to target.
 
 Example:
   failed: {{"action":"fill","element":{{"css":".broken"}},"input_value":"hello","description":"fill username"}}
@@ -73,6 +75,10 @@ class AiHealer(HealerStrategy):
         step: StepConfig,
         error: str,
         dom: DomPayload,
+        *,
+        all_steps: list | None = None,
+        current_index: int | None = None,
+        context_vars: dict | None = None,
     ) -> list[StepConfig]:
         # Fast path: embed resolved uniquely — zero AI tokens
         if dom.healed_cfg is not None:
@@ -81,25 +87,47 @@ class AiHealer(HealerStrategy):
             )
             return [self._apply_healed_cfg(step, dom.healed_cfg)]
 
-        # Slow path: ask the AI
-        logger.info(
-            f"[AiHealer] calling AI for '{step.action}' "
-            f"(strategy={dom.strategy_used}, ~{dom.token_estimate} tokens)"
-        )
-        user_msg = json.dumps(
-            {
-                "failed_step": {
-                    "action":      step.action,
-                    "description": step.description,
-                    "element":     step.element,
-                    "input_value": step.input_value,
-                    "extra":       step.extra,
-                },
-                "error": error,
-                "dom":   dom.content,
+        # Build workflow context when caller provides step list + position
+        workflow_context: dict | None = None
+        if all_steps is not None and current_index is not None:
+            lo = max(0, current_index - 3)
+            hi = current_index + 4
+            nearby = [
+                {"action": s.action, "description": s.description}
+                for s in all_steps[lo:hi]
+            ]
+            workflow_context = {
+                "current_index": current_index,
+                "total_steps":   len(all_steps),
+                "nearby_steps":  nearby,
+                "context_vars":  context_vars or {},
+            }
+            logger.info(
+                f"[AiHealer] calling AI for '{step.action}' "
+                f"with workflow context (step {current_index + 1}/{len(all_steps)}, "
+                f"strategy={dom.strategy_used}, ~{dom.token_estimate} tokens)"
+            )
+        else:
+            logger.info(
+                f"[AiHealer] calling AI for '{step.action}' "
+                f"(no context, strategy={dom.strategy_used}, ~{dom.token_estimate} tokens)"
+            )
+
+        payload: dict = {
+            "failed_step": {
+                "action":      step.action,
+                "description": step.description,
+                "element":     step.element,
+                "input_value": step.input_value,
+                "extra":       step.extra,
             },
-            ensure_ascii=False,
-        )
+            "error": error,
+            "dom":   dom.content,
+        }
+        if workflow_context:
+            payload["workflow_context"] = workflow_context
+
+        user_msg = json.dumps(payload, ensure_ascii=False)
 
         logger.debug(f"[AiHealer] prompt sent to AI:\n{user_msg}")
         raw = await self._ai.chat(user_msg, task_type="heal", system=self._system)
