@@ -18,11 +18,11 @@ logs/*
 allure-results/*
 !allure-results/.gitkeep
 
-
+stepper/sites/openlibrary/artifacts/*
 openlibrary/allure-results/*
 
 jira-to-stepper-pipeline/
-
+plans/
 strategy/
 exam-docs/
 
