@@ -32,6 +32,7 @@ from engine.healer.interfaces import HealerStrategy
 from engine.healer.dom_snapshot import DOMSnapshotCascade
 from engine.healer.annotator import HealAnnotator
 from engine.healer.visual_bridge import VisualBridge
+from engine.healer.healing_cache import HealCache
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +75,7 @@ class StepRunner:
         behaviour: HumanBehaviour | None = None,
         healer: HealerStrategy | None = None,
         max_heal_attempts: int = 0,
+        cache: HealCache | None = None,
     ):
         self._page            = page
         self._factory         = action_factory
@@ -82,6 +84,7 @@ class StepRunner:
         self._behaviour       = behaviour or HumanBehaviour()
         self._healer          = healer
         self._max_heal_attempts = min(max_heal_attempts, 3)  # hard cap
+        self._cache           = cache
         self._observers: list[StepObserver] = []
         if screenshots_dir is not None:
             self._screenshots_dir: Path | None = Path(screenshots_dir)
@@ -179,7 +182,44 @@ class StepRunner:
                         "warning",
                     )
                     try:
-                        bridge_result = await VisualBridge.check(self._page, step)
+                        if self._cache:
+                        cached_cfg = self._cache.get(step)
+                        if cached_cfg is not None:
+                            self._notify_log(
+                                f"⚕ [HealCache] HIT for '{step.action}' — skipping cascade", "warning"
+                            )
+                            replacement_steps = [self._healer._apply_healed_cfg(step, cached_cfg)]
+                            replacement_runner = StepRunner(
+                                page=self._page,
+                                action_factory=self._factory,
+                                resolver=self._resolver,
+                                reporter=self._reporter,
+                                screenshots_dir=self._screenshots_dir,
+                                behaviour=self._behaviour,
+                                healer=None,
+                            )
+                            for obs in self._observers:
+                                replacement_runner.add_observer(obs)
+                            rep_results, ctx = await replacement_runner.run(replacement_steps, ctx)
+                            if all(r.status != "failed" for r in rep_results):
+                                result = dataclasses.replace(
+                                    result, status="healed", error="",
+                                    healed_element={"original": step.element, "healed": cached_cfg},
+                                )
+                                heal_suggestions.append({
+                                    "step": idx + 1,
+                                    "description": step.description,
+                                    "action": step.action,
+                                    "original": step.element,
+                                    "healed": cached_cfg,
+                                })
+                                break
+                            else:
+                                logger.warning(
+                                    f"[HealCache] stale entry for '{step.action}' — falling through to cascade"
+                                )
+
+                    bridge_result = await VisualBridge.check(self._page, step)
                         if bridge_result == "hidden":
                             result = dataclasses.replace(result, status="failed",
                                 error="element found but not visible — state/timing issue (visual bridge)")
@@ -251,6 +291,8 @@ class StepRunner:
                                 "healed":   healed_cfg,
                                 "annotated_screenshot": annotated_path,
                             })
+                            if self._cache and healed_cfg:
+                                self._cache.put(step, healed_cfg)
                             self._notify_log(
                                 f"⚕ Step {idx+1} healed on attempt {heal_attempt}", "warning"
                             )

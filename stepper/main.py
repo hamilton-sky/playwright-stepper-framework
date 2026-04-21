@@ -148,6 +148,17 @@ async def run(
             "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
         )
 
+        heal_cache = None
+        if workflow_path:
+            parts = Path(workflow_path).parts
+            for i, part in enumerate(parts):
+                if part == "sites" and i + 1 < len(parts):
+                    site_name = parts[i + 1]
+                    cache_path = _stepper_root / "sites" / site_name / "artifacts" / "heal_cache.json"
+                    from engine.healer.healing_cache import HealCache
+                    heal_cache = HealCache(cache_path)
+                    break
+
         healer = None
         if max_heal_attempts > 0:
             import os
@@ -169,6 +180,7 @@ async def run(
             screenshots_dir=screenshots_dir,
             healer=healer,
             max_heal_attempts=max_heal_attempts,
+            cache=heal_cache,
         )
         runner.add_observer(LoggingObserver())
 
