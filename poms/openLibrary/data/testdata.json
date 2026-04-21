@@ -26,5 +26,26 @@
     "max_year": 1935,
     "limit": 4,
     "expected_count": 4
+  },
+  {
+    "comment": "Fifth case — The Hobbit, Tolkien, matches default limit=3",
+    "query": "The Hobbit",
+    "max_year": 1950,
+    "limit": 3,
+    "expected_count": 3
+  },
+  {
+    "comment": "Sixth case — The Great Gatsby, Fitzgerald, matches default limit=2",
+    "query": "The Great Gatsby",
+    "max_year": 1950,
+    "limit": 2,
+    "expected_count": 2
+  },
+  {
+    "comment": "nothing limit=0",
+    "query": "",
+    "max_year": 0,
+    "limit": 0,
+    "expected_count": 0
   }
 ]
