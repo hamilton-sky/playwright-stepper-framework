@@ -23,9 +23,10 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class ProductSummary:
-    """Lightweight value object — name + price as read from the inventory page."""
+    """Lightweight value object — name, price, and detail-page URL from the inventory."""
     name:  str
     price: float
+    url:   str = ""
 
 
 class InventoryPage(BasePage):
@@ -102,7 +103,7 @@ class InventoryPage(BasePage):
     # ── Product reads ─────────────────────────────────────────────────────────
 
     async def get_all_products(self) -> list[ProductSummary]:
-        """Return name + price for every visible product card."""
+        """Return name, price, and detail-page URL for every visible product card."""
         items  = await self._driver.query_selector_all(self.Locators.ITEM)
         result = []
         for item in items:
@@ -112,8 +113,11 @@ class InventoryPage(BasePage):
                 continue
             name  = (await name_el.inner_text()).strip()
             price = (await price_el.inner_text()).strip().lstrip("$")
+            href  = (await name_el.get_attribute("href")) or ""
+            if href and not href.startswith("http"):
+                href = f"{self.base_url.rstrip('/')}{href}"
             try:
-                result.append(ProductSummary(name=name, price=float(price)))
+                result.append(ProductSummary(name=name, price=float(price), url=href))
             except ValueError:
                 logger.warning("Could not parse price %r for %r", price, name)
         return result

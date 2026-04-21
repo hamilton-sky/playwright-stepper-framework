@@ -46,6 +46,7 @@ async def run(
     variables: dict | None = None,
     resolver=None,
     _browser=None,
+    max_heal_attempts: int = 0,
 ):
     # ── 1. Planner ───────────────────────────────────────────────────────────
     if workflow_path:
@@ -87,6 +88,7 @@ async def run(
         if test_reporter and test_reporter.manager.current_test_dir:
             log_path = test_reporter.manager.current_test_dir / "logs" / "run.log"
             log_handler = logging.FileHandler(log_path, encoding="utf-8")
+            log_handler.setLevel(logging.DEBUG)   # file gets DEBUG; console stays INFO
             log_handler.setFormatter(logging.Formatter(
                 "%(asctime)s | %(levelname)s | %(name)s | %(message)s", datefmt="%H:%M:%S"
             ))
@@ -125,12 +127,27 @@ async def run(
             "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
         )
 
+        healer = None
+        if max_heal_attempts > 0:
+            import os
+            if os.getenv("ANTHROPIC_API_KEY") or os.getenv("GROQ_API_KEY") or os.getenv("GEMINI_API_KEY"):
+                from engine.ai.service import AIService
+                from engine.healer.ai_healer import AiHealer
+                from engine.planner.schema_extractor import ActionSchemaExtractor
+                schema = ActionSchemaExtractor.extract(action_registry)
+                healer = AiHealer(action_schema=schema, ai_service=AIService())
+                logger.info(f"⚕ Self-healing enabled (max {max_heal_attempts} attempt(s) per step)")
+            else:
+                logger.warning("⚕ --heal requested but no LLM API key found — healing disabled")
+
         runner = StepRunner(
             page=page,
             action_factory=action_registry,
             resolver=resolver,
             reporter=reporter,
             screenshots_dir=screenshots_dir,
+            healer=healer,
+            max_heal_attempts=max_heal_attempts,
         )
         runner.add_observer(LoggingObserver())
 
@@ -203,6 +220,8 @@ def main():
     parser.add_argument("--show",          action="store_true", help="Show browser window")
     parser.add_argument("--allure-serve",  action="store_true", help="Open Allure report in browser after run")
     parser.add_argument("--video",         action="store_true", help="Record video to test-*/videos/")
+    parser.add_argument("--heal",          type=int, default=0, metavar="N",
+                        help="Max self-healing attempts per failed step (default 0 = disabled)")
     parser.add_argument("--vars",          help='JSON string of variable overrides, e.g. \'{"query":"Foundation"}\'')
     parser.add_argument("--data",          help="Path to a JSON file containing an array of variable objects")
     args = parser.parse_args()
@@ -233,6 +252,7 @@ def main():
         allure_serve=args.allure_serve,
         record_video=args.video,
         variables=cli_vars or None,
+        max_heal_attempts=args.heal,
     ))
 
 

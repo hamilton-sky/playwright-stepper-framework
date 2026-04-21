@@ -65,8 +65,7 @@ python main.py --workflow sites/openlibrary/workflows/ol_search_and_add.json \
 The same workflow runs against different data without changing a line:
 
 ```bash
-python main.py --workflow sites/openlibrary/workflows/ol_search_and_add.json \
-  --data testcases.json
+pytest tests/test_workflow.py::test_data_driven -v --workflow ol_search_and_add.json --data ../poms/openLibrary/data/testdata.json --all-cases
 ```
 
 Both paths hit the same `poms/` POM layer. The POM is the single source of

@@ -45,7 +45,7 @@ class SDLoginPage(PageModule):
 
         async def _execute(
             self, page, step: StepConfig,
-            resolver, context: ExecutionContext,
+            resolver, context: ExecutionContext, behaviour=None,
         ) -> StepResult:
             try:
                 from poms.saucedemo.config import load_settings
@@ -54,7 +54,8 @@ class SDLoginPage(PageModule):
                 settings   = load_settings()
                 driver     = self._driver(page)
                 login_page = self._build_pom(LoginPage, driver, settings.base_url,
-                                             page=page, resolver=resolver)
+                                             page=page, resolver=resolver,
+                                             behaviour=behaviour)
 
                 if await login_page.is_logged_in():
                     logger.info("sd_login ✓ — already authenticated")

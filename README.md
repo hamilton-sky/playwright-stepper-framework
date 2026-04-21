@@ -168,16 +168,16 @@ orchestration engine so the Python layer stays thin.
 # Part II — Stepper Framework
 
 ```bash
-cd stepper 
+cd stepper
 
 # run one case (default: index 0)
-pytest tests/ -v --workflow ol_search_and_add.json --data ../poms/openLibrary/data/testdata.json
+pytest tests/test_workflow.py::test_data_driven -v --workflow ol_search_and_add.json --data ../poms/openLibrary/data/testdata.json
 
 # run a specific case by index
-pytest tests/ -v --workflow ol_search_and_add.json --data ../poms/openLibrary/data/testdata.json --case 2
+pytest tests/test_workflow.py::test_data_driven -v --workflow ol_search_and_add.json --data ../poms/openLibrary/data/testdata.json --case 2
 
 # run all cases
-pytest tests/ -v --workflow ol_search_and_add.json --data ../poms/openLibrary/data/testdata.json --all-cases
+pytest tests/test_workflow.py::test_data_driven -v --workflow ol_search_and_add.json --data ../poms/openLibrary/data/testdata.json --all-cases
 
 ```
 
@@ -356,13 +356,13 @@ python main.py --workflow sites/openlibrary/workflows/ol_regression_roundtrip.js
   --vars '{"query":"Asimov","max_year":1960,"limit":2}'
 ```
 # run one case (default: index 0)
-pytest tests/ -v --workflow ol_search_and_add.json --data ../poms/openLibrary/data/testdata.json
+pytest tests/test_workflow.py::test_data_driven -v --workflow ol_search_and_add.json --data ../poms/openLibrary/data/testdata.json
 
 # run a specific case by index
-pytest tests/ -v --workflow ol_search_and_add.json --data ../poms/openLibrary/data/testdata.json --case 2
+pytest tests/test_workflow.py::test_data_driven -v --workflow ol_search_and_add.json --data ../poms/openLibrary/data/testdata.json --case 2
 
 # run all cases
-pytest tests/ -v --workflow ol_search_and_add.json --data ../poms/openLibrary/data/testdata.json --all-cases
+pytest tests/test_workflow.py::test_data_driven -v --workflow ol_search_and_add.json --data ../poms/openLibrary/data/testdata.json --all-cases
 
 
 

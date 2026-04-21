@@ -157,7 +157,7 @@ class AIPickResolver:
             try:
                 client = Groq(api_key=key)
                 completion = client.chat.completions.create(
-                    model="qwen-2.5-32b",   # free on Groq, strong classifier
+                    model="llama-3.3-70b-versatile",   # free on Groq, strong classifier
                     messages=[
                         {
                             "role": "system",

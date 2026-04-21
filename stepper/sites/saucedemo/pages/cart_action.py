@@ -37,7 +37,7 @@ class SDCartPage(PageModule):
 
         async def _execute(
             self, page, step: StepConfig,
-            resolver, context: ExecutionContext,
+            resolver, context: ExecutionContext, behaviour=None,
         ) -> StepResult:
             try:
                 from poms.saucedemo.config import load_settings
@@ -46,7 +46,8 @@ class SDCartPage(PageModule):
                 settings  = load_settings()
                 driver    = self._driver(page)
                 cart_page = self._build_pom(CartPage, driver, settings.base_url,
-                                            page=page, resolver=resolver)
+                                            page=page, resolver=resolver,
+                                            behaviour=behaviour)
 
                 await cart_page.open()
                 items = await cart_page.get_items()

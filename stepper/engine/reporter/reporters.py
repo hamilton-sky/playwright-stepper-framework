@@ -20,6 +20,14 @@ from engine.interfaces import ReporterStrategy, StepResult
 logger = logging.getLogger(__name__)
 
 
+def _safe_print(text: str) -> None:
+    """Print safely on Windows consoles that don't support Unicode."""
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        print(text.encode("ascii", errors="replace").decode("ascii"))
+
+
 class ConsoleReporter(ReporterStrategy):
     """Prints a simple pass/fail summary to stdout."""
 
@@ -30,26 +38,26 @@ class ConsoleReporter(ReporterStrategy):
     def start_suite(self, name: str):
         self._suite_name = name
         self._results.clear()
-        print(f"\n{'='*55}")
-        print(f"  {name}")
-        print(f"{'='*55}")
+        _safe_print(f"\n{'='*55}")
+        _safe_print(f"  {name}")
+        _safe_print(f"{'='*55}")
 
     def record_step(self, result: StepResult):
         self._results.append(result)
-        icon = {"passed": "OK", "failed": "FAIL", "skipped": "SKIP", "warned": "WARN"}.get(
-            result.status, "..."
-        )
+        icon = {"passed": "OK", "failed": "FAIL", "skipped": "SKIP", "warned": "WARN",
+                "healed": "HEAL"}.get(result.status, "...")
         desc = result.step.description or result.step.action
-        print(f"  {icon}  {desc}")
+        _safe_print(f"  {icon}  {desc}")
         if result.error:
-            print(f"       -> {result.error}")
+            safe_error = result.error.encode("ascii", errors="replace").decode("ascii")
+            _safe_print(f"       -> {safe_error}")
 
     def finish_suite(self) -> str:
         passed  = sum(1 for r in self._results if r.status == "passed")
         failed  = sum(1 for r in self._results if r.status == "failed")
         total   = len(self._results)
         summary = f"{passed}/{total} passed"
-        print(f"\n  Result: {summary}  ({failed} failed)\n")
+        _safe_print(f"\n  Result: {summary}  ({failed} failed)\n")
         return summary
 
 

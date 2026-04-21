@@ -24,6 +24,8 @@ openlibrary/allure-results/*
 jira-to-stepper-pipeline/
 
 strategy/
+exam-docs/
+
 
 reports/*
 !reports/.gitkeep

@@ -1,14 +1,17 @@
 """
 sites/saucedemo/pages/inventory_action.py — Stepper glue for SauceDemo inventory.
 
-Exposes two actions:
-  sd_add_to_cart   — add one or more products by name; stores names in context
-  sd_sort_products — apply a sort option to the product list
+Exposes three actions:
+  sd_collect_products — collect all product names, prices, and URLs into context
+  sd_add_to_cart      — add one or more products by name; stores names in context
+  sd_sort_products    — apply a sort option to the product list
 
 No selectors here — they belong to InventoryPage.
 No flow logic in the POM — it belongs here.
 
 JSON usage:
+  { "action": "sd_collect_products" }
+
   { "action": "sd_add_to_cart",
     "extra": { "products": ["Sauce Labs Backpack", "Sauce Labs Bike Light"] } }
 
@@ -28,6 +31,50 @@ logger = logging.getLogger(__name__)
 class SDInventoryPage(PageModule):
     site = "sd"
 
+    class SDCollectProductsAction(GlueAction):
+        """
+        Collect all visible products (name, price, URL) from the inventory page.
+        Stores the list in context.extracted_data as dicts with keys
+        "name", "price", "url".  Also writes the count to step output.
+
+        JSON usage:
+          { "action": "sd_collect_products" }
+        """
+        action_name = "sd_collect_products"
+        read_only   = True
+
+        async def _execute(
+            self, page, step: StepConfig,
+            resolver, context: ExecutionContext,
+            behaviour=None,
+        ) -> StepResult:
+            try:
+                from poms.saucedemo.config import load_settings
+                from poms.saucedemo.pages.inventory_page import InventoryPage
+
+                settings       = load_settings()
+                driver         = self._driver(page)
+                inventory_page = self._build_pom(
+                    InventoryPage, driver, settings.base_url,
+                    page=page, resolver=resolver, behaviour=behaviour,
+                )
+
+                await inventory_page.open()
+                products = await inventory_page.get_all_products()
+                context.extracted_data = [
+                    {"name": p.name, "price": p.price, "url": p.url}
+                    for p in products
+                ]
+                logger.info("sd_collect_products ✓ — collected %d products", len(products))
+                return StepResult(
+                    step=step, status="passed",
+                    output={"count": len(products), "products": context.extracted_data},
+                )
+
+            except Exception as e:
+                logger.error("sd_collect_products failed: %s", e)
+                return StepResult(step=step, status="failed", error=str(e))
+
     class SDAddToCartAction(GlueAction):
         """
         Navigate to the inventory page and add each named product to the cart.
@@ -44,7 +91,7 @@ class SDInventoryPage(PageModule):
 
         async def _execute(
             self, page, step: StepConfig,
-            resolver, context: ExecutionContext,
+            resolver, context: ExecutionContext, behaviour=None,
         ) -> StepResult:
             try:
                 from poms.saucedemo.config import load_settings
@@ -52,8 +99,10 @@ class SDInventoryPage(PageModule):
 
                 settings       = load_settings()
                 driver         = self._driver(page)
-                inventory_page = self._build_pom(InventoryPage, driver, settings.base_url,
-                                                 page=page, resolver=resolver)
+                inventory_page = self._build_pom(
+                    InventoryPage, driver, settings.base_url,
+                    page=page, resolver=resolver, behaviour=behaviour,
+                )
 
                 products = step.extra.get("products", [])
                 if not products:
@@ -107,7 +156,7 @@ class SDInventoryPage(PageModule):
 
         async def _execute(
             self, page, step: StepConfig,
-            resolver, context: ExecutionContext,
+            resolver, context: ExecutionContext, behaviour=None,
         ) -> StepResult:
             try:
                 from poms.saucedemo.config import load_settings
@@ -115,8 +164,10 @@ class SDInventoryPage(PageModule):
 
                 settings       = load_settings()
                 driver         = self._driver(page)
-                inventory_page = self._build_pom(InventoryPage, driver, settings.base_url,
-                                                 page=page, resolver=resolver)
+                inventory_page = self._build_pom(
+                    InventoryPage, driver, settings.base_url,
+                    page=page, resolver=resolver, behaviour=behaviour,
+                )
 
                 sort_option = step.extra.get("sort", InventoryPage.SORT_NAME_ASC)
                 await inventory_page.select_sort(sort_option)
@@ -130,6 +181,10 @@ class SDInventoryPage(PageModule):
 
     @classmethod
     def register(cls, registry) -> None:
-        for action in [cls.SDAddToCartAction(), cls.SDSortProductsAction()]:
+        for action in [
+            cls.SDCollectProductsAction(),
+            cls.SDAddToCartAction(),
+            cls.SDSortProductsAction(),
+        ]:
             registry.register(action)
             logger.debug("Registered action: %s", action.action_name)

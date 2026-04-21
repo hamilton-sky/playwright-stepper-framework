@@ -59,7 +59,7 @@ class SDCheckoutPage(PageModule):
 
         async def _execute(
             self, page, step: StepConfig,
-            resolver, context: ExecutionContext,
+            resolver, context: ExecutionContext, behaviour=None,
         ) -> StepResult:
             try:
                 from poms.saucedemo.config import load_settings
@@ -74,19 +74,21 @@ class SDCheckoutPage(PageModule):
                 shipping = {
                     "first_name": step.extra.get("first_name", _DEFAULT_SHIPPING["first_name"]),
                     "last_name":  step.extra.get("last_name",  _DEFAULT_SHIPPING["last_name"]),
-                    "zip":        step.extra.get("zip",        _DEFAULT_SHIPPING["zip"]),
+                    "zip":        step.extra.get("zip") or step.extra.get("postal_code", _DEFAULT_SHIPPING["zip"]),
                 }
 
                 # ── Step 1: cart → checkout form ──────────────────────────────
                 cart_page = self._build_pom(CartPage, driver, settings.base_url,
-                                            page=page, resolver=resolver)
+                                            page=page, resolver=resolver,
+                                            behaviour=behaviour)
                 await cart_page.open()
                 await cart_page.proceed_to_checkout()
                 logger.info("sd_checkout — proceeded to checkout info page")
 
                 # ── Step 2: fill shipping info ────────────────────────────────
                 info_page = self._build_pom(CheckoutInfoPage, driver, settings.base_url,
-                                            page=page, resolver=resolver)
+                                            page=page, resolver=resolver,
+                                            behaviour=behaviour)
                 await info_page.wait_for_ready()
                 await info_page.fill_first_name(shipping["first_name"])
                 await info_page.fill_last_name(shipping["last_name"])
@@ -96,7 +98,8 @@ class SDCheckoutPage(PageModule):
 
                 # ── Step 3: review order → finish ─────────────────────────────
                 overview_page = self._build_pom(CheckoutOverviewPage, driver, settings.base_url,
-                                                page=page, resolver=resolver)
+                                                page=page, resolver=resolver,
+                                                behaviour=behaviour)
                 await overview_page.wait_for_ready()
                 total = await overview_page.get_total()
                 if total is not None:
@@ -106,7 +109,8 @@ class SDCheckoutPage(PageModule):
 
                 # ── Step 4: verify confirmation ───────────────────────────────
                 complete_page = self._build_pom(CheckoutCompletePage, driver, settings.base_url,
-                                                page=page, resolver=resolver)
+                                                page=page, resolver=resolver,
+                                                behaviour=behaviour)
                 await complete_page.wait_for_ready()
                 if not await complete_page.is_order_confirmed():
                     header = await complete_page.get_header_text()

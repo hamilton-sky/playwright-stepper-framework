@@ -28,6 +28,7 @@ def dict_to_step_config(d: dict) -> StepConfig:
             "action", "description", "url", "element",
             "input_value", "wait_for", "value",
             "when", "retry", "retry_delay_ms", "continue_on_failure", "skip_screenshot",
+            "heal", "heal_assert",
         }
         extra_data = {k: v for k, v in d.items() if k not in _top_level}
 
@@ -44,4 +45,6 @@ def dict_to_step_config(d: dict) -> StepConfig:
         retry_delay_ms=int(d.get("retry_delay_ms", 1000)),
         continue_on_failure=bool(d.get("continue_on_failure", False)),
         skip_screenshot=bool(d.get("skip_screenshot", False)),
+        heal=bool(d.get("heal", True)),
+        heal_assert=d.get("heal_assert") or None,
     )

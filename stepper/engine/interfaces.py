@@ -54,6 +54,8 @@ class StepConfig:
     retry_delay_ms: int = 1000                  # delay between retries in milliseconds
     continue_on_failure: bool = False           # if True, flow continues even when step fails
     skip_screenshot: bool = False               # if True, auto-screenshot is suppressed (useful inside for_each loops)
+    heal: bool = True                           # set False to opt this step out of the healing loop
+    heal_assert: dict | None = None             # optional post-heal assertion spec (url_contains, element_visible, …)
 
 
 @dataclass
@@ -77,7 +79,7 @@ class ResolveResult:
 class StepResult:
     """Result of executing one step."""
     step: StepConfig
-    status: str            # "passed" | "failed" | "skipped" | "warned"
+    status: str            # "passed" | "failed" | "skipped" | "warned" | "healed"
     error: str = ""
     skip_reason: str = ""  # populated only when status="skipped"; error stays empty
     screenshot: str = ""
@@ -85,6 +87,7 @@ class StepResult:
     confidence: float = 0.0
     duration_ms: float = 0.0
     output: dict = field(default_factory=dict)  # step-produced data saved to results.json
+    healed_element: dict | None = None          # {original, healed, annotated_screenshot}
 
 
 # ──────────────────────────────────────────────────────────

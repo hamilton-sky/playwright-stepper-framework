@@ -1,0 +1,64 @@
+{
+  "name": "SauceDemo — full heal flow",
+  "description": "Login with broken selectors (healer fires), collect products, sort, add to cart, checkout.",
+  "steps": [
+    {
+      "action": "navigate",
+      "description": "Open SauceDemo login page",
+      "url": "https://www.saucedemo.com/"
+    },
+    {
+      "action": "fill",
+      "description": "Type username into the username field",
+      "element": {"css": ".broken-username-selector"},
+      "input_value": "standard_user",
+      "heal": true
+    },
+    {
+      "action": "fill",
+      "description": "Type password into the password field",
+      "element": {"css": ".broken-password-selector"},
+      "input_value": "secret_sauce",
+      "heal": true
+    },
+    {
+      "action": "click",
+      "description": "Click the Login button to submit credentials",
+      "element": {"css": ".broken-login-btn"},
+      "heal": true,
+      "heal_assert": {"url_contains": "/inventory"}
+    },
+    {
+      "action": "sd_collect_products",
+      "description": "Collect all visible products with name, price, and URL"
+    },
+    {
+      "action": "sd_sort_products",
+      "description": "Sort products by price low to high",
+      "extra": {"sort": "lohi"}
+    },
+    {
+      "action": "sd_add_to_cart",
+      "description": "Add two products to cart",
+      "extra": {"products": ["Sauce Labs Onesie", "Sauce Labs Bike Light"]}
+    },
+    {
+      "action": "sd_view_cart",
+      "description": "Navigate to the shopping cart"
+    },
+    {
+      "action": "sd_checkout",
+      "description": "Complete checkout with test details",
+      "extra": {
+        "first_name": "Test",
+        "last_name":  "User",
+        "postal_code": "12345"
+      }
+    },
+    {
+      "action": "screenshot",
+      "description": "Capture order confirmation — proves full flow succeeded",
+      "extra": {"filename": "full_flow_result.png"}
+    }
+  ]
+}

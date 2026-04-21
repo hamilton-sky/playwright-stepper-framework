@@ -135,7 +135,7 @@ class HumanBehaviour:
             coord_str = f"at ({box['x']:.0f}, {box['y']:.0f})" if box else "at unknown position"
             await locator.hover(timeout=3_000)
             dwell_s = self.jitter(self._cfg.hover_ms)
-            logger.debug(f"HumanBehaviour: hovered {coord_str} for {dwell_s*1000:.0f}ms")
+            logger.info(f"HumanBehaviour: hovered {coord_str} for {dwell_s*1000:.0f}ms")
             await asyncio.sleep(dwell_s)
         except Exception as exc:
             logger.debug(f"HumanBehaviour: hover failed: {exc}")

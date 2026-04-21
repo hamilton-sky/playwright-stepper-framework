@@ -28,8 +28,33 @@ from engine.resolvers.element_resolver import ElementResolver
 from engine.runner.when_eval import evaluate_when
 from engine.browser.anti_detection import AntiDetection
 from engine.browser.human_behaviour import HumanBehaviour
+from engine.healer.interfaces import HealerStrategy
+from engine.healer.dom_snapshot import DOMSnapshotCascade
+from engine.healer.annotator import HealAnnotator
 
 logger = logging.getLogger(__name__)
+
+
+async def _run_heal_assert(page, spec: dict) -> bool:
+    """Return True if all assertions in spec pass, False otherwise."""
+    try:
+        if "url_contains" in spec:
+            if spec["url_contains"] not in page.url:
+                return False
+        if "url_not_contains" in spec:
+            if spec["url_not_contains"] in page.url:
+                return False
+        if "element_visible" in spec:
+            if not await page.locator(spec["element_visible"]).is_visible():
+                return False
+        if "element_text_contains" in spec:
+            sel  = spec["element_text_contains"]["selector"]
+            text = spec["element_text_contains"]["text"]
+            if text not in await page.locator(sel).inner_text():
+                return False
+        return True
+    except Exception:
+        return False
 
 
 class StepRunner:
@@ -46,12 +71,16 @@ class StepRunner:
         reporter: ReporterStrategy,
         screenshots_dir: Path | None = None,
         behaviour: HumanBehaviour | None = None,
+        healer: HealerStrategy | None = None,
+        max_heal_attempts: int = 0,
     ):
         self._page            = page
         self._factory         = action_factory
         self._resolver        = resolver
         self._reporter        = reporter
         self._behaviour       = behaviour or HumanBehaviour()
+        self._healer          = healer
+        self._max_heal_attempts = min(max_heal_attempts, 3)  # hard cap
         self._observers: list[StepObserver] = []
         if screenshots_dir is not None:
             self._screenshots_dir: Path | None = Path(screenshots_dir)
@@ -66,6 +95,7 @@ class StepRunner:
                   context: ExecutionContext | None = None) -> tuple[list[StepResult], ExecutionContext]:
         ctx = context if context is not None else ExecutionContext()
         results = []
+        heal_suggestions: list[dict] = []
 
         for idx, step in enumerate(steps):
             self._notify_start(idx, step)
@@ -131,6 +161,86 @@ class StepRunner:
 
             result.duration_ms = round((time.monotonic() - t0) * 1000, 1)
 
+            # Healing loop — fires when: step failed or skipped (element not found),
+            # healer injected, step hasn't opted out with heal=False, attempts remain.
+            # Note: when-condition skips never reach here (they use `continue` above).
+            if (
+                result.status in ("failed", "skipped")
+                and self._healer is not None
+                and step.heal is not False
+                and self._max_heal_attempts > 0
+            ):
+                heal_attempt = 0
+                while heal_attempt < self._max_heal_attempts:
+                    heal_attempt += 1
+                    self._notify_log(
+                        f"⚕ Healing step {idx+1} (attempt {heal_attempt}/{self._max_heal_attempts})",
+                        "warning",
+                    )
+                    try:
+                        dom = await DOMSnapshotCascade.capture(self._page, step)
+                        replacement_steps = await self._healer.heal(step, result.error, dom)
+
+                        # Run replacements without healer to prevent infinite recursion
+                        replacement_runner = StepRunner(
+                            page=self._page,
+                            action_factory=self._factory,
+                            resolver=self._resolver,
+                            reporter=self._reporter,
+                            screenshots_dir=self._screenshots_dir,
+                            behaviour=self._behaviour,
+                            healer=None,
+                        )
+                        for obs in self._observers:
+                            replacement_runner.add_observer(obs)
+
+                        rep_results, ctx = await replacement_runner.run(replacement_steps, ctx)
+
+                        if all(r.status != "failed" for r in rep_results):
+                            # Optional post-heal assertion
+                            if step.heal_assert and not await _run_heal_assert(
+                                self._page, step.heal_assert
+                            ):
+                                self._notify_log(
+                                    f"⚕ Heal attempt {heal_attempt} ran but assertion failed — retrying",
+                                    "warning",
+                                )
+                                continue
+
+                            healed_cfg = replacement_steps[0].element if replacement_steps else {}
+                            annotated_path = None
+                            if self._screenshots_dir and healed_cfg:
+                                annotated_path = await HealAnnotator.capture(
+                                    self._page, healed_cfg,
+                                    idx + 1, "healed",
+                                    self._screenshots_dir,
+                                )
+                            result = dataclasses.replace(
+                                result,
+                                status="healed",
+                                error="",
+                                healed_element={
+                                    "original": step.element,
+                                    "healed":   healed_cfg,
+                                    "annotated_screenshot": annotated_path,
+                                },
+                            )
+                            heal_suggestions.append({
+                                "step":     idx + 1,
+                                "description": step.description,
+                                "action":   step.action,
+                                "original": step.element,
+                                "healed":   healed_cfg,
+                                "annotated_screenshot": annotated_path,
+                            })
+                            self._notify_log(
+                                f"⚕ Step {idx+1} healed on attempt {heal_attempt}", "warning"
+                            )
+                            break
+
+                    except Exception as heal_exc:
+                        logger.warning(f"[StepRunner] heal attempt {heal_attempt} failed: {heal_exc}")
+
             # Auto-screenshot: capture page state after each step if the action
             # didn't already produce one. Framework-level — no POM dependency.
             if self._screenshots_dir and not result.screenshot and not step.skip_screenshot:
@@ -156,6 +266,18 @@ class StepRunner:
                 else:
                     self._notify_log(f"✗ Hard stop at step {idx+1}: {result.error}", "error")
                     break
+
+        if heal_suggestions and self._screenshots_dir:
+            import json as _json
+            suggestions_path = self._screenshots_dir.parent / "heal_suggestions.json"
+            try:
+                suggestions_path.write_text(
+                    _json.dumps(heal_suggestions, indent=2, ensure_ascii=False),
+                    encoding="utf-8",
+                )
+                logger.info(f"[StepRunner] heal suggestions → {suggestions_path}")
+            except Exception as _e:
+                logger.debug(f"[StepRunner] could not write heal_suggestions.json: {_e}")
 
         return results, ctx
 
