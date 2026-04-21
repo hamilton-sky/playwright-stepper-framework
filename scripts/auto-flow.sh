@@ -25,11 +25,22 @@ CONV_COUNT=0
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
+CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
-echo -e "${GREEN}=================================================${NC}"
-echo -e "${GREEN}  Auto-Flow: $PLAN${NC}"
-echo -e "${GREEN}=================================================${NC}"
+# Log file
+mkdir -p logs
+LOG_FILE="logs/auto-flow-${PLAN}-$(date +%Y%m%d_%H%M%S).log"
+
+log() {
+  local msg="[$(date +%H:%M:%S)] $*"
+  echo -e "$msg" | tee -a "$LOG_FILE"
+}
+
+echo -e "${GREEN}=================================================${NC}" | tee "$LOG_FILE"
+echo -e "${GREEN}  Auto-Flow: $PLAN${NC}" | tee -a "$LOG_FILE"
+echo -e "${GREEN}  Log: $LOG_FILE${NC}" | tee -a "$LOG_FILE"
+echo -e "${GREEN}=================================================${NC}" | tee -a "$LOG_FILE"
 
 # Verify plan folder exists
 if [ ! -f "$PROGRESS_FILE" ]; then
@@ -73,10 +84,11 @@ while true; do
   # Check if already complete
   if check_complete; then
     echo ""
-    echo -e "${GREEN}=================================================${NC}"
-    echo -e "${GREEN}  DONE Plan $PLAN is COMPLETE!${NC}"
-    echo -e "${GREEN}  Conversations executed: $CONV_COUNT${NC}"
-    echo -e "${GREEN}=================================================${NC}"
+    log "${GREEN}=================================================${NC}"
+    log "${GREEN}  DONE Plan $PLAN is COMPLETE!${NC}"
+    log "${GREEN}  Conversations executed: $CONV_COUNT${NC}"
+    log "${GREEN}  Full log: $LOG_FILE${NC}"
+    log "${GREEN}=================================================${NC}"
     exit 0
   fi
 
@@ -84,9 +96,9 @@ while true; do
   CONV_COUNT=$((CONV_COUNT + 1))
 
   echo ""
-  echo -e "${YELLOW}-------------------------------------------------${NC}"
-  echo -e "${YELLOW}  Starting conversation $CONV_COUNT ($REMAINING convs remaining)${NC}"
-  echo -e "${YELLOW}-------------------------------------------------${NC}"
+  log "${YELLOW}-------------------------------------------------${NC}"
+  log "${YELLOW}  Starting conversation $CONV_COUNT ($REMAINING convs remaining)${NC}"
+  log "${YELLOW}-------------------------------------------------${NC}"
 
   RETRY=0
   SUCCESS=false
@@ -94,13 +106,16 @@ while true; do
   while [ $RETRY -lt $MAX_RETRIES ]; do
     OUTPUT_FILE=$(mktemp)
     EXIT_CODE=0
-    claude -p "/next-phase $PLAN auto" --allowedTools "Edit,Write,Read,Glob,Grep,Bash,Skill,TodoWrite,WebSearch,WebFetch" 2>&1 | tee "$OUTPUT_FILE" || EXIT_CODE=$?
+    log "${CYAN}  Claude Code running /next-phase $PLAN ...${NC}"
+    echo "" | tee -a "$LOG_FILE"
+    claude -p "/next-phase $PLAN auto" --allowedTools "Edit,Write,Read,Glob,Grep,Bash,Skill,TodoWrite,WebSearch,WebFetch" 2>&1 | tee -a "$LOG_FILE" | tee "$OUTPUT_FILE" || EXIT_CODE=$?
+    echo "" | tee -a "$LOG_FILE"
 
     # Check for failure: non-zero exit OR "Execution error" in output
     if [ $EXIT_CODE -ne 0 ] || grep -qi "Execution error" "$OUTPUT_FILE" 2>/dev/null; then
       rm -f "$OUTPUT_FILE"
       RETRY=$((RETRY + 1))
-      echo -e "${YELLOW}  Attempt $RETRY failed (exit=$EXIT_CODE). Retrying...${NC}"
+      log "${YELLOW}  Attempt $RETRY failed (exit=$EXIT_CODE). Retrying...${NC}"
 
       # Check if progress was made despite the error
       if check_complete; then
@@ -110,7 +125,7 @@ while true; do
 
       REMAINING_NOW=$(count_remaining)
       if [ "$REMAINING_NOW" -lt "$REMAINING" ]; then
-        echo -e "${YELLOW}  Progress detected despite error. Continuing...${NC}"
+        log "${YELLOW}  Progress detected despite error. Continuing...${NC}"
         SUCCESS=true
         break
       fi
@@ -122,15 +137,15 @@ while true; do
   done
 
   if [ "$SUCCESS" = false ]; then
-    echo -e "${RED}=================================================${NC}"
-    echo -e "${RED}  FAIL after $MAX_RETRIES attempts${NC}"
-    echo -e "${RED}  Plan: $PLAN${NC}"
-    echo -e "${RED}  Completed conversations: $((CONV_COUNT - 1))${NC}"
-    echo -e "${RED}  Check PROGRESS.md for current state${NC}"
-    echo -e "${RED}=================================================${NC}"
+    log "${RED}=================================================${NC}"
+    log "${RED}  FAIL after $MAX_RETRIES attempts${NC}"
+    log "${RED}  Plan: $PLAN${NC}"
+    log "${RED}  Completed conversations: $((CONV_COUNT - 1))${NC}"
+    log "${RED}  Log saved to: $LOG_FILE${NC}"
+    log "${RED}=================================================${NC}"
     exit 1
   fi
 
-  echo -e "${GREEN}  OK Conversation $CONV_COUNT completed${NC}"
+  log "${GREEN}  OK Conversation $CONV_COUNT completed${NC}"
   sleep 2
 done
