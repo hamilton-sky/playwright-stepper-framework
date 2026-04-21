@@ -183,8 +183,8 @@ class StepRunner:
                     )
                     try:
                         if self._cache:
-                        cached_cfg = self._cache.get(step)
-                        if cached_cfg is not None:
+                            cached_cfg = self._cache.get(step)
+                        if self._cache and cached_cfg is not None:
                             self._notify_log(
                                 f"⚕ [HealCache] HIT for '{step.action}' — skipping cascade", "warning"
                             )
@@ -219,7 +219,7 @@ class StepRunner:
                                     f"[HealCache] stale entry for '{step.action}' — falling through to cascade"
                                 )
 
-                    bridge_result = await VisualBridge.check(self._page, step)
+                        bridge_result = await VisualBridge.check(self._page, step)
                         if bridge_result == "hidden":
                             result = dataclasses.replace(result, status="failed",
                                 error="element found but not visible — state/timing issue (visual bridge)")

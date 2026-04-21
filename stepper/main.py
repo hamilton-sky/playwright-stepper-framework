@@ -216,6 +216,66 @@ async def run(
     return results
 
 
+def apply_heals(workflow_path: Path, auto_yes: bool) -> None:
+    """Read heal_suggestions.json, show diff, and optionally patch workflow JSON."""
+    candidates = [
+        workflow_path.parent.parent / "artifacts" / "heal_suggestions.json",
+        workflow_path.parent / "artifacts" / "heal_suggestions.json",
+    ]
+    suggestions_path = next((p for p in candidates if p.exists()), None)
+    if suggestions_path is None:
+        print(f"ERROR: heal_suggestions.json not found. Tried:\n"
+              f"  {candidates[0]}\n  {candidates[1]}")
+        return
+
+    suggestions: list[dict] = json.loads(suggestions_path.read_text(encoding="utf-8"))
+    if not suggestions:
+        print("Nothing to apply.")
+        return
+
+    raw = json.loads(workflow_path.read_text(encoding="utf-8"))
+    if isinstance(raw, list):
+        steps = raw
+    else:
+        steps = raw.get("steps", [])
+
+    patches: list[tuple[dict, dict, dict]] = []  # (step, original, healed)
+    for suggestion in suggestions:
+        desc     = suggestion.get("description", "")
+        original = suggestion.get("original", {})
+        healed   = suggestion.get("healed", {})
+        matches  = [s for s in steps if s.get("description") == desc]
+        if not matches:
+            print(f"WARNING: no step found with description '{desc}' — skipping")
+            continue
+        if len(matches) > 1:
+            print(f"WARNING: {len(matches)} steps match '{desc}' — patching all")
+        for s in matches:
+            patches.append((s, original, healed))
+
+    if not patches:
+        print("Nothing to apply.")
+        return
+
+    for i, (s, original, healed) in enumerate(patches, 1):
+        print(f"Step {i} \"{s.get('description', '')}\":")
+        print(f"  BEFORE: {json.dumps(original)}")
+        print(f"  AFTER:  {json.dumps(healed)}")
+
+    if not auto_yes:
+        answer = input(f"Apply {len(patches)} heal(s) to {workflow_path}? [Y/n]: ").strip().lower()
+        if answer == "n":
+            print("Aborted.")
+            return
+
+    for step, _original, healed in patches:
+        step["element"] = healed
+
+    updated = raw if isinstance(raw, list) else {**raw, "steps": steps}
+    workflow_path.write_text(json.dumps(updated, indent=2, ensure_ascii=False), encoding="utf-8")
+    print(f"{len(patches)} heal(s) applied to {workflow_path}. Commit to make permanent.")
+
+
 async def _run_data_rows(rows: list[dict], cli_vars: dict, args) -> None:
     """Open one playwright instance and browser; run each data row in a fresh context."""
     s        = load_settings_safe()
@@ -257,7 +317,17 @@ def main():
                         help="Max self-healing attempts per failed step (default 0 = disabled)")
     parser.add_argument("--vars",          help='JSON string of variable overrides, e.g. \'{"query":"Foundation"}\'')
     parser.add_argument("--data",          help="Path to a JSON file containing an array of variable objects")
+    parser.add_argument("--apply-heals",   metavar="WORKFLOW_JSON",
+                        help="Apply heal_suggestions.json fixes to the given workflow file")
+    parser.add_argument("--yes",           action="store_true",
+                        help="Auto-confirm --apply-heals without interactive prompt")
     args = parser.parse_args()
+
+    if args.apply_heals:
+        if args.workflow or args.task or args.data:
+            parser.error("--apply-heals is mutually exclusive with --workflow, --task, and --data")
+        apply_heals(Path(args.apply_heals), args.yes)
+        return
 
     cli_vars: dict = {}
     if args.vars:
