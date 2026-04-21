@@ -121,196 +121,8 @@ class StepRunner:
                     results.append(result)
                     continue
 
-            # Resolve any remaining {{key}} placeholders against runtime context.
-            # Plan-time substitution covers variables{}; this covers context.counts
-            # so JSON can write "limit": "{{gap}}" and get the runtime value.
-            step = _resolve_count_vars(step, ctx)
-
-            # Pre-step CAPTCHA check — fail fast with a clear message
-            captcha = await AntiDetection.detect_captcha(self._page)
-            if captcha:
-                result = StepResult(
-                    step=step, status="failed",
-                    error=f"CAPTCHA detected before step — manual intervention required ({captcha})"
-                )
-                self._reporter.record_step(result)
-                self._notify_done(idx, result)
-                results.append(result)
-                self._notify_log(f"✗ CAPTCHA wall hit at step {idx+1} — stopping", "error")
-                break
-
-            # Inter-step human-like pause (jittered)
-            await self._behaviour.inter_step_delay()
-
-            t0 = time.monotonic()
-            max_attempts = 1 + max(0, step.retry)
-            for attempt in range(max_attempts):
-                try:
-                    action = self._factory.create(step.action)
-                    self._resolver.set_context_description(step.description)
-                    result = await action.execute(self._page, step, self._resolver, ctx, self._behaviour)
-                except Exception as e:
-                    logger.error(f"Step {idx+1} raised: {e}")
-                    result = StepResult(step=step, status="failed", error=str(e))
-
-                if result.status != "failed" or attempt == max_attempts - 1:
-                    break
-
-                delay_s = step.retry_delay_ms / 1000
-                logger.warning(
-                    f"Step {idx+1} failed (attempt {attempt+1}/{max_attempts}) "
-                    f"— retrying in {step.retry_delay_ms}ms"
-                )
-                await asyncio.sleep(delay_s)
-
-            result.duration_ms = round((time.monotonic() - t0) * 1000, 1)
-
-            # Healing loop — fires when: step failed or skipped (element not found),
-            # healer injected, step hasn't opted out with heal=False, attempts remain.
-            # Note: when-condition skips never reach here (they use `continue` above).
-            if (
-                result.status in ("failed", "skipped")
-                and self._healer is not None
-                and step.heal is not False
-                and self._max_heal_attempts > 0
-            ):
-                heal_attempt = 0
-                while heal_attempt < self._max_heal_attempts:
-                    heal_attempt += 1
-                    self._notify_log(
-                        f"⚕ Healing step {idx+1} (attempt {heal_attempt}/{self._max_heal_attempts})",
-                        "warning",
-                    )
-                    try:
-                        if self._cache:
-                            cached_cfg = self._cache.get(step)
-                        if self._cache and cached_cfg is not None:
-                            self._notify_log(
-                                f"⚕ [HealCache] HIT for '{step.action}' — skipping cascade", "warning"
-                            )
-                            replacement_steps = [self._healer._apply_healed_cfg(step, cached_cfg)]
-                            replacement_runner = StepRunner(
-                                page=self._page,
-                                action_factory=self._factory,
-                                resolver=self._resolver,
-                                reporter=self._reporter,
-                                screenshots_dir=self._screenshots_dir,
-                                behaviour=self._behaviour,
-                                healer=None,
-                            )
-                            for obs in self._observers:
-                                replacement_runner.add_observer(obs)
-                            rep_results, ctx = await replacement_runner.run(replacement_steps, ctx)
-                            if all(r.status != "failed" for r in rep_results):
-                                result = dataclasses.replace(
-                                    result, status="healed", error="",
-                                    healed_element={"original": step.element, "healed": cached_cfg},
-                                )
-                                heal_suggestions.append({
-                                    "step": idx + 1,
-                                    "description": step.description,
-                                    "action": step.action,
-                                    "original": step.element,
-                                    "healed": cached_cfg,
-                                })
-                                break
-                            else:
-                                logger.warning(
-                                    f"[HealCache] stale entry for '{step.action}' — falling through to cascade"
-                                )
-
-                        bridge_result = await VisualBridge.check(self._page, step)
-                        if bridge_result == "hidden":
-                            result = dataclasses.replace(result, status="failed",
-                                error="element found but not visible — state/timing issue (visual bridge)")
-                            self._notify_log("⚕ Visual bridge: element hidden — skipping healer", "warning")
-                            break
-                        if bridge_result == "disabled":
-                            result = dataclasses.replace(result, status="failed",
-                                error="element found but disabled — check flow state (visual bridge)")
-                            self._notify_log("⚕ Visual bridge: element disabled — skipping healer", "warning")
-                            break
-
-                        dom = await DOMSnapshotCascade.capture(self._page, step)
-                        replacement_steps = await self._healer.heal(
-                            step, result.error, dom,
-                            all_steps=steps,
-                            current_index=idx,
-                            context_vars=dict(ctx.counts) if ctx.counts else None,
-                        )
-
-                        # Run replacements without healer to prevent infinite recursion
-                        replacement_runner = StepRunner(
-                            page=self._page,
-                            action_factory=self._factory,
-                            resolver=self._resolver,
-                            reporter=self._reporter,
-                            screenshots_dir=self._screenshots_dir,
-                            behaviour=self._behaviour,
-                            healer=None,
-                        )
-                        for obs in self._observers:
-                            replacement_runner.add_observer(obs)
-
-                        rep_results, ctx = await replacement_runner.run(replacement_steps, ctx)
-
-                        if all(r.status != "failed" for r in rep_results):
-                            # Optional post-heal assertion
-                            if step.heal_assert and not await _run_heal_assert(
-                                self._page, step.heal_assert
-                            ):
-                                self._notify_log(
-                                    f"⚕ Heal attempt {heal_attempt} ran but assertion failed — retrying",
-                                    "warning",
-                                )
-                                continue
-
-                            healed_cfg = replacement_steps[0].element if replacement_steps else {}
-                            annotated_path = None
-                            if self._screenshots_dir and healed_cfg:
-                                annotated_path = await HealAnnotator.capture(
-                                    self._page, healed_cfg,
-                                    idx + 1, "healed",
-                                    self._screenshots_dir,
-                                )
-                            result = dataclasses.replace(
-                                result,
-                                status="healed",
-                                error="",
-                                healed_element={
-                                    "original": step.element,
-                                    "healed":   healed_cfg,
-                                    "annotated_screenshot": annotated_path,
-                                },
-                            )
-                            heal_suggestions.append({
-                                "step":     idx + 1,
-                                "description": step.description,
-                                "action":   step.action,
-                                "original": step.element,
-                                "healed":   healed_cfg,
-                                "annotated_screenshot": annotated_path,
-                            })
-                            if self._cache and healed_cfg:
-                                self._cache.put(step, healed_cfg)
-                            self._notify_log(
-                                f"⚕ Step {idx+1} healed on attempt {heal_attempt}", "warning"
-                            )
-                            break
-
-                    except Exception as heal_exc:
-                        logger.warning(f"[StepRunner] heal attempt {heal_attempt} failed: {heal_exc}")
-
-            # Auto-screenshot: capture page state after each step if the action
-            # didn't already produce one. Framework-level — no POM dependency.
-            if self._screenshots_dir and not result.screenshot and not step.skip_screenshot:
-                try:
-                    safe_action = step.action.replace("/", "_").replace("\\", "_")
-                    shot_path = self._screenshots_dir / f"step_{idx+1:02d}_{safe_action}.png"
-                    await self._page.screenshot(path=str(shot_path), full_page=False)
-                    result.screenshot = str(shot_path)
-                except Exception as _e:
-                    logger.debug(f"Auto-screenshot failed for step {idx+1}: {_e}")
+            result, step_suggestions, ctx = await self._run_step(idx, step, steps, ctx)
+            heal_suggestions.extend(step_suggestions)
 
             self._reporter.record_step(result)
             self._notify_done(idx, result)
@@ -340,6 +152,215 @@ class StepRunner:
                 logger.debug(f"[StepRunner] could not write heal_suggestions.json: {_e}")
 
         return results, ctx
+
+    async def _run_step(
+        self, idx: int, step: StepConfig, steps: list[StepConfig], ctx: ExecutionContext
+    ) -> tuple[StepResult, list[dict], ExecutionContext]:
+        # Resolve any remaining {{key}} placeholders against runtime context.
+        # Plan-time substitution covers variables{}; this covers context.counts
+        # so JSON can write "limit": "{{gap}}" and get the runtime value.
+        step = _resolve_count_vars(step, ctx)
+
+        # Pre-step CAPTCHA check — fail fast with a clear message
+        captcha = await AntiDetection.detect_captcha(self._page)
+        if captcha:
+            result = StepResult(
+                step=step, status="failed",
+                error=f"CAPTCHA detected before step — manual intervention required ({captcha})"
+            )
+            self._notify_log(f"✗ CAPTCHA wall hit at step {idx+1} — stopping", "error")
+            return result, [], ctx
+
+        # Inter-step human-like pause (jittered)
+        await self._behaviour.inter_step_delay()
+
+        result = await self._run_retry_loop(idx, step, ctx)
+
+        # Healing loop — fires when: step failed or skipped (element not found),
+        # healer injected, step hasn't opted out with heal=False, attempts remain.
+        # Note: when-condition skips never reach here (they use `continue` above).
+        step_suggestions: list[dict] = []
+        if (
+            result.status in ("failed", "skipped")
+            and self._healer is not None
+            and step.heal is not False
+            and self._max_heal_attempts > 0
+        ):
+            result, step_suggestions, ctx = await self._run_heal_loop(idx, step, steps, result, ctx)
+
+        # Auto-screenshot: capture page state after each step if the action
+        # didn't already produce one. Framework-level — no POM dependency.
+        if self._screenshots_dir and not result.screenshot and not step.skip_screenshot:
+            try:
+                safe_action = step.action.replace("/", "_").replace("\\", "_")
+                shot_path = self._screenshots_dir / f"step_{idx+1:02d}_{safe_action}.png"
+                await self._page.screenshot(path=str(shot_path), full_page=False)
+                result.screenshot = str(shot_path)
+            except Exception as _e:
+                logger.debug(f"Auto-screenshot failed for step {idx+1}: {_e}")
+
+        return result, step_suggestions, ctx
+
+    async def _run_retry_loop(
+        self, idx: int, step: StepConfig, ctx: ExecutionContext
+    ) -> StepResult:
+        t0 = time.monotonic()
+        max_attempts = 1 + max(0, step.retry)
+        for attempt in range(max_attempts):
+            try:
+                action = self._factory.create(step.action)
+                self._resolver.set_context_description(step.description)
+                result = await action.execute(self._page, step, self._resolver, ctx, self._behaviour)
+            except Exception as e:
+                logger.error(f"Step {idx+1} raised: {e}")
+                result = StepResult(step=step, status="failed", error=str(e))
+
+            if result.status != "failed" or attempt == max_attempts - 1:
+                break
+
+            delay_s = step.retry_delay_ms / 1000
+            logger.warning(
+                f"Step {idx+1} failed (attempt {attempt+1}/{max_attempts}) "
+                f"— retrying in {step.retry_delay_ms}ms"
+            )
+            await asyncio.sleep(delay_s)
+
+        result.duration_ms = round((time.monotonic() - t0) * 1000, 1)
+        return result
+
+    async def _run_heal_loop(
+        self, idx: int, step: StepConfig, steps: list[StepConfig],
+        result: StepResult, ctx: ExecutionContext
+    ) -> tuple[StepResult, list[dict], ExecutionContext]:
+        new_suggestions: list[dict] = []
+        heal_attempt = 0
+        while heal_attempt < self._max_heal_attempts:
+            heal_attempt += 1
+            self._notify_log(
+                f"⚕ Healing step {idx+1} (attempt {heal_attempt}/{self._max_heal_attempts})",
+                "warning",
+            )
+            try:
+                if self._cache:
+                    cached_cfg = self._cache.get(step)
+                if self._cache and cached_cfg is not None:
+                    self._notify_log(
+                        f"⚕ [HealCache] HIT for '{step.action}' — skipping cascade", "warning"
+                    )
+                    replacement_steps = [self._healer._apply_healed_cfg(step, cached_cfg)]
+                    replacement_runner = StepRunner(
+                        page=self._page,
+                        action_factory=self._factory,
+                        resolver=self._resolver,
+                        reporter=self._reporter,
+                        screenshots_dir=self._screenshots_dir,
+                        behaviour=self._behaviour,
+                        healer=None,
+                    )
+                    for obs in self._observers:
+                        replacement_runner.add_observer(obs)
+                    rep_results, ctx = await replacement_runner.run(replacement_steps, ctx)
+                    if all(r.status != "failed" for r in rep_results):
+                        result = dataclasses.replace(
+                            result, status="healed", error="",
+                            healed_element={"original": step.element, "healed": cached_cfg},
+                        )
+                        new_suggestions.append({
+                            "step": idx + 1,
+                            "description": step.description,
+                            "action": step.action,
+                            "original": step.element,
+                            "healed": cached_cfg,
+                        })
+                        break
+                    else:
+                        logger.warning(
+                            f"[HealCache] stale entry for '{step.action}' — falling through to cascade"
+                        )
+
+                bridge_result = await VisualBridge.check(self._page, step)
+                if bridge_result == "hidden":
+                    result = dataclasses.replace(result, status="failed",
+                        error="element found but not visible — state/timing issue (visual bridge)")
+                    self._notify_log("⚕ Visual bridge: element hidden — skipping healer", "warning")
+                    break
+                if bridge_result == "disabled":
+                    result = dataclasses.replace(result, status="failed",
+                        error="element found but disabled — check flow state (visual bridge)")
+                    self._notify_log("⚕ Visual bridge: element disabled — skipping healer", "warning")
+                    break
+
+                dom = await DOMSnapshotCascade.capture(self._page, step)
+                replacement_steps = await self._healer.heal(
+                    step, result.error, dom,
+                    all_steps=steps,
+                    current_index=idx,
+                    context_vars=dict(ctx.counts) if ctx.counts else None,
+                )
+
+                # Run replacements without healer to prevent infinite recursion
+                replacement_runner = StepRunner(
+                    page=self._page,
+                    action_factory=self._factory,
+                    resolver=self._resolver,
+                    reporter=self._reporter,
+                    screenshots_dir=self._screenshots_dir,
+                    behaviour=self._behaviour,
+                    healer=None,
+                )
+                for obs in self._observers:
+                    replacement_runner.add_observer(obs)
+
+                rep_results, ctx = await replacement_runner.run(replacement_steps, ctx)
+
+                if all(r.status != "failed" for r in rep_results):
+                    # Optional post-heal assertion
+                    if step.heal_assert and not await _run_heal_assert(
+                        self._page, step.heal_assert
+                    ):
+                        self._notify_log(
+                            f"⚕ Heal attempt {heal_attempt} ran but assertion failed — retrying",
+                            "warning",
+                        )
+                        continue
+
+                    healed_cfg = replacement_steps[0].element if replacement_steps else {}
+                    annotated_path = None
+                    if self._screenshots_dir and healed_cfg:
+                        annotated_path = await HealAnnotator.capture(
+                            self._page, healed_cfg,
+                            idx + 1, "healed",
+                            self._screenshots_dir,
+                        )
+                    result = dataclasses.replace(
+                        result,
+                        status="healed",
+                        error="",
+                        healed_element={
+                            "original": step.element,
+                            "healed":   healed_cfg,
+                            "annotated_screenshot": annotated_path,
+                        },
+                    )
+                    new_suggestions.append({
+                        "step":     idx + 1,
+                        "description": step.description,
+                        "action":   step.action,
+                        "original": step.element,
+                        "healed":   healed_cfg,
+                        "annotated_screenshot": annotated_path,
+                    })
+                    if self._cache and healed_cfg:
+                        self._cache.put(step, healed_cfg)
+                    self._notify_log(
+                        f"⚕ Step {idx+1} healed on attempt {heal_attempt}", "warning"
+                    )
+                    break
+
+            except Exception as heal_exc:
+                logger.warning(f"[StepRunner] heal attempt {heal_attempt} failed: {heal_exc}")
+
+        return result, new_suggestions, ctx
 
     # ── Observer notifications ─────────────────────────────────────────────────
 
