@@ -2,16 +2,12 @@
 saucedemo/pages/checkout_overview_page.py — Pure POM for checkout step two.
 
 Single responsibility: order-summary selectors and raw reads.
-
-Checkout step 2 of 2: customer reviews items, pricing, tax, and total,
-then finishes or cancels.
-
-No flow logic, no assertions.
 """
 from __future__ import annotations
 import logging
 
 from poms.saucedemo.pages.base_page import BasePage
+from poms.shared.locator import Locator
 
 logger = logging.getLogger(__name__)
 
@@ -19,8 +15,7 @@ logger = logging.getLogger(__name__)
 class CheckoutOverviewPage(BasePage):
 
     class Locators:
-        """All checkout-step-two selectors. Never duplicated elsewhere."""
-        # ── Read-only ────────────────────────────────────────────────────────
+        # ── Read-only ─────────────────────────────────────────────────────────
         TITLE      = ".title"
         CART_ITEM  = ".cart_item"
         ITEM_NAME  = ".inventory_item_name"
@@ -29,15 +24,17 @@ class CheckoutOverviewPage(BasePage):
         TAX        = ".summary_tax_label"
         TOTAL      = ".summary_total_label"
 
-        # ── Interactive — cfg lists are the single source of truth ───────────
-        FINISH_CFG = [
-            {"css":  "[data-test='finish']",   "priority": 10},
-            {"role": "button", "name": "Finish", "priority": 20},
-        ]
-        CANCEL_CFG = [
-            {"css":  "[data-test='cancel']",   "priority": 10},
-            {"role": "button", "name": "Cancel", "priority": 20},
-        ]
+        # ── Interactive ───────────────────────────────────────────────────────
+        FINISH = Locator(
+            role="button", name="Finish",
+            css="[data-test='finish']",
+            description="finish order button",
+        )
+        CANCEL = Locator(
+            role="button", name="Cancel",
+            css="[data-test='cancel']",
+            description="cancel button",
+        )
 
     @property
     def url(self) -> str:
@@ -58,11 +55,10 @@ class CheckoutOverviewPage(BasePage):
         return [(await el.inner_text()).strip() for el in els]
 
     async def _parse_price_label(self, selector: str) -> float | None:
-        """Extract the numeric value from a summary label like 'Item total: $29.99'."""
         try:
             el = await self._driver.query_selector(selector)
             if el:
-                text = (await el.inner_text()).strip()
+                text   = (await el.inner_text()).strip()
                 amount = text.rsplit("$", 1)[-1]
                 return float(amount)
         except Exception:
@@ -81,9 +77,9 @@ class CheckoutOverviewPage(BasePage):
     # ── Navigation ────────────────────────────────────────────────────────────
 
     async def finish(self) -> None:
-        await self._resolve_and_click_any(self.Locators.FINISH_CFG, "finish button")
+        await self._interact(self.Locators.FINISH, "click")
         await self._driver.wait_for_load_state("domcontentloaded")
 
     async def cancel(self) -> None:
-        await self._resolve_and_click_any(self.Locators.CANCEL_CFG, "cancel button")
+        await self._interact(self.Locators.CANCEL, "click")
         await self._driver.wait_for_load_state("domcontentloaded")

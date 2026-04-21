@@ -7,11 +7,11 @@ No site-specific logic lives here — no delays, no auth, no selectors.
 Two operating modes — determined by whether resolver is injected:
 
   driver-only  (resolver=None)
-    Interactions use CSS/id extracted directly from the cfg dict.
+    Interactions use CSS/id extracted directly from the Locator.
 
   resolver-enhanced  (resolver=ElementResolver instance)
     Interactive element finding goes through the full 10-stage cascade.
-    Falls back to driver if resolver returns low confidence.
+    Falls back to driver on low confidence.
 
 Subclasses define:
   - url property
@@ -23,6 +23,7 @@ import asyncio
 import logging
 
 from poms.shared.constants import CONFIDENCE_AUTO, CONFIDENCE_WARN
+from poms.shared.locator import Locator
 
 logger = logging.getLogger(__name__)
 
@@ -34,17 +35,11 @@ class BasePage:
                  behaviour=None):
         self._driver    = driver
         self.base_url   = base_url.rstrip("/")
-        self._page      = page       # Playwright Page — for resolver
-        self._resolver  = resolver   # ElementResolver — 10-stage cascade (optional)
-        self._behaviour = behaviour  # HumanBehaviour — jitter/hover (optional)
+        self._page      = page
+        self._resolver  = resolver
+        self._behaviour = behaviour
 
     def _sleep(self, base_ms: int):
-        """
-        Return a jittered sleep coroutine.  Use: await self._sleep(300)
-
-        With behaviour injected → base_ms ± jitter_factor (random each call).
-        Without behaviour       → exactly base_ms / 1000 seconds (old behaviour).
-        """
         if self._behaviour:
             return asyncio.sleep(self._behaviour.jitter(base_ms))
         return asyncio.sleep(base_ms / 1000)
@@ -60,14 +55,72 @@ class BasePage:
     async def wait_for_ready(self) -> None:
         """Override in subclass for page-specific readiness check."""
 
-    # ── Priority ordering ─────────────────────────────────────────────────────
+    # ── Primary interaction method ────────────────────────────────────────────
+
+    async def _interact(self, locator: Locator, action: str, **kwargs) -> bool:
+        """
+        Single dispatch for all interactive element operations.
+
+        action: "fill"  — kwargs must contain value=str
+                "click" — kwargs may contain js_click=bool
+
+        With resolver → full 10-stage cascade via ElementResolver.
+        Without resolver → driver CSS fallback via locator.css_candidates().
+        Returns True on success, False if element not found or action failed.
+        """
+        if self._resolver and self._page:
+            cfg = locator.to_cfg()
+            result = await self._resolver.resolve(self._page, cfg, locator.description)
+            if result.found and result.confidence >= CONFIDENCE_WARN:
+                if result.confidence < CONFIDENCE_AUTO:
+                    logger.warning(
+                        "Medium confidence %.0f%% on %s — proceeding",
+                        result.confidence * 100, action,
+                    )
+                try:
+                    el = result.locator.first
+                    await el.scroll_into_view_if_needed(timeout=5_000)
+                    if action == "fill":
+                        if self._behaviour:
+                            await asyncio.sleep(self._behaviour.jitter(50))
+                        await el.fill(kwargs["value"], timeout=5_000)
+                    elif action == "click":
+                        if kwargs.get("js_click"):
+                            await el.evaluate("el => el.click()")
+                        else:
+                            if self._behaviour:
+                                await self._behaviour.hover_before_click(el)
+                            await el.click(timeout=5_000)
+                    logger.info(
+                        "✓ %s via %s (%.0f%%)",
+                        action, result.method, result.confidence * 100,
+                    )
+                    return True
+                except Exception as e:
+                    logger.warning("Resolver found element but %s failed: %s", action, e)
+                    return False
+            logger.warning(
+                "Resolver could not find element for %s: %s", action, locator.description
+            )
+            return False
+
+        # Driver fallback — try CSS candidates in priority order
+        for css in locator.css_candidates():
+            try:
+                if action == "fill":
+                    await self._driver.fill(css, kwargs["value"])
+                    return True
+                elif action == "click":
+                    await self._driver.click(css)
+                    return True
+            except Exception:
+                continue
+        return False
+
+    # ── Legacy helpers (kept for dynamic/special-case callers) ───────────────
 
     @staticmethod
     def _ordered_cfgs(cfgs: list[dict]) -> list[dict]:
-        """
-        Return cfgs ordered by explicit priority (lower first), otherwise
-        preserve original order. Each cfg may include "priority".
-        """
         indexed = list(enumerate(cfgs))
 
         def sort_key(item):
@@ -78,17 +131,9 @@ class BasePage:
 
         return [cfg for _, cfg in sorted(indexed, key=sort_key)]
 
-    # ── Single-cfg helpers ────────────────────────────────────────────────────
-
     async def _resolve_and_fill(
         self, cfg: dict, value: str, description: str = ""
     ) -> bool:
-        """
-        Find an element and fill it.
-        With resolver → full 10-stage cascade.
-        Without resolver → driver CSS/id fallback.
-        Returns True on success, False if element not found.
-        """
         if self._resolver and self._page:
             result = await self._resolver.resolve(self._page, cfg, description)
             if result.found and result.confidence >= CONFIDENCE_WARN:
@@ -110,7 +155,6 @@ class BasePage:
             logger.warning("Resolver could not find element for fill: %s", cfg)
             return False
 
-        # Driver fallback — CSS only
         css = cfg.get("css") or (f"#{cfg['id']}" if cfg.get("id") else None)
         if css:
             try:
@@ -123,12 +167,6 @@ class BasePage:
     async def _resolve_and_click(
         self, cfg: dict, description: str = "", js_click: bool = False
     ) -> bool:
-        """
-        Find an element and click it.
-        With resolver → full 10-stage cascade.
-        Without resolver → driver CSS/id fallback.
-        Returns True on success, False if element not found.
-        """
         if self._resolver and self._page:
             result = await self._resolver.resolve(self._page, cfg, description)
             if result.found and result.confidence >= CONFIDENCE_WARN:
@@ -153,7 +191,6 @@ class BasePage:
             logger.warning("Resolver could not find element for click: %s", cfg)
             return False
 
-        # Driver fallback — CSS only
         css = cfg.get("css") or (f"#{cfg['id']}" if cfg.get("id") else None)
         if css:
             try:
@@ -163,15 +200,9 @@ class BasePage:
                 return False
         return False
 
-    # ── Multi-cfg (priority list) helpers ────────────────────────────────────
-
     async def _resolve_and_fill_any(
         self, cfgs: list[dict], value: str, description: str = ""
     ) -> bool:
-        """
-        Try multiple element configs in priority order and fill the first
-        one that resolves. Each cfg can include "priority" to override order.
-        """
         for cfg in self._ordered_cfgs(cfgs):
             cfg = {k: v for k, v in cfg.items() if k != "priority"}
             if await self._resolve_and_fill(cfg, value, description):
@@ -181,18 +212,15 @@ class BasePage:
     async def _resolve_and_click_any(
         self, cfgs: list[dict], description: str = "", js_click: bool = False
     ) -> bool:
-        """
-        Try multiple element configs in priority order and click the first
-        one that resolves. Each cfg can include "priority" to override order.
-        """
         for cfg in self._ordered_cfgs(cfgs):
             cfg = {k: v for k, v in cfg.items() if k != "priority"}
             if await self._resolve_and_click(cfg, description, js_click=js_click):
                 return True
         return False
 
+    # ── Select helper (dropdowns — no resolver needed) ────────────────────────
+
     async def _select_option(self, selector: str, value: str) -> None:
-        """Select a <select> option via page.select_option or JS fallback."""
         if self._page:
             await self._page.select_option(selector, value)
         else:
@@ -205,18 +233,15 @@ class BasePage:
 
     @staticmethod
     async def _get_text(element) -> str:
-        """Return stripped inner text of element, or '' if element is None."""
         if not element:
             return ""
         return (await element.inner_text()).strip()
 
     async def _get_all_texts(self, selector: str) -> list[str]:
-        """Query all elements matching selector, return their stripped texts."""
         els = await self._driver.query_selector_all(selector)
         return [(await el.inner_text()).strip() for el in els]
 
     async def _get_text_or_none(self, selector: str) -> str | None:
-        """Find one element by selector, return its stripped text or None."""
         try:
             el = await self._driver.query_selector(selector)
             if el:

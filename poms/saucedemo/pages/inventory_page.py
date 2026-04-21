@@ -2,21 +2,13 @@
 saucedemo/pages/inventory_page.py — Pure POM for the SauceDemo inventory page.
 
 Single responsibility: selectors and raw interactions for the products list.
-
-Exposed interactions:
-  - sort products by a given option
-  - collect all visible product names and prices
-  - add a product to cart by name
-  - remove a product from cart by name
-  - navigate to cart
-
-No flow logic, no assertions, no loops across pages.
 """
 from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
 from poms.saucedemo.pages.base_page import BasePage
+from poms.shared.locator import Locator
 
 logger = logging.getLogger(__name__)
 
@@ -32,37 +24,50 @@ class ProductSummary:
 class InventoryPage(BasePage):
 
     class Locators:
-        """All inventory-page selectors. Never duplicated elsewhere."""
-        # ── Read-only ────────────────────────────────────────────────────────
-        TITLE         = ".title"
-        CART_BADGE    = ".shopping_cart_badge"
-        ITEM          = ".inventory_item"
-        ITEM_NAME     = ".inventory_item_name"
-        ITEM_PRICE    = ".inventory_item_price"
-        ITEM_DESC     = ".inventory_item_desc"
-        # Used inside item.query_selector() — not independent page-level clicks
+        # ── Read-only ─────────────────────────────────────────────────────────
+        TITLE           = ".title"
+        CART_BADGE      = ".shopping_cart_badge"
+        ITEM            = ".inventory_item"
+        ITEM_NAME       = ".inventory_item_name"
+        ITEM_PRICE      = ".inventory_item_price"
+        ITEM_DESC       = ".inventory_item_desc"
         ADD_TO_CART_BTN = "button[data-test^='add-to-cart']"
         REMOVE_BTN      = "button[data-test^='remove']"
 
-        # ── Interactive — cfg lists are the single source of truth ───────────
-        SORT_DROPDOWN_CFG = [
-            {"css": "[data-test='product-sort-container']", "priority": 10},
-            {"css": "select.product_sort_container",        "priority": 20},
+        # ── Interactive cfg lists (healing cascade) ───────────────────────────
+        ADD_TO_CART_CFG = [
+            {"role": "button", "name": "Add to cart", "priority": 10},
+            {"text": "Add to cart",                   "priority": 20},
+            {"css": "button[data-test^='add-to-cart']", "priority": 30},
         ]
-        CART_LINK_CFG = [
-            {"css":  ".shopping_cart_link",              "priority": 10},
-            {"role": "link", "name": "shopping cart",    "priority": 20},
-        ]
-        BURGER_MENU_CFG = [
-            {"css": "#react-burger-menu-btn",            "priority": 10},
-            {"role": "button", "name": "Open Menu",      "priority": 20},
-        ]
-        LOGOUT_CFG = [
-            {"css":  "#logout_sidebar_link",             "priority": 10},
-            {"role": "link", "name": "Logout",           "priority": 20},
+        REMOVE_CFG = [
+            {"role": "button", "name": "Remove",      "priority": 10},
+            {"text": "Remove",                         "priority": 20},
+            {"css": "button[data-test^='remove']",     "priority": 30},
         ]
 
-    # Sort option values accepted by the <select> element
+        # ── Interactive ───────────────────────────────────────────────────────
+        SORT_DROPDOWN = Locator(
+            css="[data-test='product-sort-container']",
+            css_fallbacks=["select.product_sort_container"],
+            description="product sort dropdown",
+        )
+        CART_LINK = Locator(
+            role="link", name="shopping cart",
+            css=".shopping_cart_link",
+            description="cart link",
+        )
+        BURGER_MENU = Locator(
+            role="button", name="Open Menu",
+            id="react-burger-menu-btn",
+            description="burger menu button",
+        )
+        LOGOUT = Locator(
+            role="link", name="Logout",
+            id="logout_sidebar_link",
+            description="logout link",
+        )
+
     SORT_NAME_ASC   = "az"
     SORT_NAME_DESC  = "za"
     SORT_PRICE_ASC  = "lohi"
@@ -83,17 +88,10 @@ class InventoryPage(BasePage):
     # ── Sort ──────────────────────────────────────────────────────────────────
 
     async def select_sort(self, option: str) -> None:
-        """
-        Select a sort option from the dropdown.
-        Use the SORT_* class constants or pass the raw option value directly.
-        """
-        page = self._page
-        if page:
-            css = self.Locators.SORT_DROPDOWN_CFG[0]["css"]
-            await page.select_option(css, option)
+        css = self.Locators.SORT_DROPDOWN.css
+        if self._page:
+            await self._page.select_option(css, option)
         else:
-            # driver-level fallback via JS evaluate
-            css = self.Locators.SORT_DROPDOWN_CFG[0]["css"]
             await self._driver.evaluate(
                 f"document.querySelector('{css}').value = '{option}';"
                 f"document.querySelector('{css}').dispatchEvent(new Event('change'));"
@@ -103,7 +101,6 @@ class InventoryPage(BasePage):
     # ── Product reads ─────────────────────────────────────────────────────────
 
     async def get_all_products(self) -> list[ProductSummary]:
-        """Return name, price, and detail-page URL for every visible product card."""
         items  = await self._driver.query_selector_all(self.Locators.ITEM)
         result = []
         for item in items:
@@ -123,12 +120,10 @@ class InventoryPage(BasePage):
         return result
 
     async def get_product_names(self) -> list[str]:
-        """Return just the visible product names, in DOM order."""
         items = await self._driver.query_selector_all(self.Locators.ITEM_NAME)
         return [(await el.inner_text()).strip() for el in items]
 
     async def get_cart_item_count(self) -> int:
-        """Return the number shown on the cart badge (0 if badge not visible)."""
         try:
             el = await self._driver.query_selector(self.Locators.CART_BADGE)
             if el:
@@ -140,29 +135,36 @@ class InventoryPage(BasePage):
     # ── Cart interactions ─────────────────────────────────────────────────────
 
     async def add_to_cart_by_name(self, product_name: str) -> bool:
-        """
-        Click the 'Add to cart' button for the item whose name matches exactly.
-        Returns True if clicked, False if the item was not found.
-        """
-        items = await self._driver.query_selector_all(self.Locators.ITEM)
-        for item in items:
-            name_el = await item.query_selector(self.Locators.ITEM_NAME)
-            if not name_el:
+        if not self._page:
+            logger.warning("add_to_cart_by_name requires page= injection")
+            return False
+        items = self._page.locator(self.Locators.ITEM)
+        count = await items.count()
+        for i in range(count):
+            item_root = items.nth(i)
+            name_el   = item_root.locator(self.Locators.ITEM_NAME)
+            if (await name_el.inner_text()).strip() != product_name:
                 continue
-            if (await name_el.inner_text()).strip() == product_name:
-                btn = await item.query_selector(self.Locators.ADD_TO_CART_BTN)
-                if btn:
-                    await btn.click()
-                    logger.info("Added to cart: %s", product_name)
-                    return True
+            for cfg in self._ordered_cfgs(self.Locators.ADD_TO_CART_CFG):
+                try:
+                    if "role" in cfg:
+                        btn = item_root.get_by_role(cfg["role"], name=cfg.get("name", ""))
+                    elif "text" in cfg:
+                        btn = item_root.get_by_text(cfg["text"], exact=True)
+                    elif "css" in cfg:
+                        btn = item_root.locator(cfg["css"])
+                    else:
+                        continue
+                    if await btn.count() > 0:
+                        await btn.first.click()
+                        logger.info("Added to cart: %s (via %s)", product_name, next(iter(cfg)))
+                        return True
+                except Exception:
+                    continue
         logger.warning("Product not found on inventory page: %s", product_name)
         return False
 
     async def remove_from_cart_by_name(self, product_name: str) -> bool:
-        """
-        Click the 'Remove' button for the named item.
-        Returns True if clicked, False if not found.
-        """
         items = await self._driver.query_selector_all(self.Locators.ITEM)
         for item in items:
             name_el = await item.query_selector(self.Locators.ITEM_NAME)
@@ -179,17 +181,16 @@ class InventoryPage(BasePage):
     # ── Navigation ────────────────────────────────────────────────────────────
 
     async def go_to_cart(self) -> None:
-        await self._resolve_and_click_any(self.Locators.CART_LINK_CFG, "cart link")
+        await self._interact(self.Locators.CART_LINK, "click")
         await self._driver.wait_for_load_state("domcontentloaded")
 
     async def open_burger_menu(self) -> None:
-        await self._resolve_and_click_any(self.Locators.BURGER_MENU_CFG, "burger menu")
+        await self._interact(self.Locators.BURGER_MENU, "click")
 
     async def logout(self) -> None:
-        """Open the burger menu then click the logout link."""
         await self.open_burger_menu()
         await self._driver.wait_for_selector(
-            self.Locators.LOGOUT_CFG[0]["css"], timeout=5_000
+            self.Locators.LOGOUT.css, timeout=5_000
         )
-        await self._resolve_and_click_any(self.Locators.LOGOUT_CFG, "logout link")
+        await self._interact(self.Locators.LOGOUT, "click")
         await self._driver.wait_for_load_state("domcontentloaded")

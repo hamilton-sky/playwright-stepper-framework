@@ -2,17 +2,12 @@
 phpTravels/pages/home_page.py — Pure POM for the phpTravels home / search page.
 
 Single responsibility: selectors and raw interactions for the home search form.
-
-The form supports multiple service tabs (Hotels, Flights, Tours, etc.).
-Each tab has its own search inputs. This POM owns all of them — switching
-tabs is a single click, not a navigation event.
-
-No flow logic, no assertions.
 """
 from __future__ import annotations
 import logging
 
 from poms.phpTravels.pages.base_page import BasePage
+from poms.shared.locator import Locator
 
 logger = logging.getLogger(__name__)
 
@@ -20,99 +15,82 @@ logger = logging.getLogger(__name__)
 class HomePage(BasePage):
 
     class Locators:
-        """All home-page selectors. Never duplicated elsewhere."""
-
-        # ── Service tabs ─────────────────────────────────────────────────────
-        # Tab links — clicking them switches the search form panel
-        TAB_HOTELS  = "a[href*='#hotels']"
-        TAB_FLIGHTS = "a[href*='#flights']"
-        TAB_TOURS   = "a[href*='#tours']"
-        TAB_CARS    = "a[href*='#cars']"
-
-        # ── Hotels search form ────────────────────────────────────────────────
-        # Plain strings — used for wait_for_selector and select_option
-        HOTEL_DESTINATION   = "#hotels input.typeahead"
-        HOTEL_CHECKIN       = "#hotels input[name='checkin']"
-        HOTEL_CHECKOUT      = "#hotels input[name='checkout']"
-        HOTEL_ADULTS        = "#hotels select[name='adults']"
-        HOTEL_CHILDREN      = "#hotels select[name='children']"
-        HOTEL_ROOMS         = "#hotels select[name='rooms']"
-        HOTEL_SEARCH_BTN    = "#hotels button[type='submit']"
-
-        # ── Flights search form ───────────────────────────────────────────────
-        FLIGHT_ORIGIN       = "#flights input[name='from']"
-        FLIGHT_DESTINATION  = "#flights input[name='to']"
-        FLIGHT_DEPART_DATE  = "#flights input[name='departure_date']"
-        FLIGHT_RETURN_DATE  = "#flights input[name='return_date']"
-        FLIGHT_ADULTS       = "#flights select[name='adults']"
-        FLIGHT_SEARCH_BTN   = "#flights button[type='submit']"
-
-        # ── Tours search form ─────────────────────────────────────────────────
-        TOUR_DESTINATION    = "#tours input.typeahead"
-        TOUR_DATE           = "#tours input[name='date']"
-        TOUR_ADULTS         = "#tours select[name='adults']"
-        TOUR_SEARCH_BTN     = "#tours button[type='submit']"
-
-        # ── Typeahead suggestion list (shared across tabs) ────────────────────
-        SUGGESTION_ITEM     = ".tt-suggestion"
+        # ── Read-only ─────────────────────────────────────────────────────────
         SUGGESTION_LIST     = ".tt-menu"
-
-        # ── Nav bar ───────────────────────────────────────────────────────────
         NAV_LOGO            = ".navbar-brand"
         NAV_MY_ACCOUNT      = "a[href*='/account']"
 
-        # ── Interactive cfg lists ─────────────────────────────────────────────
-        TAB_HOTELS_CFG = [
-            {"role": "link", "name": "Hotels",       "priority": 10},
-            {"css":  "a[href*='#hotels']",            "priority": 20},
-        ]
-        TAB_FLIGHTS_CFG = [
-            {"role": "link", "name": "Flights",      "priority": 10},
-            {"css":  "a[href*='#flights']",           "priority": 20},
-        ]
-        TAB_TOURS_CFG = [
-            {"role": "link", "name": "Tours",        "priority": 10},
-            {"css":  "a[href*='#tours']",             "priority": 20},
-        ]
-        HOTEL_DESTINATION_CFG = [
-            {"placeholder": "Destination",              "priority": 10},
-            {"css":         "#hotels input.typeahead",  "priority": 20},
-        ]
-        SUGGESTION_ITEM_CFG = [
-            {"css": ".tt-suggestion", "priority": 10},
-        ]
-        HOTEL_CHECKIN_CFG = [
-            {"placeholder": "Check In",                      "priority": 10},
-            {"css":         "#hotels input[name='checkin']", "priority": 20},
-        ]
-        HOTEL_CHECKOUT_CFG = [
-            {"placeholder": "Check Out",                      "priority": 10},
-            {"css":         "#hotels input[name='checkout']", "priority": 20},
-        ]
-        HOTEL_SEARCH_BTN_CFG = [
-            {"role": "button", "name": "Search",         "priority": 10},
-            {"css":  "#hotels button[type='submit']",    "priority": 20},
-        ]
-        FLIGHT_ORIGIN_CFG = [
-            {"placeholder": "From",                         "priority": 10},
-            {"css":         "#flights input[name='from']",  "priority": 20},
-        ]
-        FLIGHT_DESTINATION_CFG = [
-            {"placeholder": "To",                          "priority": 10},
-            {"css":         "#flights input[name='to']",   "priority": 20},
-        ]
-        FLIGHT_DEPART_DATE_CFG = [
-            {"placeholder": "Departure Date",                        "priority": 10},
-            {"css":         "#flights input[name='departure_date']", "priority": 20},
-        ]
-        FLIGHT_RETURN_DATE_CFG = [
-            {"placeholder": "Return Date",                          "priority": 10},
-            {"css":         "#flights input[name='return_date']",   "priority": 20},
-        ]
-        FLIGHT_SEARCH_BTN_CFG = [
-            {"role": "button", "name": "Search",          "priority": 10},
-            {"css":  "#flights button[type='submit']",    "priority": 20},
-        ]
+        # Select-option targets (CSS strings — used with _select_option)
+        HOTEL_ADULTS   = "#hotels select[name='adults']"
+        HOTEL_CHILDREN = "#hotels select[name='children']"
+        HOTEL_ROOMS    = "#hotels select[name='rooms']"
+        FLIGHT_ADULTS  = "#flights select[name='adults']"
+
+        # ── Interactive ───────────────────────────────────────────────────────
+        TAB_HOTELS = Locator(
+            role="link", name="Hotels",
+            css="a[href*='#hotels']",
+            description="Hotels tab",
+        )
+        TAB_FLIGHTS = Locator(
+            role="link", name="Flights",
+            css="a[href*='#flights']",
+            description="Flights tab",
+        )
+        TAB_TOURS = Locator(
+            role="link", name="Tours",
+            css="a[href*='#tours']",
+            description="Tours tab",
+        )
+        HOTEL_DESTINATION = Locator(
+            placeholder="Destination",
+            css="#hotels input.typeahead",
+            description="hotel destination input",
+        )
+        SUGGESTION_ITEM = Locator(
+            css=".tt-suggestion",
+            description="first autocomplete suggestion",
+        )
+        HOTEL_CHECKIN = Locator(
+            placeholder="Check In",
+            css="#hotels input[name='checkin']",
+            description="hotel check-in date",
+        )
+        HOTEL_CHECKOUT = Locator(
+            placeholder="Check Out",
+            css="#hotels input[name='checkout']",
+            description="hotel check-out date",
+        )
+        HOTEL_SEARCH_BTN = Locator(
+            role="button", name="Search",
+            css="#hotels button[type='submit']",
+            description="hotel search submit button",
+        )
+        FLIGHT_ORIGIN = Locator(
+            placeholder="From",
+            css="#flights input[name='from']",
+            description="flight origin input",
+        )
+        FLIGHT_DESTINATION = Locator(
+            placeholder="To",
+            css="#flights input[name='to']",
+            description="flight destination input",
+        )
+        FLIGHT_DEPART_DATE = Locator(
+            placeholder="Departure Date",
+            css="#flights input[name='departure_date']",
+            description="flight departure date",
+        )
+        FLIGHT_RETURN_DATE = Locator(
+            placeholder="Return Date",
+            css="#flights input[name='return_date']",
+            description="flight return date",
+        )
+        FLIGHT_SEARCH_BTN = Locator(
+            role="button", name="Search",
+            css="#flights button[type='submit']",
+            description="flight search submit button",
+        )
 
     @property
     def url(self) -> str:
@@ -121,7 +99,7 @@ class HomePage(BasePage):
     async def wait_for_ready(self) -> None:
         try:
             await self._driver.wait_for_selector(
-                self.Locators.HOTEL_SEARCH_BTN, timeout=15_000
+                self.Locators.HOTEL_SEARCH_BTN.css, timeout=15_000
             )
         except Exception:
             pass
@@ -129,58 +107,55 @@ class HomePage(BasePage):
     # ── Tab navigation ────────────────────────────────────────────────────────
 
     async def select_hotels_tab(self) -> None:
-        await self._resolve_and_click_any(self.Locators.TAB_HOTELS_CFG)
+        await self._interact(self.Locators.TAB_HOTELS, "click")
 
     async def select_flights_tab(self) -> None:
-        await self._resolve_and_click_any(self.Locators.TAB_FLIGHTS_CFG)
+        await self._interact(self.Locators.TAB_FLIGHTS, "click")
 
     async def select_tours_tab(self) -> None:
-        await self._resolve_and_click_any(self.Locators.TAB_TOURS_CFG)
+        await self._interact(self.Locators.TAB_TOURS, "click")
 
     # ── Hotels form ───────────────────────────────────────────────────────────
 
     async def fill_hotel_destination(self, value: str) -> None:
-        """Type into the destination autocomplete and wait for suggestions."""
-        await self._resolve_and_fill_any(self.Locators.HOTEL_DESTINATION_CFG, value)
+        await self._interact(self.Locators.HOTEL_DESTINATION, "fill", value=value)
         try:
             await self._driver.wait_for_selector(
                 self.Locators.SUGGESTION_LIST, timeout=5_000
             )
         except Exception:
-            pass  # suggestions may not appear for all inputs
+            pass
 
     async def select_first_hotel_suggestion(self) -> None:
-        """Click the first suggestion in the autocomplete dropdown."""
-        await self._resolve_and_click_any(self.Locators.SUGGESTION_ITEM_CFG)
+        await self._interact(self.Locators.SUGGESTION_ITEM, "click")
 
     async def fill_hotel_checkin(self, date: str) -> None:
-        """date: 'DD-MM-YYYY' or whatever format the site expects."""
-        await self._resolve_and_fill_any(self.Locators.HOTEL_CHECKIN_CFG, date)
+        await self._interact(self.Locators.HOTEL_CHECKIN, "fill", value=date)
 
     async def fill_hotel_checkout(self, date: str) -> None:
-        await self._resolve_and_fill_any(self.Locators.HOTEL_CHECKOUT_CFG, date)
+        await self._interact(self.Locators.HOTEL_CHECKOUT, "fill", value=date)
 
     async def fill_hotel_adults(self, count: str) -> None:
         await self._select_option(self.Locators.HOTEL_ADULTS, count)
 
     async def submit_hotel_search(self) -> None:
-        await self._resolve_and_click_any(self.Locators.HOTEL_SEARCH_BTN_CFG)
+        await self._interact(self.Locators.HOTEL_SEARCH_BTN, "click")
         await self._driver.wait_for_load_state("domcontentloaded")
 
     # ── Flights form ──────────────────────────────────────────────────────────
 
     async def fill_flight_origin(self, value: str) -> None:
-        await self._resolve_and_fill_any(self.Locators.FLIGHT_ORIGIN_CFG, value)
+        await self._interact(self.Locators.FLIGHT_ORIGIN, "fill", value=value)
 
     async def fill_flight_destination(self, value: str) -> None:
-        await self._resolve_and_fill_any(self.Locators.FLIGHT_DESTINATION_CFG, value)
+        await self._interact(self.Locators.FLIGHT_DESTINATION, "fill", value=value)
 
     async def fill_flight_depart_date(self, date: str) -> None:
-        await self._resolve_and_fill_any(self.Locators.FLIGHT_DEPART_DATE_CFG, date)
+        await self._interact(self.Locators.FLIGHT_DEPART_DATE, "fill", value=date)
 
     async def fill_flight_return_date(self, date: str) -> None:
-        await self._resolve_and_fill_any(self.Locators.FLIGHT_RETURN_DATE_CFG, date)
+        await self._interact(self.Locators.FLIGHT_RETURN_DATE, "fill", value=date)
 
     async def submit_flight_search(self) -> None:
-        await self._resolve_and_click_any(self.Locators.FLIGHT_SEARCH_BTN_CFG)
+        await self._interact(self.Locators.FLIGHT_SEARCH_BTN, "click")
         await self._driver.wait_for_load_state("domcontentloaded")

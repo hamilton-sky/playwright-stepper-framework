@@ -1,7 +1,9 @@
 {
-  "name": "SauceDemo — multi-product checkout with sort validation",
-  "description": "Adds multiple products after sorting by price (low→high), verifies cart count matches, then completes checkout. Demonstrates sort + multi-item cart + context.counts assertion.",
+  "name": "SauceDemo — collect, filter, add to cart, checkout",
+  "description": "Sort by price, collect products under a price cap, add them to cart, verify count, then complete checkout.",
   "variables": {
+    "price_max":  18,
+    "limit":       3,
     "first_name": "Jane",
     "last_name":  "Doe",
     "zip":        "90210"
@@ -14,41 +16,42 @@
     },
     {
       "action": "sd_sort_products",
-      "description": "Sort products by price — low to high — before adding to cart",
+      "description": "Sort products by price — low to high",
       "extra": { "sort": "lohi" }
     },
     {
-      "action": "sd_add_to_cart",
-      "description": "Add three products to the cart",
+      "action": "sd_collect_products",
+      "description": "Collect up to {{limit}} products priced under ${{price_max}}",
       "extra": {
-        "products": [
-          "Sauce Labs Bike Light",
-          "Sauce Labs Onesie",
-          "Sauce Labs Bolt T-Shirt"
-        ]
+        "filter": { "price_max": "{{price_max}}" },
+        "limit":  "{{limit}}"
       }
     },
     {
+      "action": "sd_add_to_cart",
+      "description": "Add all collected products to the cart"
+    },
+    {
       "action": "sd_view_cart",
-      "description": "Navigate to cart — store item count in context for assertion",
+      "description": "Navigate to cart — store item count in context",
       "continue_on_failure": false
     },
     {
       "action": "assert_count",
-      "description": "Assert cart contains exactly 3 items",
+      "description": "Assert cart contains exactly {{limit}} items",
       "extra": {
-        "context_key": "cart_item_count",
-        "expected":    3
+        "selectors": [".cart_item"],
+        "expected":  "{{limit}}"
       }
     },
     {
       "action": "screenshot",
-      "description": "Capture cart with 3 items",
+      "description": "Capture cart with collected products",
       "extra": { "filename": "multi_product_cart.png" }
     },
     {
       "action": "sd_checkout",
-      "description": "Complete checkout → verify order confirmation",
+      "description": "Complete checkout — verify order confirmation",
       "extra": {
         "first_name": "{{first_name}}",
         "last_name":  "{{last_name}}",

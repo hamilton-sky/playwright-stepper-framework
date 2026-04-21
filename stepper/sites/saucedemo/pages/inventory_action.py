@@ -59,8 +59,18 @@ class SDInventoryPage(PageModule):
                     page=page, resolver=resolver, behaviour=behaviour,
                 )
 
-                await inventory_page.open()
                 products = await inventory_page.get_all_products()
+
+                f = step.extra.get("filter", {})
+                if "price_max" in f:
+                    products = [p for p in products if p.price <= float(f["price_max"])]
+                if "price_min" in f:
+                    products = [p for p in products if p.price >= float(f["price_min"])]
+
+                limit = step.extra.get("limit")
+                if limit is not None:
+                    products = products[: int(limit)]
+
                 context.extracted_data = [
                     {"name": p.name, "price": p.price, "url": p.url}
                     for p in products
@@ -104,14 +114,14 @@ class SDInventoryPage(PageModule):
                     page=page, resolver=resolver, behaviour=behaviour,
                 )
 
-                products = step.extra.get("products", [])
+                products = step.extra.get("products") or [
+                    item["name"] for item in (context.extracted_data or [])
+                ]
                 if not products:
                     return StepResult(
                         step=step, status="failed",
-                        error="sd_add_to_cart: step.extra['products'] is required",
+                        error="sd_add_to_cart: no products — set step.extra['products'] or run sd_collect_products first",
                     )
-
-                await inventory_page.open()
 
                 added: list[str] = []
                 failed: list[str] = []

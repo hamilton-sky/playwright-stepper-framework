@@ -37,6 +37,25 @@ logger = logging.getLogger(__name__)
 _stepper_root = Path(__file__).resolve().parent
 
 
+def _site_storage_state(workflow_path: str | None, stepper_root: Path) -> Path | None:
+    """Return storage state path for sites that need session persistence.
+
+    Only OpenLibrary requires saved sessions (logged-in state across runs).
+    Other sites (SauceDemo, phpTravels) log in fresh each run — no persistence needed.
+    """
+    _SITES_WITH_PERSISTENCE = {"openlibrary"}
+    if not workflow_path:
+        return None
+    parts = Path(workflow_path).parts
+    for i, part in enumerate(parts):
+        if part == "sites" and i + 1 < len(parts):
+            site = parts[i + 1]
+            if site in _SITES_WITH_PERSISTENCE:
+                return stepper_root / "sites" / site / "artifacts" / "storage_state.json"
+            return None
+    return None
+
+
 async def run(
     workflow_path: str = None,
     task: str = None,
@@ -63,6 +82,8 @@ async def run(
 
     # ── 2. Infrastructure ─────────────────────────────────────────────────────
     s = load_settings_safe()
+    # Each site owns its own storage state; derive path from workflow location
+    s = s._replace(storage_state_path=_site_storage_state(workflow_path, _stepper_root))
     if resolver is None:
         resolver = build_resolver(s.use_visual_ai)
 

@@ -2,8 +2,6 @@
 pages/reading_list_page.py — Pure POM for OpenLibrary reading list.
 
 Responsibility: navigate to reading list pages and count books.
-
-No src/ imports. No framework imports.
 """
 from __future__ import annotations
 import asyncio
@@ -16,16 +14,17 @@ logger = logging.getLogger(__name__)
 
 
 class ReadingListPage(BasePage):
+
     _WANT_TO_READ_PATH = "/account/books/want-to-read"
     _ALREADY_READ_PATH = "/account/books/already-read"
-    # Plain CSS — query_selector is a state read, no resolver needed
-    _NEXT_PAGE_CSS     = "a.ChoosePage[data-ol-link-track='Pager|Next']"
-    BOOK_ITEM_SELECTOR = "ul.list-books > li"
-    _BOOK_HREF         = "a[href*='/works/'], a[href*='/books/']"
 
-    def __init__(self, driver, base_url: str, delays=None,
-                 page=None, resolver=None, **kwargs):
-        super().__init__(driver, base_url, delays, page, resolver, **kwargs)
+    class Locators:
+        # All selectors are read-only / existence checks — no resolver needed.
+        BOOK_ITEM = "ul.list-books > li"
+        BOOK_HREF = "a[href*='/works/'], a[href*='/books/']"
+        # Pagination: used as an existence check — element may legitimately
+        # not exist (single-page list). Direct query_selector, never resolver.
+        NEXT_PAGE = "a.ChoosePage[data-ol-link-track='Pager|Next']"
 
     @property
     def url(self) -> str:
@@ -39,18 +38,15 @@ class ReadingListPage(BasePage):
         return want + already
 
     async def collect_all_book_urls(self, shelf_path: str) -> list[str]:
-        """
-        Collect all book URLs from a shelf, paginating until done.
-        Ownership of pagination selectors lives here — not in FlowOrchestrator.
-        """
+        """Collect all book URLs from a shelf, paginating until done."""
         base = self.base_url.rstrip("/")
         await self._driver.goto(f"{base}{shelf_path}", wait_until="domcontentloaded")
         book_urls: list[str] = []
 
         while True:
-            items = await self._driver.query_selector_all(self.BOOK_ITEM_SELECTOR)
+            items = await self._driver.query_selector_all(self.Locators.BOOK_ITEM)
             for item in items:
-                link = await item.query_selector(self._BOOK_HREF)
+                link = await item.query_selector(self.Locators.BOOK_HREF)
                 if not link:
                     continue
                 href = await link.get_attribute("href")
@@ -58,7 +54,7 @@ class ReadingListPage(BasePage):
                     clean = urlparse(base + href)._replace(query="", fragment="").geturl()
                     book_urls.append(clean)
 
-            next_el = await self._driver.query_selector(self._NEXT_PAGE_CSS)
+            next_el = await self._driver.query_selector(self.Locators.NEXT_PAGE)
             if not next_el:
                 break
             await next_el.click()
@@ -74,12 +70,14 @@ class ReadingListPage(BasePage):
         )
         total = 0
         while True:
-            items    = await self._driver.query_selector_all(self.BOOK_ITEM_SELECTOR)
-            total   += len(items)
-            next_el = await self._driver.query_selector(self._NEXT_PAGE_CSS)
+            items = await self._driver.query_selector_all(self.Locators.BOOK_ITEM)
+            total += len(items)
+
+            next_el = await self._driver.query_selector(self.Locators.NEXT_PAGE)
             if not next_el:
                 break
             await next_el.click()
             await self._driver.wait_for_load_state("domcontentloaded")
             await self._sleep(self.delays.between_pagination_ms)
+
         return total

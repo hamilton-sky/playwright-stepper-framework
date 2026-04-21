@@ -3,13 +3,6 @@ pages/book_search_page.py — Pure POM for OpenLibrary search page.
 
 Responsibility: orchestrate the search page flow.
   open → search → collect → paginate
-
-Uses:
-  - openlibrary_exam.utils.book_filter  (year extraction — pure functions)
-  - openlibrary_exam.pages.base_page    (BasePage)
-  - driver (PlaywrightDriver)           for all DOM interactions
-
-No src/ imports. No framework imports.
 """
 from __future__ import annotations
 import asyncio
@@ -18,62 +11,44 @@ from urllib.parse import quote_plus
 
 from poms.openLibrary.pages.base_page import BasePage
 from poms.openLibrary.utils.book_filter import extract_year_from_text, is_under_year
+from poms.shared.locator import Locator
 
 logger = logging.getLogger(__name__)
 
 
 class BookSearchPage(BasePage):
-    """
-    POM for the OpenLibrary search page.
-
-    All CSS selectors live in the inner Locators class — single source of truth.
-    Nothing outside this file should hardcode these strings (Option 3).
-    """
 
     class Locators:
-        """
-        CSS selectors — verified against live OpenLibrary DOM (April 2026)
-        via Playwright inspection (JS-rendered, not static HTML).
+        # ── Read-only — one element, multiple CSS fallbacks ───────────────────
+        RESULT_ITEM = Locator(
+            css="li.searchResultItem",
+            css_fallbacks=[
+                "li:has(a[href*='/works/'])",
+                "ul.list-books li",
+                "#contentBody li",
+            ],
+            description="search result item",
+        )
+        YEAR_TEXT = Locator(
+            css="span.resultDetails",
+            css_fallbacks=[
+                "span[class*='result']",
+                "[class*='published']",
+            ],
+            description="publication year text",
+        )
 
-        Search results: <li class="searchResultItem sri--w-main" ...>
-        Year text:      <span class="resultDetails"><span>First published in YYYY</span>...</span>
-        Shelf button:   <button class="book-progress-btn primary-action unactivated">
-        """
-        # ── Result Item Selectors ─────────────────────────────────────────
-        RESULT_ITEM = "li.searchResultItem"  # verified: 20 matches on Dune search
-
-        RESULT_ITEM_CFGS: list[dict] = [
-            {"css": "li.searchResultItem",            "priority": 10, "label": "searchResultItem"},
-            {"css": "li:has(a[href*='/works/'])",     "priority": 20, "label": "works-link-li"},
-            {"css": "ul.list-books li",               "priority": 30, "label": "list-books-li"},
-            {"css": "#contentBody li",                "priority": 40, "label": "contentBody-li"},
-        ]
-
-        # ── Year/Date Selectors ─────────────────────────────────────────
-        # span.resultDetails is the grandparent of the year text node.
-        # inner_text() on that span returns "First published in YYYY — N editions".
-        YEAR_TEXT_CFGS: list[dict] = [
-            {"css": "span.resultDetails",            "priority": 10, "label": "resultDetails"},
-            {"css": "span[class*='result']",         "priority": 20, "label": "result-span"},
-            {"css": "[class*='published']",          "priority": 30, "label": "published-attr"},
-        ]
-        # If none of the above selectors match, _collect_from_page falls back to
-        # reading the entire li inner_text() — "First published in YYYY" is always present.
-
-        # ── Search Input Selectors ────────────────────────────────────────
-        # NOTE: search() uses direct URL navigation — these cfgs are reserved for
-        # future form-based search. Verified against live DOM (April 2026).
-        # Input has name="q", placeholder="Search", no id, no role attribute.
-        SEARCH_INPUT_CFGS: list[dict] = [
-            {"placeholder": "Search",       "priority": 10},
-            {"css": "input[name='q']",      "priority": 20},
-        ]
-
-        # Submit is <input type="submit" class="search-bar-submit"> — not a <button>
-        SEARCH_BUTTON_CFGS: list[dict] = [
-            {"css": "input.search-bar-submit",   "priority": 10},
-            {"css": "input[type='submit']",       "priority": 20},
-        ]
+        # ── Interactive (reserved for form-based search) ──────────────────────
+        SEARCH_INPUT = Locator(
+            placeholder="Search",
+            css="input[name='q']",
+            description="search input field",
+        )
+        SEARCH_BUTTON = Locator(
+            css="input.search-bar-submit",
+            css_fallbacks=["input[type='submit']"],
+            description="search submit button",
+        )
 
     def __init__(self, driver, base_url: str, delays=None,
                  page=None, resolver=None, **kwargs):
@@ -86,19 +61,12 @@ class BookSearchPage(BasePage):
         return f"{self.base_url.rstrip('/')}/search"
 
     async def open(self) -> None:
-        pass  # search() owns the /search navigation — open() is intentionally a no-op
+        pass  # search() owns navigation
 
     async def wait_for_ready(self) -> None:
         pass
 
     async def search(self, query: str) -> None:
-        """
-        Navigate to search page without waiting for page load events.
-
-        OpenLibrary's search hangs when waiting for domcontentloaded/load after
-        the clearing phase. Instead, return immediately and use polling to check
-        if results appear.
-        """
         import time as _time
         self._query    = query
         self._page_num = 1
@@ -106,48 +74,33 @@ class BookSearchPage(BasePage):
         search_url = f"{self.base_url.rstrip('/')}/search?q={quote_plus(query)}"
         logger.info("Navigating to search URL: %s", search_url)
 
-        # Navigate WITHOUT waiting for page load events (they may hang)
         t0 = _time.monotonic()
         try:
-            # Use commit strategy: return as soon as response is received, don't wait for page events
             await self._driver.goto(search_url, wait_until="commit", timeout=30_000)
             logger.info("Navigation sent (commit strategy) in %.0fms", (_time.monotonic() - t0) * 1000)
         except Exception as e:
             logger.warning("Navigation attempt failed: %s — proceeding with polling", str(e)[:80])
 
-        # Poll for results to appear in DOM
         logger.info("Polling for search results to load…")
         max_wait = 20
         for attempt in range(max_wait):
             try:
-                count = await self._driver.locator_count(self.Locators.RESULT_ITEM)
+                count = await self._driver.locator_count(self.Locators.RESULT_ITEM.css)
                 if count > 0:
                     elapsed = (_time.monotonic() - t0) * 1000
                     logger.info("Search results loaded in %.0fms (after %d polling attempts)", elapsed, attempt + 1)
                     return
             except Exception:
                 pass
-
             if attempt < max_wait - 1:
                 await asyncio.sleep(0.5)
 
         logger.warning("Search results did not appear after polling — proceeding with collection attempt")
 
-
-
-
-
     async def collect_books_under_year(self, max_year: int, limit: int) -> list[dict]:
-        """
-        Collect book items from search results, filtered by max publication year.
-        Each item is {"url": str, "year": int}.
-        Paginates automatically until limit is reached or pages run out.
-
-        Page cap comes from delays.max_search_pages (config-driven, not hardcoded).
-        """
         collected: list[dict] = []
         seen_urls: set[str] = set()
-        max_pages = self.delays.max_search_pages  # from config, not magic number
+        max_pages = self.delays.max_search_pages
         logger.info("Collecting up to %d books published before %d (max %d pages)",
                     limit, max_year, max_pages)
 
@@ -176,7 +129,6 @@ class BookSearchPage(BasePage):
             import time as _time
             _t = _time.monotonic()
 
-            # Retry once on navigation timeout
             try:
                 await self._driver.goto(next_url, wait_until="domcontentloaded", timeout=45_000)
                 logger.info("Page %d loaded in %.0fms", self._page_num, (_time.monotonic() - _t) * 1000)
@@ -186,18 +138,17 @@ class BookSearchPage(BasePage):
                     await asyncio.sleep(2)
                     await self._driver.goto(next_url, wait_until="domcontentloaded", timeout=45_000)
                     logger.info("Page %d loaded on retry in %.0fms", self._page_num, (_time.monotonic() - _t) * 1000)
-                except Exception as e2:
+                except Exception:
                     logger.warning("Page %d navigation failed on retry — stopping pagination", self._page_num)
                     break
 
             await self._sleep(self.delays.page_load_wait_ms)
 
-            # Page is already loaded — use count() for instant check, no timeout wait
+            # Try primary then fallbacks until results found
             result_found = False
-            for cfg in self.Locators.RESULT_ITEM_CFGS:
-                count = await self._driver.locator_count(cfg["css"])
-                if count > 0:
-                    logger.debug("Page %d results found via selector: %s (%d items)", self._page_num, cfg.get("label", cfg["css"]), count)
+            for css in self.Locators.RESULT_ITEM.css_candidates():
+                if await self._driver.locator_count(css) > 0:
+                    logger.debug("Page %d results found via: %s", self._page_num, css)
                     result_found = True
                     break
 
@@ -209,30 +160,18 @@ class BookSearchPage(BasePage):
         return collected
 
     async def _collect_from_page(self, max_year: int, limit: int) -> list[dict]:
-        """
-        Collect qualifying book items from the current page.
-        Each item is {"url": str, "year": int}.
-
-        Strategy:
-        1. Find result items using primary selector (or fallback if needed)
-        2. For each item, try multiple year extraction selectors
-        3. Extract href and build full URLs
-
-        Uses Playwright Locator API — re-queries lazily, never produces stale handles.
-        """
         urls: list[dict] = []
 
-        # Use primary selector first, fall back if needed
-        items = self._driver.locator(self.Locators.RESULT_ITEM)
+        # Try primary CSS first, then fallbacks
+        items = self._driver.locator(self.Locators.RESULT_ITEM.css)
         count = await items.count()
 
         if count == 0:
-            # Primary selector failed, try next option
-            for cfg in self.Locators.RESULT_ITEM_CFGS[1:]:
-                items = self._driver.locator(cfg["css"])
+            for css in self.Locators.RESULT_ITEM.css_fallbacks:
+                items = self._driver.locator(css)
                 count = await items.count()
                 if count > 0:
-                    logger.info("Page %d: using fallback selector %s", self._page_num, cfg.get("label", cfg["css"]))
+                    logger.info("Page %d: using fallback selector: %s", self._page_num, css)
                     break
 
         logger.info("Page %d: examining %d result item(s)", self._page_num, count)
@@ -243,22 +182,22 @@ class BookSearchPage(BasePage):
 
             item = items.nth(i)
 
-            # Year extraction with resilience: try multiple selectors
+            # Try primary year-text CSS then fallbacks
             year_text = ""
-            for cfg in self.Locators.YEAR_TEXT_CFGS:
+            for css in self.Locators.YEAR_TEXT.css_candidates():
                 try:
-                    year_loc = item.locator(cfg["css"])
+                    year_loc = item.locator(css)
                     if await year_loc.count() > 0:
                         year_text = await year_loc.first.inner_text()
                         if year_text:
-                            logger.info("    Year text from %s: %r", cfg.get("label", cfg["css"]), year_text[:80])
+                            logger.info("    Year text from %s: %r", css, year_text[:80])
                             break
                 except Exception:
                     continue
 
             if not year_text:
                 logger.info("  [%d/%d] no year text found — selectors tried: %s",
-                            i + 1, count, [c.get("label", c["css"]) for c in self.Locators.YEAR_TEXT_CFGS])
+                            i + 1, count, self.Locators.YEAR_TEXT.css_candidates())
 
             year = extract_year_from_text(year_text)
             if not is_under_year(year, max_year):
