@@ -1,0 +1,12 @@
+{
+  "e25e6b8fd1ebe449": {
+    "placeholder": "Username"
+  },
+  "2af0b71c00fc5d99": {
+    "placeholder": "Password"
+  },
+  "a71d4b61ed82b139": {
+    "role": "button",
+    "name": "Login"
+  }
+}

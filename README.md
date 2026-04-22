@@ -428,6 +428,7 @@ Sixteen ready-to-run JSON workflows demonstrating every engine capability:
 | `select` | Select from `<select>` dropdown by label, index, or value |
 | `screenshot` | Capture screenshot to file |
 | `wait` | Wait for selector, URL fragment, or fixed seconds |
+| `scroll_to` | Scroll element into viewport (`read_only` — safe for healer injection) |
 | `extract_data` | Scrape DOM data into `context.extracted_data` |
 | `paginate` | Loop pages, accumulate results → `context.paginated_data` |
 | `for_each_item` | Loop over `context.collected_items`, run sub-steps per item |
@@ -531,8 +532,8 @@ playwright-stepper-framework/
 │   │   ├── actions/
 │   │   │   ├── factory.py            # ActionRegistry + build_default_registry()
 │   │   │   ├── strategies.py         # navigate, click, fill, hover, select, screenshot,
-│   │   │   │                         #   wait, store_count, assert_count, for_each_item,
-│   │   │   │                         #   extract_data, paginate, ensure_login,
+│   │   │   │                         #   wait, scroll_to, store_count, assert_count,
+│   │   │   │                         #   for_each_item, extract_data, paginate, ensure_login,
 │   │   │   │                         #   measure_performance, visual_compare,
 │   │   │   │                         #   run_workflow, parallel, load_test_data
 │   │   │   └── sub_step_mixin.py     # SubStepRunnerMixin — shared nested-step logic
@@ -546,6 +547,8 @@ playwright-stepper-framework/
 │   │   │   ├── ai_healer.py      # AI-powered locator repair
 │   │   │   ├── annotator.py      # DOM annotation for healing context
 │   │   │   ├── dom_snapshot.py   # DOM snapshot capture
+│   │   │   ├── healing_cache.py  # Persistent per-site heal cache (JSON, SHA-256 keyed)
+│   │   │   ├── visual_bridge.py  # Pre-flight: hidden → scroll injection, disabled → wait injection
 │   │   │   └── interfaces.py     # Healer contracts
 │   │   ├── resolvers/
 │   │   │   ├── element_resolver.py   # Cascade executor + DefaultResolverFactory

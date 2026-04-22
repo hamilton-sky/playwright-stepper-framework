@@ -248,6 +248,25 @@ class WaitAction(ActionStrategy):
         return StepResult(step=step, status="passed")
 
 
+class ScrollToAction(ActionStrategy):
+    """Scroll a located element into the viewport. Used by healer step injection."""
+    action_name = "scroll_to"
+    read_only   = True
+
+    async def _execute(self, page, step: StepConfig, resolver,
+                       context: ExecutionContext) -> StepResult:
+        if not step.element:
+            return StepResult(step=step, status="skipped",
+                              error="scroll_to: no element specified")
+        result = await resolver.resolve(page, step.element, step.description)
+        if not result.found:
+            return StepResult(step=step, status="skipped",
+                              error=f"scroll_to: element not found → {step.element}")
+        await result.locator.first.scroll_into_view_if_needed()
+        logger.info(f"✓ scroll_to via {result.method}")
+        return StepResult(step=step, status="passed")
+
+
 class AssertCountAction(ActionStrategy):
     """
     Assert that the number of elements matching selectors == expected.

@@ -45,7 +45,7 @@ class VisualBridge:
             if locator is None:
                 return None
 
-            if locator.count() == 0:
+            if await locator.count() == 0:
                 return None
 
             if not await locator.first.is_visible():

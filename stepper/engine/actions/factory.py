@@ -63,7 +63,7 @@ def build_default_registry(
     """
     from engine.actions.strategies import (
         NavigateAction, ClickAction, FillAction, HoverAction, SelectAction,
-        ScreenshotAction, WaitAction,
+        ScreenshotAction, WaitAction, ScrollToAction,
         AssertCountAction, StoreCountAction,
         MeasurePerformanceAction, VisualCompareAction,
         ForEachItemAction,
@@ -87,6 +87,7 @@ def build_default_registry(
         .register(SelectAction())
         .register(ScreenshotAction(screenshots_dir))
         .register(WaitAction())
+        .register(ScrollToAction())
         .register(StoreCountAction())
         .register(AssertCountAction())
         .register(for_each)

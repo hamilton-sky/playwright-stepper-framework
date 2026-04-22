@@ -280,14 +280,39 @@ class StepRunner:
 
                 bridge_result = await VisualBridge.check(self._page, step)
                 if bridge_result == "hidden":
+                    self._notify_log(
+                        "⚕ Visual bridge: element hidden — injecting scroll_to step", "warning"
+                    )
+                    inject_result = await self._try_inject_pre_step("scroll_to", step, ctx)
+                    if inject_result is not None:
+                        orig_result, ctx = inject_result
+                        if orig_result.status != "failed":
+                            result = dataclasses.replace(result, status="healed", error="")
+                            self._notify_log(
+                                f"⚕ Step {idx+1} healed via scroll_to injection", "warning"
+                            )
+                            break
+                    self._notify_log(
+                        "⚕ scroll_to injection did not fix step — proceeding to cascade", "warning"
+                    )
+                elif bridge_result == "disabled":
+                    self._notify_log(
+                        "⚕ Visual bridge: element disabled — injecting wait step", "warning"
+                    )
+                    inject_result = await self._try_inject_pre_step("wait", step, ctx)
+                    if inject_result is not None:
+                        orig_result, ctx = inject_result
+                        if orig_result.status != "failed":
+                            result = dataclasses.replace(result, status="healed", error="")
+                            self._notify_log(
+                                f"⚕ Step {idx+1} healed via wait injection", "warning"
+                            )
+                            break
                     result = dataclasses.replace(result, status="failed",
-                        error="element found but not visible — state/timing issue (visual bridge)")
-                    self._notify_log("⚕ Visual bridge: element hidden — skipping healer", "warning")
-                    break
-                if bridge_result == "disabled":
-                    result = dataclasses.replace(result, status="failed",
-                        error="element found but disabled — check flow state (visual bridge)")
-                    self._notify_log("⚕ Visual bridge: element disabled — skipping healer", "warning")
+                        error="element found but disabled — wait injection also failed")
+                    self._notify_log(
+                        "⚕ Visual bridge: element disabled — wait injection failed", "warning"
+                    )
                     break
 
                 dom = await DOMSnapshotCascade.capture(self._page, step)
@@ -361,6 +386,40 @@ class StepRunner:
                 logger.warning(f"[StepRunner] heal attempt {heal_attempt} failed: {heal_exc}")
 
         return result, new_suggestions, ctx
+
+    async def _try_inject_pre_step(
+        self, pre_action: str, step: StepConfig, ctx: ExecutionContext
+    ) -> tuple[StepResult, ExecutionContext] | None:
+        """Run a safe pre-step (scroll_to / wait) then re-run the original step.
+
+        The pre-step uses continue_on_failure=True so the original step always runs
+        regardless of whether the pre-step succeeded — the caller inspects the
+        original step's result to decide if injection fixed the problem.
+        Returns (original_step_result, ctx) or None on unexpected exception.
+        """
+        try:
+            pre_step = StepConfig(
+                action=pre_action,
+                description=f"{pre_action}: {step.description}",
+                element=step.element,
+                continue_on_failure=True,
+            )
+            injection_runner = StepRunner(
+                page=self._page,
+                action_factory=self._factory,
+                resolver=self._resolver,
+                reporter=self._reporter,
+                screenshots_dir=self._screenshots_dir,
+                behaviour=self._behaviour,
+                healer=None,
+            )
+            for obs in self._observers:
+                injection_runner.add_observer(obs)
+            rep_results, ctx = await injection_runner.run([pre_step, step], ctx)
+            return rep_results[-1], ctx
+        except Exception as e:
+            logger.warning(f"[StepRunner] pre-step injection ({pre_action}) failed: {e}")
+            return None
 
     # ── Observer notifications ─────────────────────────────────────────────────
 

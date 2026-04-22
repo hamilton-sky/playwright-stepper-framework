@@ -207,6 +207,17 @@ class.
 Beyond the architecture, the Stepper unlocks capabilities that a pytest suite cannot
 easily provide:
 
+**Self-healing with step injection.** When a step fails, the engine doesn't just try to fix the
+broken selector — it also diagnoses *why* the element wasn't actionable. If the element exists in
+the DOM but is off-screen, the healer injects a `scroll_to` step before the original step and
+retries. If the element is present but temporarily disabled, a `wait` step is injected instead.
+Only `read_only=True` actions are eligible for injection — they cannot produce false-positive
+fixes because they have no app-state side effects. The injection runs in a disposable
+`StepRunner` with `continue_on_failure=True` on the pre-step, so the original step always runs
+regardless. If the injected step doesn't resolve the issue, the full AI cascade takes over.
+This means the healer can now adapt to small UI layout changes (element moved out of viewport)
+as well as broken selectors — without any workflow author involvement.
+
 **Conditional execution.** A step can carry a `when` guard — a condition evaluated
 against live context state. A step that adds books only runs if books were collected.
 An assertion step only runs if a count was stored. This is flow control without `if`

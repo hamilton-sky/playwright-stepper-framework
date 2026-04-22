@@ -61,6 +61,8 @@ playwright-stepper-framework/
 │   │   │   ├── ai_healer.py      # AI-powered locator repair
 │   │   │   ├── annotator.py      # DOM annotation for healing context
 │   │   │   ├── dom_snapshot.py   # DOM snapshot capture
+│   │   │   ├── healing_cache.py  # Per-site persistent heal cache (JSON, SHA-256 keyed)
+│   │   │   ├── visual_bridge.py  # Fast pre-flight: hidden/disabled check + scroll/wait injection
 │   │   │   └── interfaces.py     # Healer contracts
 │   │   ├── resolvers/
 │   │   │   ├── element_resolver.py   # Cascade orchestrator (det → semantic → AI)
@@ -305,6 +307,7 @@ playwright-stepper-framework/
   select              → resolve element → selectOption()
   screenshot          → page.screenshot()
   wait                → asyncio.sleep / wait_for_selector
+  scroll_to           → resolve element → scroll_into_view_if_needed()  [read_only, healer-safe]
   store_count         → locator.count() → context.counts[key]
   assert_count        → context.counts[key] vs expected value
   extract_data        → collect elements → context.extracted_data
@@ -501,6 +504,71 @@ playwright-stepper-framework/
 
   Context as signal: ol_ensure_count produces "gap", when-guards consume it.
   Flow controls everything. No action calls another action.
+```
+
+---
+
+## Self-Healing Cascade
+
+```
+  Step fails (status = "failed" or "skipped")
+  and healer is injected and heal != False
+         │
+         ▼
+  ┌────────────────────────────────────────────────┐
+  │  HealCache.get(step)                           │
+  │  Key: SHA256(action|description|element)[:16]  │
+  │                                                │
+  │  HIT  → run cached healed_cfg (0 AI tokens)   │──▶ healed ✓
+  │  MISS → fall through                           │
+  └──────────────────────────┬─────────────────────┘
+                             │
+                             ▼
+  ┌────────────────────────────────────────────────┐
+  │  VisualBridge.check(page, step)                │
+  │  Fast pre-flight — skips expensive cascade     │
+  │                                                │
+  │  "hidden"   → inject scroll_to step            │
+  │               retry original step              │
+  │               success → healed ✓               │
+  │               fail    → fall through to cascade│
+  │                                                │
+  │  "disabled" → inject wait step (2 s)           │
+  │               retry original step              │
+  │               success → healed ✓               │
+  │               fail    → failed (disabled)      │
+  │                                                │
+  │  None / "ok"→ fall through to cascade          │
+  └──────────────────────────┬─────────────────────┘
+                             │
+                             ▼
+  ┌────────────────────────────────────────────────┐
+  │  DOMSnapshotCascade.capture()                  │
+  │  Embed-first token minimiser                   │
+  │                                                │
+  │  embed_direct  (score≥0.85, unique) → 0 tokens │
+  │  embed_candidates (≥0.85, many)    → ~30 tokens│
+  │  scoped        (0.50–0.85)         → ~100 tok  │
+  │  aria          (<0.50)             → ~400 tok  │
+  └──────────────────────────┬─────────────────────┘
+                             │
+                             ▼
+  ┌────────────────────────────────────────────────┐
+  │  AiHealer.heal()                               │
+  │  Provider cascade: Groq → Gemini → Claude      │
+  │                                                │
+  │  Returns replacement StepConfig(s)             │
+  │  Caches healed_cfg → HealCache for next run    │
+  └──────────────────────────┬─────────────────────┘
+                             │
+                             ▼
+                        healed ✓ or failed
+
+  STEP INJECTION (scroll_to / wait)
+  ──────────────────────────────────
+  Safe steps are injected as a pre-step in a disposable StepRunner.
+  Pre-step uses continue_on_failure=True so original step always runs.
+  Only read_only=True actions are eligible for injection (no app-state side effects).
 ```
 
 ---

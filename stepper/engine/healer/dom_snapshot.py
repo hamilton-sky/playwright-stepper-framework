@@ -11,12 +11,20 @@ candidate scores above 0.50.
   ≥ 0.85, ambiguous  → embed_candidates  (~20-40 tokens)
   0.50-0.85          → scoped DOM area   (~40-150 tokens)
   < 0.50             → aria snapshot     (~200-500 tokens)
+
+Cross-encoder re-ranking:
+  After MiniLM shortlists the top _TOP_N candidates, a cross-encoder
+  (cross-encoder/ms-marco-MiniLM-L-6-v2) re-scores each (query, element)
+  pair jointly — seeing both strings at once — producing a more accurate
+  final ranking. Falls back to MiniLM order when the model is not installed.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import math
+import pathlib
 from typing import Any
 
 from engine.interfaces import StepConfig
@@ -28,24 +36,105 @@ logger = logging.getLogger(__name__)
 _HIGH_THRESHOLD = 0.85
 _LOW_THRESHOLD = 0.50
 _TOP_N = 5
-_INTERACTIVE_SELECTOR = (
-    "button,a,input,select,textarea,[role],[aria-label]"
+
+_CROSS_ENCODER_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+_CROSS_ENCODER_LOCAL = (
+    pathlib.Path(__file__).parents[2] / "models" / "cross-encoder-ms-marco-MiniLM-L-6-v2"
 )
+
 _ELEMENT_QUERY_JS = """() =>
   [...document.querySelectorAll('button,a,input,select,textarea,[role],[aria-label]')].map(el => ({
-    tag: el.tagName,
-    text: el.textContent?.trim().slice(0,80),
-    role: el.getAttribute('role'),
-    aria: el.getAttribute('aria-label'),
-    id: el.id,
-    placeholder: el.getAttribute('placeholder')
+    tag:         el.tagName,
+    text:        el.textContent?.trim().slice(0,80),
+    role:        el.getAttribute('role') || el.tagName?.toLowerCase(),
+    aria:        el.getAttribute('aria-label'),
+    id:          el.id,
+    placeholder: el.getAttribute('placeholder'),
+    name:        el.getAttribute('name'),
+    type:        el.getAttribute('type'),
+    title:       el.getAttribute('title'),
+    value:       el.tagName === 'OPTION' ? el.textContent?.trim() : undefined
   }))
 """
 
 
 def _estimate_tokens(text: str) -> int:
-    """Rough token count — 1 token per ~4 characters."""
     return max(1, len(text) // 4) if text else 0
+
+
+class _CrossEncoderReranker:
+    """
+    Lazy singleton wrapping sentence_transformers CrossEncoder.
+
+    rerank() takes the top-N (element, minilm_score) pairs already sorted
+    by MiniLM and returns them re-sorted by cross-encoder score.
+
+    The cross-encoder reads (query, element_description) as a single
+    concatenated input, so attention flows across both — it understands
+    that "fill" + "input" + "text" reinforce each other in a way that
+    two independent embedding vectors cannot capture.
+
+    Logits are sigmoid-normalised to [0,1] so the existing threshold
+    constants (_HIGH_THRESHOLD, _LOW_THRESHOLD) stay meaningful.
+
+    Degrades gracefully: if model unavailable, rerank() returns input unchanged.
+    """
+
+    _instance: "_CrossEncoderReranker | None" = None
+
+    def __init__(self):
+        self._model = None
+        self._available = False
+        try:
+            from sentence_transformers.cross_encoder import CrossEncoder
+            model_path = str(_CROSS_ENCODER_LOCAL) if _CROSS_ENCODER_LOCAL.exists() else _CROSS_ENCODER_MODEL
+            self._model = CrossEncoder(model_path)
+            self._available = True
+            logger.info("[CrossEncoderReranker] loaded from %s", model_path)
+        except ImportError:
+            logger.debug("[CrossEncoderReranker] sentence-transformers not installed — skipping re-ranking")
+        except Exception as exc:
+            logger.warning("[CrossEncoderReranker] could not load model (%s) — skipping re-ranking", exc)
+
+    @classmethod
+    def instance(cls) -> "_CrossEncoderReranker":
+        if cls._instance is None:
+            cls._instance = cls()
+        return cls._instance
+
+    def rerank(
+        self, query: str, scored: list[tuple[dict, float]]
+    ) -> list[tuple[dict, float]]:
+        """
+        Re-ranks top-N candidates using the cross-encoder.
+        Returns a new list sorted by cross-encoder score descending.
+        Falls back to original MiniLM order if the model is unavailable.
+        """
+        if not self._available or not scored:
+            return scored
+        try:
+            descriptions = [DOMSnapshotCascade._describe_element(el) for el, _ in scored]
+            pairs = [[query, desc] for desc in descriptions]
+            raw_scores: list[float] = self._model.predict(pairs).tolist()
+
+            # sigmoid normalisation: logit → [0, 1]
+            normalised = [1.0 / (1.0 + math.exp(-s)) for s in raw_scores]
+
+            reranked = sorted(
+                zip([el for el, _ in scored], normalised),
+                key=lambda x: x[1],
+                reverse=True,
+            )
+            logger.debug(
+                "[CrossEncoderReranker] re-ranked %d candidates; winner: '%s' (%.3f)",
+                len(reranked),
+                DOMSnapshotCascade._describe_element(reranked[0][0])[:60],
+                reranked[0][1],
+            )
+            return list(reranked)
+        except Exception as exc:
+            logger.warning("[CrossEncoderReranker] predict failed (%s) — using MiniLM order", exc)
+            return scored
 
 
 class DOMSnapshotCascade:
@@ -69,8 +158,18 @@ class DOMSnapshotCascade:
         if not elements:
             return await cls._aria_fallback(page, reason="no interactive elements")
 
+        # Phase 1 — MiniLM bi-encoder: score all elements cheaply
         scored = cls._score_elements(query, elements)
         scored.sort(key=lambda x: x[1], reverse=True)
+
+        # Phase 2 — Cross-encoder: re-rank the top _TOP_N candidates with
+        # higher accuracy (reads query + element together in one pass)
+        top_n = scored[:_TOP_N]
+        reranked = _CrossEncoderReranker.instance().rerank(query, top_n)
+
+        # Merge: reranked top-N at the front, remaining lower-ranked after
+        rest = scored[_TOP_N:]
+        scored = reranked + rest
 
         top_score = scored[0][1] if scored else 0.0
 
@@ -153,12 +252,19 @@ class DOMSnapshotCascade:
 
     @staticmethod
     def _describe_element(el: dict) -> str:
-        return " ".join(filter(None, [
-            (el.get("text") or "").strip(),
+        # Include every human-readable attribute so MiniLM sees the full
+        # semantic surface: aria-label beats visible text for icon buttons,
+        # placeholder beats name for login inputs, title adds tooltip context.
+        parts = [
+            el.get("role") or "",
             el.get("aria") or "",
             el.get("placeholder") or "",
-            el.get("role") or "",
-        ])).strip()
+            (el.get("text") or "").strip(),
+            el.get("title") or "",
+            el.get("name") or "",
+            el.get("type") or "",
+        ]
+        return " ".join(p for p in parts if p).strip()
 
     # ── Cfg synthesis ─────────────────────────────────────────────────────────
 
@@ -227,7 +333,6 @@ class DOMSnapshotCascade:
 
     @staticmethod
     async def _aria_fallback(page, reason: str) -> DomPayload:
-        # page.accessibility was removed in Playwright ≥1.40; use a JS walk instead.
         _DOM_WALK_JS = """() => {
             const walk = (el, depth) => {
                 if (depth > 4 || !el) return null;
