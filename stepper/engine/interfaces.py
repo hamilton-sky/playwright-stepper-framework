@@ -88,6 +88,7 @@ class StepResult:
     duration_ms: float = 0.0
     output: dict = field(default_factory=dict)  # step-produced data saved to results.json
     healed_element: dict | None = None          # {original, healed, annotated_screenshot}
+    heal_attempts: int = 0                      # number of heal attempts made (0 = no healing needed)
 
 
 # ──────────────────────────────────────────────────────────

@@ -132,6 +132,7 @@ class TestReportReporter(ReporterStrategy):
                 "error": r.error if r.status != "skipped" else "",
                 "skip_reason": r.skip_reason if r.status == "skipped" else "",
                 "output": r.output or None,
+                **({"heal_attempts": r.heal_attempts} if r.heal_attempts > 0 else {}),
             }
             for i, r in enumerate(self._results)
         ]

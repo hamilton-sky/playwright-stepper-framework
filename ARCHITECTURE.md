@@ -290,12 +290,15 @@ playwright-stepper-framework/
   │                                          │
   │  Returns: StepResult                    │
   │  ─────────────────────────────────────  │
-  │  status:       passed|failed|skip|warn  │
-  │  confidence:   resolver confidence      │
-  │  duration_ms:  execution time           │
-  │  screenshot:   file path                │
-  │  output:       dict (step-produced data │
-  │                saved to results.json)   │
+  │  status:        passed|failed|skip|warn │
+  │                 |healed                 │
+  │  confidence:    resolver confidence     │
+  │  duration_ms:   execution time          │
+  │  screenshot:    file path               │
+  │  heal_attempts: int (0 = no healing)    │
+  │  healed_element:{original, healed}      │
+  │  output:        dict (step-produced     │
+  │                 data → results.json)    │
   └──────────────────────────────────────────┘
 
   BUILT-IN ACTIONS
@@ -544,8 +547,19 @@ playwright-stepper-framework/
                              ▼
   ┌────────────────────────────────────────────────┐
   │  DOMSnapshotCascade.capture()                  │
-  │  Embed-first token minimiser                   │
+  │  Two-phase scoring + embed-first token min     │
   │                                                │
+  │  Phase 1 — MiniLM bi-encoder (~30ms)           │
+  │    scores all ~50 elements independently       │
+  │    sort descending → take top 5                │
+  │                                                │
+  │  Phase 2 — Cross-encoder re-rank (~50ms)       │
+  │    reads "query | element" as one string       │
+  │    attention flows across both sides           │
+  │    logits sigmoid-normalised → [0,1]           │
+  │    falls back to MiniLM order if unavailable   │
+  │                                                │
+  │  Decision tree on re-ranked list:              │
   │  embed_direct  (score≥0.85, unique) → 0 tokens │
   │  embed_candidates (≥0.85, many)    → ~30 tokens│
   │  scoped        (0.50–0.85)         → ~100 tok  │

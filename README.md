@@ -282,6 +282,41 @@ when the UI changes.
 
 ---
 
+## Self-Healing — DOM Snapshot Cascade
+
+When a step fails, `DOMSnapshotCascade` finds the correct element using a two-phase scoring pipeline before calling the AI:
+
+```
+  All ~50 interactive elements on the page
+       │
+       ▼  Phase 1 — MiniLM bi-encoder (~30ms)
+       │  scores all elements independently via cosine similarity
+       ▼
+  Top 5 candidates
+       │
+       ▼  Phase 2 — Cross-encoder re-ranking (~50ms)
+       │  reads (query | element description) as ONE string
+       │  attention flows across both sides → more accurate ranking
+       │  logits sigmoid-normalised → [0,1]
+       ▼
+  Decision tree (thresholds unchanged):
+    ≥ 0.85, unique     → healed_cfg ready, zero AI tokens
+    ≥ 0.85, ambiguous  → ~30 tokens to AI
+    0.50–0.85          → scoped DOM area, ~100 tokens
+    < 0.50             → full ARIA snapshot, ~400 tokens
+```
+
+Apply cached heal suggestions back to the workflow JSON after a run:
+
+```bash
+python stepper/main.py --apply-heals stepper/sites/saucedemo/workflows/sd_full_heal_flow.json
+python stepper/main.py --apply-heals stepper/sites/saucedemo/workflows/sd_full_heal_flow.json --yes
+```
+
+`--apply-heals` automatically finds the most recent `heal_suggestions.json` from the `reports/` directory, shows a before/after diff per step, and patches the workflow JSON in place.
+
+---
+
 ## Step Controls
 
 Every step supports these optional fields:
@@ -462,6 +497,8 @@ Sixteen ready-to-run JSON workflows demonstrating every engine capability:
 | Allure report | `reports/allure-results/` | `AllureReporter` |
 | JSON report | `report.json` | `JsonReporter` |
 | Test run folder | `reports/<timestamp>_<name>/` | `TestReportReporter` |
+| Step results | `reports/<run>/results.json` | `TestReportReporter` — includes `heal_attempts` on healed steps |
+| Heal suggestions | `reports/<run>/heal_suggestions.json` | `StepRunner` — original → healed element mappings |
 | Screenshots | `reports/<run>/screenshots/` | Auto after each step |
 | Run log | `reports/<run>/logs/run.log` | File log handler |
 | Performance data | `artifacts/performance.json` | `measure_performance` action |

@@ -261,8 +261,11 @@ class StepRunner:
                         replacement_runner.add_observer(obs)
                     rep_results, ctx = await replacement_runner.run(replacement_steps, ctx)
                     if all(r.status != "failed" for r in rep_results):
+                        healed_confidence = rep_results[0].confidence if rep_results else 0.0
                         result = dataclasses.replace(
                             result, status="healed", error="",
+                            confidence=healed_confidence,
+                            heal_attempts=heal_attempt,
                             healed_element={"original": step.element, "healed": cached_cfg},
                         )
                         new_suggestions.append({
@@ -350,6 +353,7 @@ class StepRunner:
                         continue
 
                     healed_cfg = replacement_steps[0].element if replacement_steps else {}
+                    healed_confidence = rep_results[0].confidence if rep_results else 0.0
                     annotated_path = None
                     if self._screenshots_dir and healed_cfg:
                         annotated_path = await HealAnnotator.capture(
@@ -361,6 +365,8 @@ class StepRunner:
                         result,
                         status="healed",
                         error="",
+                        confidence=healed_confidence,
+                        heal_attempts=heal_attempt,
                         healed_element={
                             "original": step.element,
                             "healed":   healed_cfg,

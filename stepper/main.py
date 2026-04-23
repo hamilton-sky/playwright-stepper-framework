@@ -218,15 +218,33 @@ async def run(
 
 def apply_heals(workflow_path: Path, auto_yes: bool) -> None:
     """Read heal_suggestions.json, show diff, and optionally patch workflow JSON."""
-    candidates = [
+    stepper_root = Path(__file__).parent
+    reports_dir  = stepper_root / "reports"
+
+    # Search reports/ for the most recent non-empty heal_suggestions.json,
+    # then fall back to legacy artifacts/ locations.
+    report_candidates = sorted(
+        reports_dir.glob("*/heal_suggestions.json"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    ) if reports_dir.exists() else []
+
+    legacy_candidates = [
         workflow_path.parent.parent / "artifacts" / "heal_suggestions.json",
         workflow_path.parent / "artifacts" / "heal_suggestions.json",
     ]
-    suggestions_path = next((p for p in candidates if p.exists()), None)
+
+    suggestions_path = None
+    for p in report_candidates + legacy_candidates:
+        if p.exists() and p.stat().st_size > 2:  # skip empty "[]" files
+            suggestions_path = p
+            break
+
     if suggestions_path is None:
-        print(f"ERROR: heal_suggestions.json not found. Tried:\n"
-              f"  {candidates[0]}\n  {candidates[1]}")
+        print("ERROR: no heal_suggestions.json found in reports/ or artifacts/.")
         return
+
+    print(f"Using heal suggestions from: {suggestions_path}")
 
     suggestions: list[dict] = json.loads(suggestions_path.read_text(encoding="utf-8"))
     if not suggestions:

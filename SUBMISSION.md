@@ -218,6 +218,21 @@ regardless. If the injected step doesn't resolve the issue, the full AI cascade 
 This means the healer can now adapt to small UI layout changes (element moved out of viewport)
 as well as broken selectors — without any workflow author involvement.
 
+**Two-phase element scoring in the healer.** Before reaching the AI, `DOMSnapshotCascade` runs
+a two-stage pipeline. MiniLM (bi-encoder) scores all ~50 page elements independently in ~30ms
+and shortlists the top 5. A cross-encoder then re-ranks those 5 by reading the query and each
+element description as a single concatenated string — attention flows across both sides, catching
+negation, word order, and attribute combinations that independent embeddings miss. Scores are
+sigmoid-normalised so the existing 0.85/0.50 thresholds remain meaningful. The cross-encoder
+degrades gracefully: if the model is not installed, MiniLM order is kept unchanged.
+
+**Heal reporting and write-back.** Every healed step records its actual resolver confidence
+(not zero) and a `heal_attempts` count in `results.json`. After a run, `heal_suggestions.json`
+contains the full original → healed element mapping for every step that was fixed. Running
+`python main.py --apply-heals <workflow.json>` reads the most recent suggestions, shows a
+before/after diff, and patches the workflow JSON — closing the loop from runtime repair to
+permanent source correction.
+
 **Conditional execution.** A step can carry a `when` guard — a condition evaluated
 against live context state. A step that adds books only runs if books were collected.
 An assertion step only runs if a count was stored. This is flow control without `if`
