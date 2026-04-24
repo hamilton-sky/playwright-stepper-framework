@@ -12,6 +12,7 @@ import argparse
 import json
 import logging
 import sys
+import time
 from pathlib import Path
 
 # Add src/ and repo root to path so all modules resolve regardless of cwd
@@ -37,6 +38,16 @@ logger = logging.getLogger(__name__)
 _stepper_root = Path(__file__).resolve().parent
 
 
+def _extract_site(workflow_path: str | None) -> str:
+    if not workflow_path:
+        return "shared"
+    parts = Path(workflow_path).parts
+    for i, part in enumerate(parts):
+        if part == "sites" and i + 1 < len(parts):
+            return parts[i + 1]
+    return "shared"
+
+
 def _site_storage_state(workflow_path: str | None, stepper_root: Path) -> Path | None:
     """Return storage state path for sites that need session persistence.
 
@@ -44,16 +55,46 @@ def _site_storage_state(workflow_path: str | None, stepper_root: Path) -> Path |
     Other sites (SauceDemo, phpTravels) log in fresh each run — no persistence needed.
     """
     _SITES_WITH_PERSISTENCE = {"openlibrary"}
-    if not workflow_path:
-        return None
-    parts = Path(workflow_path).parts
-    for i, part in enumerate(parts):
-        if part == "sites" and i + 1 < len(parts):
-            site = parts[i + 1]
-            if site in _SITES_WITH_PERSISTENCE:
-                return stepper_root / "sites" / site / "artifacts" / "storage_state.json"
-            return None
+    site = _extract_site(workflow_path)
+    if site in _SITES_WITH_PERSISTENCE:
+        return stepper_root / "sites" / site / "artifacts" / "storage_state.json"
     return None
+
+
+def _build_ci_summary(results, workflow_path, resolver, duration_s: float) -> dict:
+    """Build structured JSON summary for --ci output."""
+    steps = []
+    for r in results:
+        steps.append({
+            "description": r.step.description,
+            "action":      r.step.action,
+            "status":      r.status,
+            "duration_ms": r.duration_ms,
+            "confidence":  r.confidence,
+            "error":       r.error or None,
+        })
+    passed  = sum(1 for r in results if r.status == "passed")
+    failed  = sum(1 for r in results if r.status == "failed")
+    healed  = sum(1 for r in results if r.status == "healed")
+    skipped = sum(1 for r in results if r.status == "skipped")
+
+    drift_score = None
+    if hasattr(resolver, "_drift_log"):
+        recent = resolver._drift_log.latest(1)
+        if recent:
+            drift_score = recent[0].get("drift_score")
+
+    return {
+        "workflow":    workflow_path,
+        "total_steps": len(results),
+        "passed":      passed,
+        "failed":      failed,
+        "healed":      healed,
+        "skipped":     skipped,
+        "duration_s":  round(duration_s, 3),
+        "drift_score": drift_score,
+        "steps":       steps,
+    }
 
 
 async def run(
@@ -66,6 +107,9 @@ async def run(
     resolver=None,
     _browser=None,
     max_heal_attempts: int = 0,
+    shadow: bool = False,
+    ci: bool = False,
+    ci_output: str | None = None,
 ):
     # ── 1. Planner ───────────────────────────────────────────────────────────
     if workflow_path:
@@ -86,6 +130,13 @@ async def run(
     s = s._replace(storage_state_path=_site_storage_state(workflow_path, _stepper_root))
     if resolver is None:
         resolver = build_resolver(s.use_visual_ai)
+
+    if shadow:
+        from engine.resolvers.shadow_runner import ShadowRunner, DriftLog
+        from engine.resolvers.element_resolver import DefaultResolverFactory
+        drift_path = _stepper_root / "sites" / _extract_site(workflow_path) / "artifacts" / "drift_log.json"
+        resolver = ShadowRunner(resolver, DefaultResolverFactory().build_cascade(), DriftLog(drift_path))
+        logger.info("👁  Shadow mode enabled — drift log → %s", drift_path)
 
     # ── 3. Reporters ──────────────────────────────────────────────────────────
     run_label = Path(workflow_path).stem if workflow_path else "task"
@@ -150,14 +201,9 @@ async def run(
 
         heal_cache = None
         if workflow_path:
-            parts = Path(workflow_path).parts
-            for i, part in enumerate(parts):
-                if part == "sites" and i + 1 < len(parts):
-                    site_name = parts[i + 1]
-                    cache_path = _stepper_root / "sites" / site_name / "artifacts" / "heal_cache.json"
-                    from engine.healer.healing_cache import HealCache
-                    heal_cache = HealCache(cache_path)
-                    break
+            from engine.healer.healing_cache import HealCache
+            cache_path = _stepper_root / "sites" / _extract_site(workflow_path) / "artifacts" / "heal_cache.json"
+            heal_cache = HealCache(cache_path)
 
         healer = None
         if max_heal_attempts > 0:
@@ -187,8 +233,21 @@ async def run(
         base_dir = Path(workflow_path).parent if workflow_path else Path.cwd()
         action_registry.register(RunWorkflowAction(run_steps_callable=runner.run, base_dir=base_dir))
 
+        _run_start = time.monotonic()
         results, _ = await runner.run(steps)
+        _run_duration = time.monotonic() - _run_start
+
         reporter.finish_suite()
+
+        if ci:
+            summary = _build_ci_summary(results, workflow_path, resolver, _run_duration)
+            print(json.dumps(summary, indent=2))
+            if ci_output:
+                Path(ci_output).write_text(json.dumps(summary, indent=2), encoding="utf-8")
+                logger.info(f"CI summary written to {ci_output}")
+
+        if shadow and hasattr(resolver, "_drift_log"):
+            resolver._drift_log.flush()
 
         if log_handler:
             logging.getLogger().removeHandler(log_handler)
@@ -313,6 +372,7 @@ async def _run_data_rows(rows: list[dict], cli_vars: dict, args) -> None:
                 variables=merged,
                 resolver=resolver,
                 _browser=browser,
+                shadow=args.shadow,
             )
         await browser.close()
 
@@ -339,6 +399,12 @@ def main():
                         help="Apply heal_suggestions.json fixes to the given workflow file")
     parser.add_argument("--yes",           action="store_true",
                         help="Auto-confirm --apply-heals without interactive prompt")
+    parser.add_argument("--shadow",        action="store_true",
+                        help="Enable shadow mode — run all resolver strategies in background and log drift")
+    parser.add_argument("--ci",            action="store_true",
+                        help="Output structured JSON run summary to stdout (for CI/CD pipelines)")
+    parser.add_argument("--ci-output",     metavar="FILE",
+                        help="Write CI JSON summary to FILE in addition to stdout")
     args = parser.parse_args()
 
     if args.apply_heals:
@@ -374,6 +440,9 @@ def main():
         record_video=args.video,
         variables=cli_vars or None,
         max_heal_attempts=args.heal,
+        shadow=args.shadow,
+        ci=args.ci,
+        ci_output=args.ci_output,
     ))
 
 
