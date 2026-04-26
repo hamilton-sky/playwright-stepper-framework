@@ -32,6 +32,12 @@
             "type": "command",
             "command": "node .claude/hooks/layer-boundary-reminder.js",
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "python .claude/hooks/pyright-check.py",
+            "timeout": 30,
+            "statusMessage": "Running Pyright..."
           }
         ]
       }

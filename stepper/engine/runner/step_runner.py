@@ -16,6 +16,7 @@ import asyncio
 import logging
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import copy
 import dataclasses
@@ -25,6 +26,9 @@ from engine.interfaces import (
     ActionFactory, ReporterStrategy, ExecutionContext
 )
 from engine.resolvers.element_resolver import ElementResolver
+
+if TYPE_CHECKING:
+    from engine.resolvers.shadow_runner import ShadowRunner
 from engine.runner.when_eval import evaluate_when
 from engine.browser.anti_detection import AntiDetection
 from engine.browser.human_behaviour import HumanBehaviour
@@ -69,7 +73,7 @@ class StepRunner:
         self,
         page,
         action_factory: ActionFactory,
-        resolver: ElementResolver,
+        resolver: ElementResolver | ShadowRunner,
         reporter: ReporterStrategy,
         screenshots_dir: Path | None = None,
         behaviour: HumanBehaviour | None = None,
@@ -206,6 +210,7 @@ class StepRunner:
     ) -> StepResult:
         t0 = time.monotonic()
         max_attempts = 1 + max(0, step.retry)
+        result: StepResult = StepResult(step=step, status="failed", error="no attempts made")
         for attempt in range(max_attempts):
             try:
                 action = self._factory.create(step.action)
@@ -241,13 +246,15 @@ class StepRunner:
                 "warning",
             )
             try:
+                cached_cfg: dict | None = None
                 if self._cache:
                     cached_cfg = self._cache.get(step)
                 if self._cache and cached_cfg is not None:
                     self._notify_log(
                         f"⚕ [HealCache] HIT for '{step.action}' — skipping cascade", "warning"
                     )
-                    replacement_steps = [self._healer._apply_healed_cfg(step, cached_cfg)]
+                    healed_step = dataclasses.replace(step, element=cached_cfg)
+                    replacement_steps = [healed_step]
                     replacement_runner = StepRunner(
                         page=self._page,
                         action_factory=self._factory,
@@ -319,6 +326,7 @@ class StepRunner:
                     break
 
                 dom = await DOMSnapshotCascade.capture(self._page, step)
+                assert self._healer is not None
                 replacement_steps = await self._healer.heal(
                     step, result.error, dom,
                     all_steps=steps,

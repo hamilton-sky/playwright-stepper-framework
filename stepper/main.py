@@ -98,8 +98,8 @@ def _build_ci_summary(results, workflow_path, resolver, duration_s: float) -> di
 
 
 async def run(
-    workflow_path: str = None,
-    task: str = None,
+    workflow_path: str | None = None,
+    task: str | None = None,
     headless: bool = True,
     allure_serve: bool = False,
     record_video: bool = False,
@@ -246,8 +246,9 @@ async def run(
                 Path(ci_output).write_text(json.dumps(summary, indent=2), encoding="utf-8")
                 logger.info(f"CI summary written to {ci_output}")
 
-        if shadow and hasattr(resolver, "_drift_log"):
-            resolver._drift_log.flush()
+        drift_log = getattr(resolver, "_drift_log", None)
+        if shadow and drift_log is not None:
+            drift_log.flush()
 
         if log_handler:
             logging.getLogger().removeHandler(log_handler)
