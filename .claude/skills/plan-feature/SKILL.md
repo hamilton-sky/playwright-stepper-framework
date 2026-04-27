@@ -2,6 +2,7 @@
 name: plan-feature
 description: Plan a new stepper framework feature by creating a plans folder with 8 files: USER_STORIES.md, IMPLEMENTATION_PLAN.md, PROGRESS.md, CONVERSATION_PROMPTS.md (max 4 conversations per folder), HAPPY_FLOW.md, EDGE_CASES.md, ARCHITECTURE_PROPOSAL.md, and FLOW_DIAGRAM.md.
 argument-hint: "[feature-name, e.g., add-saucedemo-checkout, new-resolver-strategy, phptravels-flights]"
+model: opus
 ---
 
 Plan the **$ARGUMENTS** feature by creating a complete plans folder.
