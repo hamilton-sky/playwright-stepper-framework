@@ -70,6 +70,7 @@ def build_default_registry(
         ExtractDataAction, PaginateAction,
         EnsureLoginAction, ParallelAction,
         LoadTestDataAction,
+        AssertTextAction, AssertVisibleAction, StoreAction, KeyboardPressAction,
     )
 
     registry     = ActionRegistry()
@@ -98,4 +99,8 @@ def build_default_registry(
         .register(paginate)
         .register(parallel)
         .register(LoadTestDataAction())
+        .register(AssertTextAction())
+        .register(AssertVisibleAction())
+        .register(StoreAction())
+        .register(KeyboardPressAction())
     )

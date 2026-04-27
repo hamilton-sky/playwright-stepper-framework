@@ -1178,4 +1178,122 @@ class LoadTestDataAction(ActionStrategy):
         logger.info("load_test_data: loaded %d rows from %s", len(data), path)
         return StepResult(step=step, status="passed")
 
+# ──────────────────────────────────────────────────────────
+# PHASE 3 — Generic utility actions
+# ──────────────────────────────────────────────────────────
+
+class AssertTextAction(ActionStrategy):
+    """Assert that an element's text matches (or contains) an expected value."""
+    action_name = "assert_text"
+    read_only   = True
+
+    async def _execute(self, page, step: StepConfig, resolver,
+                       context: ExecutionContext) -> StepResult:
+        result = await resolver.resolve(page, step.element, step.description)
+        if not result.found:
+            return StepResult(step=step, status="failed",
+                              error=f"assert_text: element not found → {step.element}")
+
+        expected = step.extra.get("expected", "")
+        contains = bool(step.extra.get("contains", False))
+        actual   = (await result.locator.first.inner_text()).strip()
+
+        if contains:
+            passed = expected in actual
+        else:
+            passed = actual == expected
+
+        if passed:
+            mode = "contains" if contains else "=="
+            logger.info(f"✓ assert_text: '{actual}' {mode} '{expected}'")
+            return StepResult(step=step, status="passed")
+
+        mode_str = "to contain" if contains else "to equal"
+        msg = f"assert_text FAILED: expected {mode_str} '{expected}', got '{actual}'"
+        logger.error(msg)
+        return StepResult(step=step, status="failed", error=msg)
+
+
+class AssertVisibleAction(ActionStrategy):
+    """Assert that an element is visible (or hidden if extra.hidden=true)."""
+    action_name = "assert_visible"
+    read_only   = True
+
+    async def _execute(self, page, step: StepConfig, resolver,
+                       context: ExecutionContext) -> StepResult:
+        hidden = bool(step.extra.get("hidden", False))
+        result = await resolver.resolve(page, step.element, step.description)
+
+        if not result.found:
+            if hidden:
+                logger.info(f"✓ assert_visible(hidden): element absent, treated as hidden")
+                return StepResult(step=step, status="passed")
+            return StepResult(step=step, status="failed",
+                              error=f"assert_visible: element not found → {step.element}")
+
+        is_visible = await result.locator.first.is_visible()
+        expected_visible = not hidden
+
+        if is_visible == expected_visible:
+            state = "hidden" if hidden else "visible"
+            logger.info(f"✓ assert_visible: element is {state}")
+            return StepResult(step=step, status="passed")
+
+        expected_state = "hidden" if hidden else "visible"
+        actual_state   = "visible" if is_visible else "hidden"
+        msg = f"assert_visible FAILED: expected {expected_state}, element is {actual_state}"
+        logger.error(msg)
+        return StepResult(step=step, status="failed", error=msg)
+
+
+class StoreAction(ActionStrategy):
+    """Store an element's text (or attribute) in context under extra.key."""
+    action_name = "store"
+    read_only   = True
+
+    async def _execute(self, page, step: StepConfig, resolver,
+                       context: ExecutionContext) -> StepResult:
+        key = step.extra.get("key")
+        if not key:
+            return StepResult(step=step, status="failed",
+                              error="store: missing extra.key")
+
+        result = await resolver.resolve(page, step.element, step.description)
+        if not result.found:
+            return StepResult(step=step, status="failed",
+                              error=f"store: element not found → {step.element}")
+
+        attr  = step.extra.get("attr", "innerText")
+        value = await _fetch_attr(result.locator.first, attr)
+
+        context.store(key, value)
+        logger.info(f"✓ store: {key}={value!r}")
+        return StepResult(step=step, status="passed", output={key: value})
+
+
+class KeyboardPressAction(ActionStrategy):
+    """Press a keyboard key, optionally focused on a resolved element."""
+    action_name = "keyboard_press"
+
+    async def _execute(self, page, step: StepConfig, resolver,
+                       context: ExecutionContext) -> StepResult:
+        key = step.extra.get("key") or step.input_value
+        if not key:
+            return StepResult(step=step, status="failed",
+                              error="keyboard_press: missing key (extra.key or input_value)")
+
+        if step.element:
+            result = await resolver.resolve(page, step.element, step.description)
+            if not result.found:
+                return StepResult(step=step, status="skipped",
+                                  error=f"keyboard_press: element not found → {step.element}")
+            await result.locator.first.press(key)
+            logger.info(f"✓ keyboard_press: '{key}' on {result.method}")
+        else:
+            await page.keyboard.press(key)
+            logger.info(f"✓ keyboard_press: '{key}' (global)")
+
+        return StepResult(step=step, status="passed")
+
+
 # _dict_to_step_config is imported from engine.utils at the top of this file.

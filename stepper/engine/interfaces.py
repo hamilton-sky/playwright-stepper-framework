@@ -124,6 +124,7 @@ class ExecutionContext:
     extracted_data:  list[Any]       = field(default_factory=list)
     paginated_data:  list[Any]       = field(default_factory=list)
     counts:          dict[str, int]  = field(default_factory=dict)
+    _data:           dict[str, Any]  = field(default_factory=dict, init=False, repr=False)
 
     # ClassVar — not treated as a dataclass field, not in __init__
     _NAMED: ClassVar[frozenset[str]] = frozenset(
@@ -143,23 +144,30 @@ class ExecutionContext:
     def has_count(self, key: str) -> bool:
         return key in self.counts
 
+    # ── Generic key-value store (used by StoreAction) ────────────────────────
+
+    def store(self, key: str, value: Any) -> None:
+        self._data[key] = value
+
     # ── when_eval / backward-compat dict-like API ────────────────────────────
 
     def get(self, key: str, default: Any = None) -> Any:
         """
         Dict-like get() so when_eval conditions work without changes.
-        Checks named fields first, then counts.
+        Checks named fields first, then counts, then generic store.
         """
         if key in self._NAMED:
             val = getattr(self, key)
             return val if val else default
-        return self.counts.get(key, default)
+        if key in self.counts:
+            return self.counts[key]
+        return self._data.get(key, default)
 
     def __contains__(self, key: str) -> bool:
         """Supports  'key in context'  checks in AssertCountAction."""
         if key in self._NAMED:
             return bool(getattr(self, key))
-        return key in self.counts
+        return key in self.counts or key in self._data
 
 
 # ──────────────────────────────────────────────────────────
