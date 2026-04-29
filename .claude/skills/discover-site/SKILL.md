@@ -23,7 +23,15 @@ Usage: /discover-site --url <url> --flow <description> [--output <dir>]
 Assign variables:
 - `TARGET_URL` = value of `--url`
 - `FLOW_DESC` = value of `--flow`
-- `OUTPUT_DIR` = value of `--output`, or `.stepper/` if not provided
+- `BASE_DIR` = value of `--output`, or `.stepper/` if not provided
+
+Derive `SITE_SLUG` from the hostname of `TARGET_URL`:
+- Strip `www.` prefix if present.
+- Take the first label of the hostname (everything before the first `.`), lowercased, alphanumeric and hyphens only.
+- Examples: `www.saucedemo.com` → `saucedemo`, `openlibrary.org` → `openlibrary`, `the-internet.herokuapp.com` → `the-internet`, `app.phptravels.com` → `phptravels`
+- Exception: if the first label is a generic subdomain (`app`, `www`, `api`, `staging`), use the second label instead (e.g. `app.phptravels.com` → `phptravels`).
+
+Set `OUTPUT_DIR = BASE_DIR/<SITE_SLUG>/` (e.g. `.stepper/openlibrary/`).
 
 Create `OUTPUT_DIR` and `OUTPUT_DIR/snapshots/` if they do not exist.
 
@@ -103,10 +111,22 @@ Repeat until the flow description is fully satisfied or no further interactions 
 ### Directory layout
 
 ```
-<output_dir>/
-  trace.json              ← ordered page visits + all recorded elements
-  snapshots/
-    <slug>.json           ← full a11y snapshot for one page
+<base_dir>/
+  <site-slug>/
+    trace.json            ← ordered page visits + all recorded elements
+    snapshots/
+      <slug>.json         ← full a11y snapshot for one page
+```
+
+Example for `--url https://openlibrary.org`:
+```
+.stepper/
+  openlibrary/
+    trace.json
+    snapshots/
+      home.json
+      search.json
+      book-detail.json
 ```
 
 ### trace.json schema
