@@ -15,23 +15,27 @@ playwright-stepper-framework/
 │   │   └── performance.py        # Performance metrics
 │   ├── openLibrary/              # OpenLibrary POMs
 │   │   ├── config.py             # Settings loader (YAML + env vars)
-│   │   └── pages/                # Pure POMs — selectors live here and nowhere else
-│   │       ├── base_page.py
-│   │       ├── login_page.py
-│   │       ├── book_search_page.py   # collect_books_under_year → list[dict{url,year}]
-│   │       ├── book_detail_page.py
-│   │       └── reading_list_page.py
+│   │   ├── pages/                # Pure POMs — selectors live here and nowhere else
+│   │   │   ├── base_page.py
+│   │   │   ├── login_page.py
+│   │   │   ├── book_search_page.py   # collect_books_under_year → list[dict{url,year}]
+│   │   │   ├── book_detail_page.py
+│   │   │   └── reading_list_page.py
+│   │   ├── data/                 # Test data files (testdata.json)
+│   │   └── utils/                # Helper utilities (book_filter, screenshot, shelf)
 │   ├── saucedemo/                # SauceDemo POMs
 │   │   ├── config.py
-│   │   └── pages/
-│   │       ├── base_page.py
-│   │       ├── login_page.py
-│   │       ├── inventory_page.py
-│   │       ├── product_page.py
-│   │       ├── cart_page.py
-│   │       ├── checkout_info_page.py
-│   │       ├── checkout_overview_page.py
-│   │       └── checkout_complete_page.py
+│   │   ├── pages/
+│   │   │   ├── base_page.py
+│   │   │   ├── login_page.py
+│   │   │   ├── inventory_page.py
+│   │   │   ├── product_page.py
+│   │   │   ├── cart_page.py
+│   │   │   ├── checkout_info_page.py
+│   │   │   ├── checkout_overview_page.py
+│   │   │   └── checkout_complete_page.py
+│   │   ├── data/                 # Test data files (testdata.json)
+│   │   └── config/               # Site config YAML
 │   └── phpTravels/               # phpTravels POMs
 │       ├── config.py
 │       └── pages/
@@ -43,6 +47,7 @@ playwright-stepper-framework/
 │
 ├── stepper/                      # The Automation Engine
 │   ├── main.py                   # Entry point — wires everything together
+│   ├── download_models.py        # Downloads/caches the MiniLM model on first run
 │   ├── pytest.ini                # asyncio_mode = auto, alluredir, log_cli settings
 │   ├── engine/                   # Core framework modules
 │   │   ├── interfaces.py         # Strategy/Observer abstractions + StepConfig
@@ -67,7 +72,8 @@ playwright-stepper-framework/
 │   │   ├── resolvers/
 │   │   │   ├── element_resolver.py   # Cascade orchestrator (det → semantic → AI)
 │   │   │   ├── strategies.py         # 7 deterministic resolver strategies
-│   │   │   └── ai_pick_resolver.py   # AI disambiguation (Groq → Gemini → Claude)
+│   │   │   ├── ai_pick_resolver.py   # AI disambiguation (Groq → Gemini → Claude)
+│   │   │   └── shadow_runner.py      # Shadow DOM element resolution support
 │   │   ├── runner/
 │   │   │   ├── step_runner.py    # Execution loop (retry + observers)
 │   │   │   ├── when_eval.py      # Conditional step evaluation
@@ -99,13 +105,16 @@ playwright-stepper-framework/
 │   │   │   └── reading_list_action.py  # Registers ol_clear_reading_list,
 │   │   │                               #   ol_store_count, ol_assert_count, ol_ensure_count
 │   │   ├── register.py               # Auto-discovered by register_all_sites()
-│   │   └── workflows/                # 10 JSON workflows
-│   │       ├── ol_search_and_add.json
+│   │   └── workflows/                # 9 JSON workflows
 │   │       ├── ol_smoke_test.json
 │   │       ├── ol_parallel_perf.json
 │   │       ├── ol_data_driven.json   # Data-driven via --data flag
-│   │       └── … (+ ol_add_only, ol_ensure_count, ol_regression_roundtrip,
-│   │              ol_multi_author, ol_idempotency_test, login)
+│   │       ├── ol_add_only.json
+│   │       ├── ol_ensure_count.json
+│   │       ├── ol_regression_roundtrip.json
+│   │       ├── ol_multi_author.json
+│   │       ├── ol_idempotency_test.json
+│   │       └── login.json
 │   │
 │   ├── sites/saucedemo/          # SauceDemo site integration
 │   │   ├── pages/
@@ -133,7 +142,14 @@ playwright-stepper-framework/
 │   │
 │   ├── tests/                    # Stepper engine test suite
 │   │   ├── conftest.py           # --headed flag registration
-│   │   └── test_workflow.py      # Workflow integration tests
+│   │   ├── test_workflow.py      # Workflow integration tests
+│   │   └── unit/                 # Unit tests (resolver strategies, healing cache, drift)
+│   │       ├── test_resolver_strategies.py
+│   │       ├── test_healing_cache.py
+│   │       ├── test_compute_drift.py
+│   │       ├── test_confidence_map.py
+│   │       ├── test_drift_log.py
+│   │       └── test_make_key.py
 │   │
 │   ├── models/
 │   │   └── all-MiniLM-L6-v2/    # Pre-trained semantic embedding model
@@ -281,7 +297,7 @@ playwright-stepper-framework/
   │  1.  pre_execute(page, step)            │
   │      └─ override for setup              │
   │                                          │
-  │  2.  _execute(page, step, resolver)     │  ◀── concrete impl
+  │  2.  _execute(page, step, resolver, ctx)│  ◀── concrete impl
   │      └─ resolve element if needed       │
   │         └─ act on element               │
   │                                          │
@@ -313,6 +329,10 @@ playwright-stepper-framework/
   scroll_to           → resolve element → scroll_into_view_if_needed()  [read_only, healer-safe]
   store_count         → locator.count() → context.counts[key]
   assert_count        → context.counts[key] vs expected value
+  store               → save arbitrary value into context keyed store
+  assert_text         → resolve element → assert inner text matches expected
+  assert_visible      → resolve element → assert element is visible on page
+  keyboard_press      → resolve element (or page) → press key sequence
   extract_data        → collect elements → context.extracted_data
   paginate            → loop pages, accumulate items → context.paginated_data
   for_each_item       → iterate context.collected_items, run sub-steps
@@ -435,11 +455,11 @@ playwright-stepper-framework/
 
 ---
 
-## Workflow Example: "Search & Add" End-to-End
+## Workflow Example: "Add Only" End-to-End
 
 ```
-  ol_search_and_add.json
-  ──────────────────────
+  ol_add_only.json
+  ────────────────
   Variables: query="Dune"  max_year=1980  limit=5
 
   Step 1  ol_ensure_login
