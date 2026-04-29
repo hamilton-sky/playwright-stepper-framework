@@ -38,3 +38,7 @@ poms/artifacts/
 stepper/reports/
 
 storage_state.json
+
+# discover-site skill output
+.stepper/
+.playwright-mcp/
