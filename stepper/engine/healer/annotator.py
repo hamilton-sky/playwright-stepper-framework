@@ -90,6 +90,7 @@ class HealAnnotator:
             draw.text((bx + 2, by + 2), badge, fill=(255, 255, 255, 255))
 
             combined = Image.alpha_composite(img, overlay).convert("RGB")
+            screenshots_dir.mkdir(parents=True, exist_ok=True)
             out_path = screenshots_dir / f"step_{step_idx:02d}_healed_annotated.png"
             combined.save(str(out_path))
             logger.info(f"[HealAnnotator] annotated screenshot → {out_path.name}")

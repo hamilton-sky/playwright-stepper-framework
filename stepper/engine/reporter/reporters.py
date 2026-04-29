@@ -44,20 +44,28 @@ class ConsoleReporter(ReporterStrategy):
 
     def record_step(self, result: StepResult):
         self._results.append(result)
-        icon = {"passed": "OK", "failed": "FAIL", "skipped": "SKIP", "warned": "WARN",
-                "healed": "HEAL"}.get(result.status, "...")
+        icon = {"passed": " OK  ", "failed": " FAIL", "skipped": " SKIP", "warned": " WARN",
+                "healed": " HEAL"}.get(result.status, " ... ")
         desc = result.step.description or result.step.action
         _safe_print(f"  {icon}  {desc}")
-        if result.error:
+        if result.status == "healed" and result.healed_element:
+            orig   = result.healed_element.get("original") or {}
+            healed = result.healed_element.get("healed") or {}
+            orig_str   = next((f'{k}:"{v}"' for k, v in orig.items()),   str(orig))
+            healed_str = next((f'{k}:"{v}"' for k, v in healed.items()), str(healed))
+            _safe_print(f"         rescued  {orig_str}  ->  {healed_str}")
+        elif result.error:
             safe_error = result.error.encode("ascii", errors="replace").decode("ascii")
-            _safe_print(f"       -> {safe_error}")
+            _safe_print(f"         -> {safe_error}")
 
     def finish_suite(self) -> str:
-        passed  = sum(1 for r in self._results if r.status == "passed")
-        failed  = sum(1 for r in self._results if r.status == "failed")
-        total   = len(self._results)
-        summary = f"{passed}/{total} passed"
-        _safe_print(f"\n  Result: {summary}  ({failed} failed)\n")
+        passed = sum(1 for r in self._results if r.status == "passed")
+        healed = sum(1 for r in self._results if r.status == "healed")
+        failed = sum(1 for r in self._results if r.status == "failed")
+        total  = len(self._results)
+        summary = f"{passed + healed}/{total} passed"
+        heal_note = f"  |  healed: {healed}" if healed else ""
+        _safe_print(f"\n  Result: {summary}{heal_note}  ({failed} failed)\n")
         return summary
 
 

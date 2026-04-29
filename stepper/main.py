@@ -392,8 +392,8 @@ def main():
     parser.add_argument("--show",          action="store_true", help="Show browser window")
     parser.add_argument("--allure-serve",  action="store_true", help="Open Allure report in browser after run")
     parser.add_argument("--video",         action="store_true", help="Record video to test-*/videos/")
-    parser.add_argument("--heal",          type=int, default=0, metavar="N",
-                        help="Max self-healing attempts per failed step (default 0 = disabled)")
+    parser.add_argument("--heal",          type=int, default=1, metavar="N",
+                        help="Max self-healing attempts per failed step (default 1; pass 0 to disable)")
     parser.add_argument("--vars",          help='JSON string of variable overrides, e.g. \'{"query":"Foundation"}\'')
     parser.add_argument("--data",          help="Path to a JSON file containing an array of variable objects")
     parser.add_argument("--apply-heals",   metavar="WORKFLOW_JSON",

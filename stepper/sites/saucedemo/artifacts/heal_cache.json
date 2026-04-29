@@ -6,7 +6,7 @@
     "placeholder": "Password"
   },
   "a71d4b61ed82b139": {
-    "role": "button",
-    "name": "Login"
+    "priority": 0,
+    "id": "login-button"
   }
 }

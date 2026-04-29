@@ -269,11 +269,24 @@ class StepRunner:
                     rep_results, ctx = await replacement_runner.run(replacement_steps, ctx)
                     if all(r.status != "failed" for r in rep_results):
                         healed_confidence = rep_results[0].confidence if rep_results else 0.0
+                        annotated_path = None
+                        if self._screenshots_dir and cached_cfg:
+                            annotated_path = await HealAnnotator.capture(
+                                self._page, cached_cfg,
+                                idx + 1, "healed",
+                                self._screenshots_dir.parent / "screenshots-healing",
+                            )
+                        orig_str   = next((f'{k}:"{v}"' for k, v in (step.element or {}).items() if k != "priority"), "?")
+                        healed_str = next((f'{k}:"{v}"' for k, v in (cached_cfg  or {}).items() if k != "priority"), "?")
+                        self._notify_log(
+                            f"⚕  healed step {idx+1} (cache): {orig_str}  ->  {healed_str}", "warning"
+                        )
                         result = dataclasses.replace(
                             result, status="healed", error="",
                             confidence=healed_confidence,
                             heal_attempts=heal_attempt,
-                            healed_element={"original": step.element, "healed": cached_cfg},
+                            healed_element={"original": step.element, "healed": cached_cfg,
+                                            "annotated_screenshot": annotated_path},
                         )
                         new_suggestions.append({
                             "step": idx + 1,
@@ -281,6 +294,7 @@ class StepRunner:
                             "action": step.action,
                             "original": step.element,
                             "healed": cached_cfg,
+                            "annotated_screenshot": annotated_path,
                         })
                         break
                     else:
@@ -367,7 +381,7 @@ class StepRunner:
                         annotated_path = await HealAnnotator.capture(
                             self._page, healed_cfg,
                             idx + 1, "healed",
-                            self._screenshots_dir,
+                            self._screenshots_dir.parent / "screenshots-healing",
                         )
                     result = dataclasses.replace(
                         result,
@@ -391,8 +405,10 @@ class StepRunner:
                     })
                     if self._cache and healed_cfg:
                         self._cache.put(step, healed_cfg)
+                    orig_str   = next((f'{k}:"{v}"' for k, v in (step.element or {}).items() if k != "priority"), "?")
+                    healed_str = next((f'{k}:"{v}"' for k, v in (healed_cfg  or {}).items() if k != "priority"), "?")
                     self._notify_log(
-                        f"⚕ Step {idx+1} healed on attempt {heal_attempt}", "warning"
+                        f"⚕  healed step {idx+1}: {orig_str}  ->  {healed_str}", "warning"
                     )
                     break
 
