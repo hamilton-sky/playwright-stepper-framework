@@ -77,3 +77,14 @@ Violations found: N
 ```
 
 If zero violations: "All layer boundary checks passed."
+
+---
+
+## Next Step
+
+After the audit, print:
+
+```
+Next: run the workflow end-to-end with:
+  python stepper/main.py --workflow stepper/sites/<site>/workflows/<file>.json
+```

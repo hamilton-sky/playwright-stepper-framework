@@ -245,3 +245,15 @@ Always prefer writing partial output over writing nothing. If an unhandled error
 1. Attempt to write `trace.json` with whatever pages were collected and `"complete": false`.
 2. Print the error with full context.
 3. Exit 1.
+
+---
+
+## Next Step
+
+After a successful run, print:
+
+```
+Trace written to <OUTPUT_DIR>/trace.json (<N> pages captured).
+
+Next: run /generate-poms --input <OUTPUT_DIR>/trace.json --site <SITE_SLUG> to scaffold POMs, glue, and a workflow.
+```

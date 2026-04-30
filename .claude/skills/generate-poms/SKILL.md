@@ -122,6 +122,21 @@ class BasePage(SharedBasePage):
 
 **`stepper/sites/<site>/workflows/`** — create the directory (write a `.gitkeep` placeholder if needed).
 
+**`stepper/sites/<site>/register.py`** — site registration entry point. The engine's `register_all_sites()` auto-discovers this file via `stepper/sites/*/register.py` glob. Without it, all generated actions are invisible at runtime.
+
+Generate it after all glue files are written, importing every `PageModule` subclass and calling `.register(registry)`:
+
+```python
+def register(registry, screenshots_dir=None) -> None:
+    from sites.<site>.pages.<action_group>_action import <Site><Page>Page
+    # ... one import per glue PageModule class ...
+
+    <Site><Page>Page.register(registry)
+    # ... one register call per PageModule class ...
+```
+
+The import path uses `sites.<site>.pages.<module>` (not `stepper.sites`). List imports in the same order glue files were generated.
+
 ---
 
 ## POM Generation
@@ -439,3 +454,19 @@ Apply the following checks in order at the very start of execution, before gener
 | `poms/<site>/` or `stepper/sites/<site>/` already exists and `--force` is not set | Stop immediately: `Error: site already exists:\n  poms/<site>/\n  stepper/sites/<site>/\nPass --force to overwrite.` |
 | `trace.pages` is an empty list or the key is absent | Stop immediately: `Error: trace is empty — no pages to generate from` |
 | An individual element record has no selector key at all (no `role`, `label`, `placeholder`, `id`, `css`, `xpath`) | Write a comment placeholder in the cfg list and continue (do not crash): `# TODO: trace lacked all selectors for this element` followed by `<IDENTIFIER>_CFG: list = []` |
+
+---
+
+## Next Step
+
+After all files are written, print:
+
+```
+Generation complete.
+  POMs:     poms/<site>/pages/
+  Glue:     stepper/sites/<site>/pages/
+  Workflow: stepper/sites/<site>/workflows/<flow_name>.json
+
+Next: run /verify-layers to audit the three-layer contract, then test with:
+  python stepper/main.py --workflow stepper/sites/<site>/workflows/<flow_name>.json
+```
