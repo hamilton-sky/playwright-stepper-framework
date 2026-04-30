@@ -139,70 +139,78 @@ Build a `Locators` inner class. For each element in `page.elements` where the el
 
 1. Derive a Python identifier from `element.name` or `element.label` or `element.placeholder` — lowercased, spaces replaced with `_`, non-alphanum stripped.
 
-2. Build a cfg list named `<IDENTIFIER>_CFG`. Priority order:
-   - `role` + `name` → priority 10 (include only if both are non-empty)
-   - `label` → priority 20 (include only if non-empty)
-   - `placeholder` → priority 30 (include only if non-empty)
-   - `id` → priority 40 (include only if non-empty AND not volatile)
-   - `css` → priority 50 (include only if non-empty)
-   - Volatile id: if `id` matches `[a-z0-9]{8,}` or contains a hex suffix (`^[a-z]+-[a-f0-9]{4,}$`), assign priority 60 instead of 40
+2. Create a `Locator` instance named `<IDENTIFIER>`. Populate fields from the trace element — include only non-empty values:
+   - `role`, `name` — from element `role` and `name`
+   - `label` — from element `label`
+   - `placeholder` — from element `placeholder`
+   - `id` — from element `id` (omit if volatile: matches `[a-z0-9]{8,}` pure hex or `^[a-z]+-[a-f0-9]{4,}$`)
+   - `css` — from element `css`
+   - `description` — plain-English label: `"<name> <role>"` (e.g. `"username input field"`)
 
 3. If an element has no selector keys at all, write:
    ```python
    # TODO: trace lacked all selectors for this element
-   <IDENTIFIER>_CFG: list = []
+   <IDENTIFIER> = Locator(description="<name> — no selectors in trace")
    ```
 
-Example cfg list:
+The `Locator` dataclass lives in `poms.shared.locator`. Import it at the top of every POM file:
 ```python
+from poms.shared.locator import Locator
+```
+
+Example Locators class:
+```python
+from poms.shared.locator import Locator
+
 class Locators:
-    USERNAME_CFG = [
-        {"role": "textbox", "name": "Username", "priority": 10},
-        {"label": "Username",                   "priority": 20},
-        {"placeholder": "Username",             "priority": 30},
-        {"id": "user-name",                     "priority": 40},
-        {"css": "[data-test='username']",       "priority": 50},
-    ]
-    LOGIN_BUTTON_CFG = [
-        {"role": "button", "name": "Login",     "priority": 10},
-        {"css": "[data-test='login-button']",   "priority": 50},
-    ]
-    # Read-only state (not interactive — plain string, no cfg list)
+    USERNAME = Locator(
+        role="textbox", name="Username",
+        label="Username",
+        placeholder="Username",
+        id="user-name",
+        css="[data-test='username']",
+        description="username input field",
+    )
+    LOGIN_BUTTON = Locator(
+        role="button", name="Login",
+        css="[data-test='login-button']",
+        description="login submit button",
+    )
+    # Read-only state checks — plain CSS string, no Locator needed
     ERROR_MSG = "[data-test='error']"
 ```
 
-**Rule:** every cfg list entry must have a `"priority"` key. Never omit it.
+**Rule:** every interactive element gets a `Locator` instance. Plain CSS strings are only for read-only state checks (`query_selector`, text reads). Never use a raw string as the argument to `_interact()`.
 
 ### Methods
 
-For each interactive element:
-- If textbox / textarea / searchbox: `async def fill_<identifier>(self, value: str) -> None` calling `await self._resolve_and_fill_any(self.Locators.<IDENTIFIER>_CFG, value)`
-- If button / link / checkbox / combobox / select: `async def click_<identifier>(self) -> None` calling `await self._resolve_and_click_any(self.Locators.<IDENTIFIER>_CFG)`
+For each interactive element, call `_interact()` with the `Locator` instance:
+- If textbox / textarea / searchbox: `async def fill_<identifier>(self, value: str) -> None` calling `await self._interact(self.Locators.<IDENTIFIER>, "fill", value=value)`
+- If button / link / checkbox / combobox / select: `async def click_<identifier>(self) -> None` calling `await self._interact(self.Locators.<IDENTIFIER>, "click")`
 
 ### url property
 
 ```python
 @property
 def url(self) -> str:
-    return f"{self.base_url}{page.path_suffix}"  # path_suffix derived from page.url
+    return f"{self.base_url}<path_suffix>"  # path_suffix derived from page.url
 ```
 
 ### wait_for_ready
 
+Use the first interactive element's `css` field directly:
+
 ```python
 async def wait_for_ready(self) -> None:
-    first_cfg = self.Locators.<FIRST_INTERACTIVE>_CFG
-    if first_cfg:
-        top = min(first_cfg, key=lambda c: c["priority"])
-        # wait using highest-priority selector available
-        try:
-            if "css" in top:
-                await self._driver.wait_for_selector(top["css"], timeout=15_000)
-            elif "id" in top:
-                await self._driver.wait_for_selector(f"#{top['id']}", timeout=15_000)
-        except Exception:
-            pass
+    try:
+        await self._driver.wait_for_selector(
+            self.Locators.<FIRST_INTERACTIVE>.css, timeout=15_000
+        )
+    except Exception:
+        pass
 ```
+
+If the first element has no `css`, use its `id` as `f"#{self.Locators.<FIRST_INTERACTIVE>.id}"`.
 
 ### Full generated POM file shape
 
@@ -211,6 +219,7 @@ async def wait_for_ready(self) -> None:
 from __future__ import annotations
 import logging
 from poms.<site>.pages.base_page import BasePage
+from poms.shared.locator import Locator
 
 logger = logging.getLogger(__name__)
 
@@ -218,7 +227,11 @@ logger = logging.getLogger(__name__)
 class <PageClass>(BasePage):
 
     class Locators:
-        <IDENTIFIER>_CFG = [...]
+        <IDENTIFIER> = Locator(
+            role="...", name="...",
+            css="...",
+            description="...",
+        )
         ...
 
     @property
@@ -226,19 +239,24 @@ class <PageClass>(BasePage):
         return f"{self.base_url}/<path>"
 
     async def wait_for_ready(self) -> None:
-        ...
+        try:
+            await self._driver.wait_for_selector(
+                self.Locators.<FIRST>.css, timeout=15_000
+            )
+        except Exception:
+            pass
 
     async def fill_<name>(self, value: str) -> None:
-        await self._resolve_and_fill_any(self.Locators.<NAME>_CFG, value)
+        await self._interact(self.Locators.<NAME>, "fill", value=value)
 
     async def click_<name>(self) -> None:
-        await self._resolve_and_click_any(self.Locators.<NAME>_CFG)
+        await self._interact(self.Locators.<NAME>, "click")
 ```
 
 ### After each POM Write
 
 Read the tool result. If it contains `VIOLATION:` or `ERROR:`:
-- `"interactive locator not in cfg list"` → convert the plain string/Locator to a cfg list with at least one `{"css": ..., "priority": 50}` entry
+- `"raw string passed to _interact"` or `"interactive locator not a Locator instance"` → replace the plain string with a `Locator(css="...", description="...")` instance
 - Any other violation → apply the minimal fix described in the message
 - Re-Edit the file before writing the next POM
 - If the hook output appears to be a false positive (same code passes on second attempt), log a one-line justification and continue
@@ -391,7 +409,7 @@ After **every** Write or Edit tool call, read the tool result for `VIOLATION:` o
 
 | Marker | Root cause | Fix |
 |--------|-----------|-----|
-| `VIOLATION: interactive locator not in cfg list` | A fill/click target is a plain CSS string, not a cfg list | Wrap as `[{"role": ..., "priority": 10}, {"css": ..., "priority": 50}]` — at minimum one entry with a `"priority"` key |
+| `VIOLATION: interactive locator not a Locator instance` | `_interact()` is called with a raw CSS string instead of a `Locator` object | Replace with `Locator(css="...", description="...")` and import `from poms.shared.locator import Locator` |
 | `VIOLATION: missing resolver injection` | `_build_pom` call is missing `page=page` and/or `resolver=resolver` | Add both keyword args: `self._build_pom(<POM>, driver, settings.base_url, page=page, resolver=resolver, behaviour=behaviour)` |
 | `VIOLATION: raw page.locator in glue` | Glue file calls `page.locator()`, `page.get_by_role()`, etc. directly | Move the selector into the POM's `Locators` class as a cfg list entry; expose an interaction method (`click_<name>` or `fill_<name>`); call that method from glue instead |
 | `VIOLATION: wrong import direction` | Glue or POM imports from `stepper/sites/` | Remove the import — glue imports from `poms/` only; POM never imports from `stepper/` |

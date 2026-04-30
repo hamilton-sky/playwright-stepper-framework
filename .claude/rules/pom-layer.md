@@ -1,5 +1,5 @@
 ---
-description: POM layer rules — locator cfg lists, SharedBasePage API, what POMs must not do
+description: POM layer rules — Locator dataclass, _interact() API, what POMs must not do
 globs:
   - "poms/**/*.py"
 ---
@@ -8,66 +8,75 @@ globs:
 
 POMs live in `poms/*/pages/`. They own **selectors and raw page interactions only**.
 
-### The cfg list rule
+### The Locator rule
 
-Every interactive element (anything that calls `fill()` or `click()`) must be a **prioritised list of dicts**. This is the single source of truth — no parallel plain strings.
+Every interactive element (anything that calls `_interact()`) must be a **`Locator` dataclass instance**. Import it at the top of every POM file:
+
+```python
+from poms.shared.locator import Locator
+```
 
 ```python
 class Locators:
-    # Interactive inputs — MUST be cfg lists
-    USERNAME_CFG = [
-        {"label":       "Username",       "priority": 10},
-        {"placeholder": "Username",       "priority": 20},
-        {"id":          "username",       "priority": 30},
-        {"css":         "#username",      "priority": 40},
-    ]
-    SUBMIT_CFG = [
-        {"role": "button", "name": "Log in",  "priority": 10},
-        {"role": "button", "name": "Sign in", "priority": 20},
-        {"css":  ".cta-btn--primary",         "priority": 30},
-    ]
+    # Interactive elements — MUST be Locator instances
+    USERNAME = Locator(
+        role="textbox", name="Username",
+        label="Username",
+        placeholder="Username",
+        id="user-name",
+        css="[data-test='username']",
+        description="username input field",
+    )
+    SUBMIT = Locator(
+        role="button", name="Log in",
+        css_fallbacks=["button[type='submit']", ".cta-btn--primary"],
+        description="login submit button",
+    )
 
     # Read-only state checks — plain CSS/text strings are fine
     ERROR_MSG = "[data-test='error']"
     APP_LOGO  = ".app_logo"
 ```
 
-**Rule:** `fill()` or `click()` call → cfg list required. `query_selector`, `locator_count`, text reads → plain CSS is fine.
+**Rule:** `_interact()` call → `Locator` instance required. `query_selector`, `locator_count`, text reads → plain CSS string is fine.
 
-### cfg dict keys
+### Locator fields
 
-| Key | Resolver strategy | Priority (default) |
+| Field | Resolver strategy | Notes |
 |---|---|---|
-| `role` + `name` | RoleResolver (get_by_role) | 10 |
-| `label` | LabelResolver (get_by_label) | 20 |
-| `placeholder` | PlaceholderResolver | 30 |
-| `text` | TextResolver (get_by_text) | 40 |
-| `id` | IdResolver | 50 |
-| `css` | CssResolver | 60 |
-| `xpath` | XPathResolver | 70 |
+| `role` + `name` | RoleResolver (get_by_role) | Pair together — both or neither |
+| `label` | LabelResolver (get_by_label) | |
+| `placeholder` | PlaceholderResolver | |
+| `text` | TextResolver (get_by_text) | |
+| `id` | IdResolver | Omit volatile ids (8+ hex chars or `^[a-z]+-[a-f0-9]{4,}$`) |
+| `css` | CssResolver | Primary CSS selector |
+| `xpath` | XPathResolver | Last resort |
+| `css_fallbacks` | Driver fallback only | Additional CSS tried after `css` fails, in order |
+| `description` | Embedding + logs | Plain-English label — always set this |
 
-Always set explicit `"priority"` values — lower = tried first.
+The resolver cascade tries strategies in the order above. `to_cfg()` converts the instance to the dict the resolver expects.
 
-### SharedBasePage helper methods
+### SharedBasePage interaction API
 
-`poms/shared/base_page.py` provides all resolver-aware helpers. Every site BasePage inherits from it.
+`poms/shared/base_page.py` provides the canonical interaction method:
 
 ```
 SharedBasePage
-    ├── _ordered_cfgs(cfgs)              → sorted by priority
-    ├── _resolve_and_fill(cfg, value)    → single cfg → fill
-    ├── _resolve_and_click(cfg)          → single cfg → click
-    ├── _resolve_and_fill_any(cfgs, v)   → try list in priority order → fill first match
-    └── _resolve_and_click_any(cfgs)     → try list in priority order → click first match
+    └── _interact(locator: Locator, action: str, **kwargs) → bool
+          action="fill"  → kwargs must contain value=str
+          action="click" → kwargs may contain js_click=bool
 ```
 
-Use `_resolve_and_fill_any` / `_resolve_and_click_any` for interactive elements — never call driver directly with a raw CSS string for clicks/fills.
+With `resolver` injected → full 10-stage cascade via `ElementResolver`.
+Without `resolver` → driver CSS fallback via `locator.css_candidates()` in order.
+
+Use `_interact()` for all interactive elements — never call the driver directly with a raw CSS string for clicks/fills.
 
 ### Two operating modes
 
 | Mode | resolver= at construction | Behaviour |
 |---|---|---|
-| driver-only | `None` | CSS/id extracted from cfg dict, called via driver |
+| driver-only | `None` | `Locator.css_candidates()` tried in order via driver |
 | resolver-enhanced | `ElementResolver` instance | Full 10-stage cascade; falls back to driver on low confidence |
 
 ### What POMs must NOT do
@@ -76,3 +85,4 @@ Use `_resolve_and_fill_any` / `_resolve_and_click_any` for interactive elements 
 - No credentials or environment values hardcoded
 - No imports from `stepper/sites/` (glue layer) — dependency direction is one-way
 - No test assertions — POMs return data, tests assert on it
+- No raw CSS/XPath strings passed to `_interact()` — always wrap in `Locator`

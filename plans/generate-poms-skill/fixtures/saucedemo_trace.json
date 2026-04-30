@@ -1,0 +1,80 @@
+{
+  "url": "https://www.saucedemo.com",
+  "flow": "login_and_add_to_cart",
+  "started_at": "2026-04-30T10:00:00Z",
+  "complete": true,
+  "pages": [
+    {
+      "slug": "login",
+      "url": "https://www.saucedemo.com/",
+      "title": "Swag Labs — Login",
+      "elements": [
+        {
+          "role": "textbox",
+          "name": "Username",
+          "label": "Username",
+          "placeholder": "Username",
+          "id": "user-name",
+          "css": "#user-name",
+          "action": "fill",
+          "value": "${env.SD_USER}"
+        },
+        {
+          "role": "textbox",
+          "name": "Password",
+          "label": "Password",
+          "placeholder": "Password",
+          "id": "password",
+          "css": "#password",
+          "action": "fill",
+          "value": "${env.SD_PASS}"
+        },
+        {
+          "role": "button",
+          "name": "Login",
+          "id": "login-button",
+          "css": "#login-button",
+          "action": "click"
+        }
+      ],
+      "sections": [
+        {
+          "landmark": "main",
+          "description": "Login form with username and password fields and a Login button"
+        }
+      ]
+    },
+    {
+      "slug": "inventory",
+      "url": "https://www.saucedemo.com/inventory.html",
+      "title": "Swag Labs — Inventory",
+      "elements": [
+        {
+          "role": "combobox",
+          "name": "product-sort-container",
+          "id": "product-sort-container",
+          "css": ".product_sort_container"
+        },
+        {
+          "role": "button",
+          "name": "Add to cart",
+          "id": "add-to-cart-sauce-labs-backpack",
+          "css": "[data-test='add-to-cart-sauce-labs-backpack']",
+          "action": "click"
+        },
+        {
+          "role": "link",
+          "name": "shopping cart",
+          "css": ".shopping_cart_link",
+          "action": "click"
+        }
+      ],
+      "sections": [
+        {
+          "landmark": "main",
+          "description": "Product inventory grid with sort dropdown and Add to cart buttons"
+        }
+      ]
+    }
+  ]
+}
