@@ -242,3 +242,141 @@ Read the tool result. If it contains `VIOLATION:` or `ERROR:`:
 - Any other violation → apply the minimal fix described in the message
 - Re-Edit the file before writing the next POM
 - If the hook output appears to be a false positive (same code passes on second attempt), log a one-line justification and continue
+
+---
+
+## Glue Generation
+
+For each logical cluster of related actions derived from the trace (e.g. login, search, navigate, checkout), generate one glue file.
+
+### Naming
+
+- File: `stepper/sites/<site>/pages/<action_group>.py` (e.g. `login_action.py`, `search_action.py`)
+- Outer class: `<Site><Page>Page(PageModule)` — e.g. `GenSdLoginPage`
+- site attribute: `site = "<site>"`
+- Inner action class: `<Site><Action>(GlueAction)` — e.g. `GenSdLoginAction`
+- `action_name`: `"<site>_<action>"` — e.g. `"gen_sd_login"`
+
+### Canonical glue file shape
+
+Reference `stepper/sites/saucedemo/pages/login_action.py` as the canonical pattern. Every generated glue file must follow this exact structure:
+
+```python
+"""sites/<site>/pages/<action_group>.py — Stepper glue for <Site> <action>."""
+from __future__ import annotations
+import logging
+
+from engine.interfaces import StepConfig, StepResult, ExecutionContext
+from engine.pages.base_page_module import PageModule
+from engine.pages.glue_action import GlueAction
+
+logger = logging.getLogger(__name__)
+
+
+class <Site><Page>Page(PageModule):
+    site = "<site>"
+
+    class <Site><Action>Action(GlueAction):
+        action_name = "<site>_<action>"
+
+        async def _execute(
+            self, page, step: StepConfig,
+            resolver, context: ExecutionContext, behaviour=None,
+        ) -> StepResult:
+            try:
+                from poms.<site>.config import load_settings
+                from poms.<site>.pages.<slug>_page import <PageClass>
+
+                settings = load_settings()
+                driver   = self._driver(page)
+                pom      = self._build_pom(<PageClass>, driver, settings.base_url,
+                                           page=page, resolver=resolver,
+                                           behaviour=behaviour)
+
+                # call POM methods in logical order
+                # e.g. await pom.fill_username(step.extra.get("username") or settings.username)
+
+                return StepResult(step=step, status="passed")
+
+            except Exception as e:
+                logger.error("<site>_<action> failed: %s", e)
+                return StepResult(step=step, status="failed", error=str(e))
+
+    @classmethod
+    def register(cls, registry) -> None:
+        action = cls.<Site><Action>Action()
+        registry.register(action)
+        logger.debug("Registered action: %s", action.action_name)
+```
+
+### Resolver injection contract (mandatory)
+
+Every `_build_pom` call **must** include `page=page, resolver=resolver`. Missing either disables the entire resolution cascade. This is the most commonly broken pattern — verify every generated glue file before moving on.
+
+```python
+# CORRECT
+pom = self._build_pom(LoginPage, driver, settings.base_url,
+                      page=page, resolver=resolver, behaviour=behaviour)
+
+# WRONG — never do this
+pom = self._build_pom(LoginPage, driver, settings.base_url)
+```
+
+### What glue files must NOT do
+
+- No `page.locator()`, `page.get_by_role()`, `page.get_by_label()`, or any raw Playwright selector calls
+- No CSS / XPath strings hardcoded in glue — all selectors live in POM Locators cfg lists
+- No imports from other `stepper/sites/` directories
+- No flow control beyond what is needed for a single atomic action
+
+### After each glue Write
+
+Read the tool result. If it contains `VIOLATION:` or `ERROR:`:
+- `"missing resolver injection"` → add `page=page, resolver=resolver` to the `_build_pom` call
+- `"raw page.locator in glue"` → move the selector into the POM's Locators class as a cfg list entry, expose a method, call that method from glue
+- `"wrong import direction"` → remove the import from `stepper/sites/`; glue imports from `poms/` only
+- Re-Edit the file to fix the violation before writing the next file
+
+---
+
+## Workflow Generation
+
+After all POM and glue files are written, generate one workflow JSON file.
+
+### File location
+
+`stepper/sites/<site>/workflows/<flow_name>.json`
+
+- `flow_name`: use the `flow` field from `trace.json` if present; otherwise default to `<site>_smoke_test`
+
+### JSON schema
+
+Reference `stepper/sites/saucedemo/workflows/sd_smoke_test.json` as the canonical shape:
+
+```json
+{
+  "name": "<Site> — <flow description>",
+  "description": "<one sentence describing the workflow>",
+  "continue_on_failure": true,
+  "steps": [
+    {
+      "action": "<site>_<action>",
+      "description": "<human-readable description of this step>"
+    }
+  ]
+}
+```
+
+### Rules
+
+- One step per generated `GlueAction`, in the same order they appear in the trace
+- `action` value must exactly match the `action_name` defined in the corresponding glue file
+- **No CSS selectors, XPath expressions, or locator strings anywhere in the JSON**
+- `description` must be a plain English sentence — not a selector, not a variable
+- `continue_on_failure` at the top level: set to `true` to allow smoke-test style runs
+- Per-step `continue_on_failure: false` on the first action if it is a required precondition (e.g. login)
+- Do NOT include `variables`, `extra`, or other optional fields unless the trace explicitly provides values for them
+
+### After writing the workflow JSON
+
+Verify that no step contains `css`, `xpath`, `selector`, or `locator` keys. If any are found, remove them — they do not belong in workflow JSON.
