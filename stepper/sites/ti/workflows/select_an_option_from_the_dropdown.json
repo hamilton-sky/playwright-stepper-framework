@@ -1,0 +1,11 @@
+{
+  "name": "The Internet — select an option from the dropdown",
+  "description": "Navigate to the dropdown page and select Option 1.",
+  "continue_on_failure": true,
+  "steps": [
+    {
+      "action": "ti_select_dropdown",
+      "description": "Navigate to /dropdown and select Option 1 from the dropdown list"
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "name": "The Internet — check and uncheck checkboxes",
+  "description": "Navigate to the checkboxes page and toggle both checkboxes.",
+  "continue_on_failure": true,
+  "steps": [
+    {
+      "action": "ti_toggle_checkboxes",
+      "description": "Navigate to /checkboxes and click both checkboxes to toggle their state"
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "name": "The Internet — log in and log out from secure area",
+  "description": "Log in with valid credentials then log out from the secure area.",
+  "continue_on_failure": true,
+  "steps": [
+    {
+      "action": "ti_login",
+      "description": "Navigate to /login and submit credentials",
+      "continue_on_failure": false
+    },
+    {
+      "action": "ti_logout",
+      "description": "Click the logout link on the secure area page"
+    }
+  ]
+}
