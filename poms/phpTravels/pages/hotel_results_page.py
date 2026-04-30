@@ -15,6 +15,7 @@ import logging
 from dataclasses import dataclass
 
 from poms.phpTravels.pages.base_page import BasePage
+from poms.shared.locator import Locator
 
 logger = logging.getLogger(__name__)
 
@@ -37,10 +38,19 @@ class HotelResultsPage(BasePage):
         HOTEL_NAME      = "h4.card-title a, h3.card-title a"
         HOTEL_PRICE     = ".price strong, .amount"
         HOTEL_STARS     = ".fa-star"          # count visible star icons
-        HOTEL_BOOK_BTN  = "a.btn-primary, a[href*='hotel/']"
+        HOTEL_BOOK_BTN = Locator(
+            role="link",
+            css="a.btn-primary",
+            css_fallbacks=["a[href*='hotel/']"],
+            description="hotel book/detail link",
+        )
 
         # ── Pagination ────────────────────────────────────────────────────────
-        NEXT_PAGE       = "a[rel='next'], .pagination .next a"
+        NEXT_PAGE = Locator(
+            css="a[rel='next']",
+            css_fallbacks=[".pagination .next a"],
+            description="pagination next link",
+        )
 
         # ── Filter sidebar ────────────────────────────────────────────────────
         FILTER_STARS    = ".star-filter input[type='checkbox']"
@@ -71,7 +81,11 @@ class HotelResultsPage(BasePage):
             name_el  = await card.query_selector(self.Locators.HOTEL_NAME)
             price_el = await card.query_selector(self.Locators.HOTEL_PRICE)
             star_els = await card.query_selector_all(self.Locators.HOTEL_STARS)
-            link_el  = await card.query_selector(self.Locators.HOTEL_BOOK_BTN)
+            link_el = None
+            for css in self.Locators.HOTEL_BOOK_BTN.css_candidates():
+                link_el = await card.query_selector(css)
+                if link_el:
+                    break
 
             name = (await name_el.inner_text()).strip() if name_el else ""
 
@@ -135,9 +149,8 @@ class HotelResultsPage(BasePage):
             return None
         name_el = await cards[0].query_selector(self.Locators.HOTEL_NAME)
         name = (await name_el.inner_text()).strip() if name_el else ""
-        link_el = await cards[0].query_selector(self.Locators.HOTEL_BOOK_BTN)
-        if link_el:
-            await link_el.click()
+        clicked = await self._interact(self.Locators.HOTEL_BOOK_BTN, "click")
+        if clicked:
             await self._driver.wait_for_load_state("domcontentloaded")
             logger.info("Clicked first hotel: %s", name)
         return name
@@ -147,12 +160,7 @@ class HotelResultsPage(BasePage):
         Click the pagination next link.
         Returns True if the link existed and was clicked, False if last page.
         """
-        try:
-            el = await self._driver.query_selector(self.Locators.NEXT_PAGE)
-            if el:
-                await el.click()
-                await self._driver.wait_for_load_state("domcontentloaded")
-                return True
-        except Exception:
-            pass
-        return False
+        clicked = await self._interact(self.Locators.NEXT_PAGE, "click")
+        if clicked:
+            await self._driver.wait_for_load_state("domcontentloaded")
+        return clicked

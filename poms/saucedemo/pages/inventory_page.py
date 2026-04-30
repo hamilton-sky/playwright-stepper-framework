@@ -31,22 +31,19 @@ class InventoryPage(BasePage):
         ITEM_NAME       = ".inventory_item_name"
         ITEM_PRICE      = ".inventory_item_price"
         ITEM_DESC       = ".inventory_item_desc"
-        ADD_TO_CART_BTN = "button[data-test^='add-to-cart']"
-        REMOVE_BTN      = "button[data-test^='remove']"
+        # ── Interactive (per-item — within-card, use css_candidates() in loops) ──
+        ADD_TO_CART = Locator(
+            role="button", name="Add to cart",
+            css="button[data-test^='add-to-cart']",
+            description="add to cart button (per-item)",
+        )
+        REMOVE_ITEM = Locator(
+            role="button", name="Remove",
+            css="button[data-test^='remove']",
+            description="remove item from cart button (per-item)",
+        )
 
-        # ── Interactive cfg lists (healing cascade) ───────────────────────────
-        ADD_TO_CART_CFG = [
-            {"role": "button", "name": "Add to cart", "priority": 10},
-            {"text": "Add to cart",                   "priority": 20},
-            {"css": "button[data-test^='add-to-cart']", "priority": 30},
-        ]
-        REMOVE_CFG = [
-            {"role": "button", "name": "Remove",      "priority": 10},
-            {"text": "Remove",                         "priority": 20},
-            {"css": "button[data-test^='remove']",     "priority": 30},
-        ]
-
-        # ── Interactive ───────────────────────────────────────────────────────
+        # ── Interactive (page-level) ──────────────────────────────────────────
         SORT_DROPDOWN = Locator(
             css="[data-test='product-sort-container']",
             css_fallbacks=["select.product_sort_container"],
@@ -145,19 +142,12 @@ class InventoryPage(BasePage):
             name_el   = item_root.locator(self.Locators.ITEM_NAME)
             if (await name_el.inner_text()).strip() != product_name:
                 continue
-            for cfg in self._ordered_cfgs(self.Locators.ADD_TO_CART_CFG):
+            for css in self.Locators.ADD_TO_CART.css_candidates():
                 try:
-                    if "role" in cfg:
-                        btn = item_root.get_by_role(cfg["role"], name=cfg.get("name", ""))
-                    elif "text" in cfg:
-                        btn = item_root.get_by_text(cfg["text"], exact=True)
-                    elif "css" in cfg:
-                        btn = item_root.locator(cfg["css"])
-                    else:
-                        continue
+                    btn = item_root.locator(css)
                     if await btn.count() > 0:
                         await btn.first.click()
-                        logger.info("Added to cart: %s (via %s)", product_name, next(iter(cfg)))
+                        logger.info("Added to cart: %s (via %s)", product_name, css)
                         return True
                 except Exception:
                     continue
@@ -171,11 +161,12 @@ class InventoryPage(BasePage):
             if not name_el:
                 continue
             if (await name_el.inner_text()).strip() == product_name:
-                btn = await item.query_selector(self.Locators.REMOVE_BTN)
-                if btn:
-                    await btn.click()
-                    logger.info("Removed from cart: %s", product_name)
-                    return True
+                for css in self.Locators.REMOVE_ITEM.css_candidates():
+                    btn = await item.query_selector(css)
+                    if btn:
+                        await btn.click()
+                        logger.info("Removed from cart: %s", product_name)
+                        return True
         return False
 
     # ── Navigation ────────────────────────────────────────────────────────────

@@ -9,6 +9,7 @@ import logging
 from urllib.parse import urlparse
 
 from poms.openLibrary.pages.base_page import BasePage
+from poms.shared.locator import Locator
 
 logger = logging.getLogger(__name__)
 
@@ -22,9 +23,10 @@ class ReadingListPage(BasePage):
         # All selectors are read-only / existence checks — no resolver needed.
         BOOK_ITEM = "ul.list-books > li"
         BOOK_HREF = "a[href*='/works/'], a[href*='/books/']"
-        # Pagination: used as an existence check — element may legitimately
-        # not exist (single-page list). Direct query_selector, never resolver.
-        NEXT_PAGE = "a.ChoosePage[data-ol-link-track='Pager|Next']"
+        NEXT_PAGE = Locator(
+            css="a.ChoosePage[data-ol-link-track='Pager|Next']",
+            description="pagination next page link",
+        )
 
     @property
     def url(self) -> str:
@@ -54,10 +56,8 @@ class ReadingListPage(BasePage):
                     clean = urlparse(base + href)._replace(query="", fragment="").geturl()
                     book_urls.append(clean)
 
-            next_el = await self._driver.query_selector(self.Locators.NEXT_PAGE)
-            if not next_el:
+            if not await self._interact(self.Locators.NEXT_PAGE, "click"):
                 break
-            await next_el.click()
             await self._driver.wait_for_load_state("domcontentloaded")
             await self._sleep(self.delays.between_pagination_ms)
 
@@ -73,10 +73,8 @@ class ReadingListPage(BasePage):
             items = await self._driver.query_selector_all(self.Locators.BOOK_ITEM)
             total += len(items)
 
-            next_el = await self._driver.query_selector(self.Locators.NEXT_PAGE)
-            if not next_el:
+            if not await self._interact(self.Locators.NEXT_PAGE, "click"):
                 break
-            await next_el.click()
             await self._driver.wait_for_load_state("domcontentloaded")
             await self._sleep(self.delays.between_pagination_ms)
 
