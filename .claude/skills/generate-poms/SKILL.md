@@ -380,3 +380,44 @@ Reference `stepper/sites/saucedemo/workflows/sd_smoke_test.json` as the canonica
 ### After writing the workflow JSON
 
 Verify that no step contains `css`, `xpath`, `selector`, or `locator` keys. If any are found, remove them — they do not belong in workflow JSON.
+
+---
+
+## Hook Self-Correction
+
+After **every** Write or Edit tool call, read the tool result for `VIOLATION:` or `ERROR:` markers. If any are found, fix them immediately before writing the next file.
+
+### Common violations and fixes
+
+| Marker | Root cause | Fix |
+|--------|-----------|-----|
+| `VIOLATION: interactive locator not in cfg list` | A fill/click target is a plain CSS string, not a cfg list | Wrap as `[{"role": ..., "priority": 10}, {"css": ..., "priority": 50}]` — at minimum one entry with a `"priority"` key |
+| `VIOLATION: missing resolver injection` | `_build_pom` call is missing `page=page` and/or `resolver=resolver` | Add both keyword args: `self._build_pom(<POM>, driver, settings.base_url, page=page, resolver=resolver, behaviour=behaviour)` |
+| `VIOLATION: raw page.locator in glue` | Glue file calls `page.locator()`, `page.get_by_role()`, etc. directly | Move the selector into the POM's `Locators` class as a cfg list entry; expose an interaction method (`click_<name>` or `fill_<name>`); call that method from glue instead |
+| `VIOLATION: wrong import direction` | Glue or POM imports from `stepper/sites/` | Remove the import — glue imports from `poms/` only; POM never imports from `stepper/` |
+| `ERROR: pyright type error` | Wrong type for `StepResult`, `StepConfig`, or `ExecutionContext` | Import exactly from `engine.interfaces`: `from engine.interfaces import StepConfig, StepResult, ExecutionContext` and use those types |
+
+### Self-correction loop
+
+1. Read the full tool result after each Write/Edit.
+2. If it contains `VIOLATION:` or `ERROR:`, apply the minimal fix described in the table above.
+3. Re-Edit the file to address the violation.
+4. Read the result again — if the violation is gone, continue to the next file.
+5. **False positive escape:** if the same code triggers the same `VIOLATION:` marker on a second attempt and you are confident the code is correct, log a one-line justification comment in the file and continue:
+   ```python
+   # hook-override: cfg list present, hook may have matched wrong line
+   ```
+
+---
+
+## Error Handling
+
+Apply the following checks in order at the very start of execution, before generating any files.
+
+| Condition | Action |
+|-----------|--------|
+| `.stepper/trace.json` (or `--input` path) does not exist | Stop immediately: `Error: trace file not found — run /discover-site first` |
+| `--site` argument is missing or empty | Stop immediately: `Error: specify --site short_code (e.g. --site sd)` |
+| `poms/<site>/` or `stepper/sites/<site>/` already exists and `--force` is not set | Stop immediately: `Error: site already exists:\n  poms/<site>/\n  stepper/sites/<site>/\nPass --force to overwrite.` |
+| `trace.pages` is an empty list or the key is absent | Stop immediately: `Error: trace is empty — no pages to generate from` |
+| An individual element record has no selector key at all (no `role`, `label`, `placeholder`, `id`, `css`, `xpath`) | Write a comment placeholder in the cfg list and continue (do not crash): `# TODO: trace lacked all selectors for this element` followed by `<IDENTIFIER>_CFG: list = []` |
