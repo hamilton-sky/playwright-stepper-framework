@@ -7,6 +7,7 @@ def register(registry, screenshots_dir=None) -> None:
     from sites.ti.pages.windows_action import TiWindowsPage
     from sites.ti.pages.js_alerts_action import TiJsAlertsPage
     from sites.ti.pages.hovers_action import TiHoversPage
+    from sites.ti.pages.drag_and_drop_action import TiDragAndDropPage
 
     TiLoginPage.register(registry)
     TiSecurePage.register(registry)
@@ -16,3 +17,4 @@ def register(registry, screenshots_dir=None) -> None:
     TiWindowsPage.register(registry)
     TiJsAlertsPage.register(registry)
     TiHoversPage.register(registry)
+    TiDragAndDropPage.register(registry)

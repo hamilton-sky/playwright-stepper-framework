@@ -1,0 +1,11 @@
+{
+  "name": "The Internet — drag and drop columns",
+  "description": "Navigate to the drag and drop page and drag column A onto column B.",
+  "continue_on_failure": true,
+  "steps": [
+    {
+      "action": "ti_drag_and_drop",
+      "description": "Navigate to /drag_and_drop and drag column A onto column B"
+    }
+  ]
+}
