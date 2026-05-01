@@ -5,29 +5,42 @@ argument-hint: "[feature-name, e.g., add-saucedemo-checkout, new-resolver-strate
 model: opus
 ---
 
+## Skill Contract
+
+**Consumes (optional):** `plans/STORM_SEED.md` — if it exists, use it as pre-filled answers for Step 1 interview
+**Produces:** `plans/$ARGUMENTS/` — 8 plan files (USER_STORIES, IMPL_PLAN, PROGRESS, CONVERSATION_PROMPTS, HAPPY_FLOW, EDGE_CASES, ARCHITECTURE_PROPOSAL, FLOW_DIAGRAM)
+**Consumed by:** `next-phase` skill reads `plans/$ARGUMENTS/CONVERSATION_PROMPTS.md` and `PROGRESS.md`
+
 Plan the **$ARGUMENTS** feature by creating a complete plans folder.
 
 ## Step 1: Understand the feature
 
+First, check if `plans/STORM_SEED.md` exists.
+
+**If `plans/STORM_SEED.md` exists:**
+- Read it
+- Pre-fill the interview answers from the seed (Decisions Made → architecture decisions, Constraints → scope limits, Open Questions → remaining unknowns)
+- Present the pre-filled answers to the user and ask them to confirm or adjust — do NOT ask them to answer from scratch
+- Delete `plans/STORM_SEED.md` after consuming it so it does not pollute the next plan
+
+**If `plans/STORM_SEED.md` does not exist:**
 Interview the user about the feature. Ask about:
 
 - **What**: What does this feature do? What problem does it solve?
-- **Layer scope**: POM only? Glue + POM? New site (all three layers)? Engine change?
-- **Site**: Which site does it apply to (openlibrary / saucedemo / phptravels / new)?
-- **Dependencies**: Does it depend on other features or unreleased actions?
+- **Layer scope**: What layers of the project does it touch?
+- **Dependencies**: Does it depend on other features or unreleased work?
 - **Complexity estimate**: Small (1-2 conversations), Medium (3-4), Large (5+)?
 
 If the user already provided a detailed description, skip to Step 2.
 
 ## Step 2: Research the codebase
 
-Before writing any plans, explore the codebase to understand:
+Before writing any plans, explore the codebase to understand the project's architecture and conventions:
 
-1. **Three-layer contract**: Read `.claude/rules/three-layer-contract.md` — know what belongs in POM vs. Glue vs. Flow
-2. **Existing patterns**: Find similar sites/actions and how they were implemented (e.g., `stepper/sites/saucedemo/` for a new site)
-3. **Key files**: Identify which files need to be created or modified across all three layers
-4. **Resolver rules**: Check `.claude/rules/resolver-cascade.md` for cfg list conventions
-5. **Test patterns**: Check `exam/` for existing test conventions if tests are in scope
+1. **Read CLAUDE.md** and any rules files it references — understand the project's layer structure, dependency direction, and naming conventions
+2. **Existing patterns**: Find similar components and how they were implemented — use them as the reference for new code
+3. **Key files**: Identify which files need to be created or modified
+4. **Test patterns**: Check the test directory for existing test conventions if tests are in scope
 
 ## Step 3: Create the plans folder
 
@@ -403,8 +416,9 @@ Files:
 - CONVERSATION_PROMPTS.md — N conversation prompts ready to paste (max 4)
 - HAPPY_FLOW.md — Ideal automation journey
 - EDGE_CASES.md — N edge cases documented
-- ARCHITECTURE_PROPOSAL.md — Three-layer design decisions
-- FLOW_DIAGRAM.md — ASCII flow diagram (happy path + resolver fallback)
+- ARCHITECTURE_PROPOSAL.md — Design decisions
+- FLOW_DIAGRAM.md — ASCII flow diagram (happy path + fallback)
 
-To start implementing, open CONVERSATION_PROMPTS.md and paste Conversation 1.
+Seed consumed: [yes — plans/STORM_SEED.md was read and deleted / no — no seed file found]
+Next: /next-phase $ARGUMENTS
 ```
