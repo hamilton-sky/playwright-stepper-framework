@@ -42,3 +42,4 @@ storage_state.json
 # discover-site skill output
 .stepper/
 .playwright-mcp/
+.claude/settings.local.json
