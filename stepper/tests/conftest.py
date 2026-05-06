@@ -19,6 +19,46 @@ from bootstrap.settings import load_env
 load_env()   # load .env before any fixture reads os.environ
 
 
+def _ensure_allure_results_dir(config) -> None:
+    """Allure's pytest plugin writes during teardown; keep its target present."""
+    try:
+        allure_dir = config.getoption("--alluredir")
+    except Exception:
+        allure_dir = None
+
+    if not allure_dir:
+        return
+
+    path = Path(allure_dir)
+    if not path.is_absolute():
+        path = Path(str(config.rootpath)) / path
+    path.mkdir(parents=True, exist_ok=True)
+
+
+def pytest_configure(config):
+    _ensure_allure_results_dir(config)
+
+
+def pytest_sessionstart(session):
+    _ensure_allure_results_dir(session.config)
+
+
+def pytest_runtest_setup(item):
+    _ensure_allure_results_dir(item.config)
+
+
+def pytest_runtest_teardown(item, nextitem):
+    _ensure_allure_results_dir(item.config)
+
+
+def pytest_fixture_post_finalizer(fixturedef, request):
+    _ensure_allure_results_dir(request.config)
+
+
+def pytest_sessionfinish(session, exitstatus):
+    _ensure_allure_results_dir(session.config)
+
+
 def pytest_addoption(parser):
     try:
         parser.addoption("--headed", action="store_true", default=False,

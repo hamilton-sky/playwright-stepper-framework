@@ -12,12 +12,25 @@ Pattern: Adapter
 
 from __future__ import annotations
 
+import asyncio
+import logging
 from pathlib import Path
 from typing import Any
 
 from playwright.async_api import Page, ElementHandle
 
 from poms.shared.interfaces import IBrowserDriver, IBrowserLauncher, IElementHandle
+
+logger = logging.getLogger(__name__)
+
+_TRANSIENT_GOTO_ERRORS = (
+    "ERR_EMPTY_RESPONSE",
+    "ERR_CONNECTION_RESET",
+    "ERR_CONNECTION_CLOSED",
+    "ERR_TIMED_OUT",
+    "Timeout",
+    "TimeoutError",
+)
 
 
 class PlaywrightElementHandle(IElementHandle):
@@ -62,7 +75,31 @@ class PlaywrightDriver(IBrowserDriver):
     async def goto(self, url: str, *,
                    wait_until: str = "domcontentloaded",
                    timeout: int = 30_000) -> None:
-        await self._page.goto(url, wait_until=wait_until, timeout=timeout)
+        attempts = 3
+        last_error: Exception | None = None
+        for attempt in range(1, attempts + 1):
+            try:
+                await self._page.goto(url, wait_until=wait_until, timeout=timeout)
+                return
+            except Exception as exc:
+                last_error = exc
+                message = str(exc)
+                transient = any(token in message for token in _TRANSIENT_GOTO_ERRORS)
+                if not transient or attempt == attempts:
+                    raise
+                delay_s = 1.5 * attempt
+                logger.warning(
+                    "Navigation to %s failed on attempt %d/%d (%s); retrying in %.1fs",
+                    url,
+                    attempt,
+                    attempts,
+                    message.splitlines()[0],
+                    delay_s,
+                )
+                await asyncio.sleep(delay_s)
+
+        if last_error is not None:
+            raise last_error
 
     async def fill(self, selector: str, value: str, *, timeout: int = 15_000) -> None:
         await self._page.fill(selector, value, timeout=timeout)

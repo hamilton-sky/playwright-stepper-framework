@@ -11,18 +11,21 @@
   "steps": [
     {
       "action": "ol_ensure_login",
-      "description": "Ensure user is logged in"
+      "description": "Ensure user is logged in",
+      "continue_on_failure": false
     },
     { "action": "screenshot",
       "description": "Capture logged-in state"
     },
     {
       "action": "ol_clear_reading_list",
-      "description": "Remove all books from want-to-read shelf"
+      "description": "Remove all books from want-to-read shelf",
+      "continue_on_failure": false
     },
     {
       "action": "ol_store_count",
       "description": "Store reading list count (should be 0 after clear)",
+      "continue_on_failure": false,
       "extra": { "context_key": "count_before" }
     },
     {
@@ -41,6 +44,7 @@
     {
       "action": "ol_assert_count",
       "description": "Assert reading list count increased by {{limit}}",
+      "continue_on_failure": false,
       "extra": { "delta": "{{limit}}" }
     }
   ]

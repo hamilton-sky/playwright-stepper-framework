@@ -138,7 +138,7 @@ class AllureReporter(ReporterStrategy):
 
     def __init__(self, output_dir: str = "allure-results"):
         self._dir = Path(output_dir)
-        self._dir.mkdir(exist_ok=True)
+        self._dir.mkdir(parents=True, exist_ok=True)
         self._suite  = ""
         self._start_ms = 0
         self._results: list[StepResult] = []
@@ -216,6 +216,7 @@ class AllureReporter(ReporterStrategy):
         }
 
         out_file = self._dir / f"{container['uuid']}-result.json"
+        self._dir.mkdir(parents=True, exist_ok=True)
         out_file.write_text(json.dumps(container, indent=2), encoding="utf-8")
         logger.info(f"Allure result written: {out_file}")
         return str(out_file)
