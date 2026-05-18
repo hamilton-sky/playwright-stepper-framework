@@ -7,6 +7,7 @@ Responsibility: orchestrate the search page flow.
 from __future__ import annotations
 import asyncio
 import logging
+import re
 from urllib.parse import quote_plus
 
 from poms.openLibrary.pages.base_page import BasePage
@@ -17,6 +18,8 @@ logger = logging.getLogger(__name__)
 
 
 class BookSearchPage(BasePage):
+
+    _QUERY_STOPWORDS = {"a", "an", "and", "by", "for", "in", "of", "or", "the", "to"}
 
     class Locators:
         # ── Read-only — one element, multiple CSS fallbacks ───────────────────
@@ -36,6 +39,15 @@ class BookSearchPage(BasePage):
                 "[class*='published']",
             ],
             description="publication year text",
+        )
+        RESULT_TITLE_LINK = Locator(
+            css="h3.booktitle a[href*='/works/']",
+            css_fallbacks=[
+                "h3 a[href*='/works/']",
+                "a[href*='/works/']",
+                "a[href*='/books/']",
+            ],
+            description="search result title link",
         )
 
         # ── Interactive (reserved for form-based search) ──────────────────────
@@ -206,13 +218,48 @@ class BookSearchPage(BasePage):
                 continue
 
             try:
-                href = await item.locator("a").first.get_attribute("href")
+                title, href = await self._extract_title_and_href(item)
                 if href:
+                    if not self._matches_query(self._query, title, href):
+                        logger.info("  [%d/%d] skipped - %r does not match query %r",
+                                    i + 1, count, title or href, self._query)
+                        continue
                     full_url = self.base_url.rstrip("/") + href
                     year_int = year[0] if isinstance(year, list) and year else year
-                    urls.append({"url": full_url, "year": year_int})
-                    logger.info("  [%d/%d] accepted — year %s — %s", i + 1, count, year_int, full_url)
+                    urls.append({"url": full_url, "year": year_int, "title": title})
+                    logger.info("  [%d/%d] accepted - %r - year %s - %s",
+                                i + 1, count, title, year_int, full_url)
             except Exception:
                 continue
 
         return urls
+
+    async def _extract_title_and_href(self, item) -> tuple[str, str | None]:
+        for css in self.Locators.RESULT_TITLE_LINK.css_candidates():
+            try:
+                links = item.locator(css)
+                for index in range(await links.count()):
+                    link = links.nth(index)
+                    href = await link.get_attribute("href")
+                    title = (await link.inner_text() or "").strip()
+                    if href:
+                        return title, href
+            except Exception:
+                continue
+        return "", await item.locator("a").first.get_attribute("href")
+
+    @classmethod
+    def _matches_query(cls, query: str, title: str, href: str) -> bool:
+        query_tokens = cls._tokens(query)
+        if not query_tokens:
+            return True
+        haystack_tokens = set(cls._tokens(f"{title} {href.replace('_', ' ')}"))
+        return all(token in haystack_tokens for token in query_tokens)
+
+    @classmethod
+    def _tokens(cls, value: str) -> list[str]:
+        return [
+            token
+            for token in re.findall(r"[a-z0-9]+", value.lower())
+            if token not in cls._QUERY_STOPWORDS
+        ]

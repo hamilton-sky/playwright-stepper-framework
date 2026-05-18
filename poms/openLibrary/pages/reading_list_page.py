@@ -56,7 +56,7 @@ class ReadingListPage(BasePage):
                     clean = urlparse(base + href)._replace(query="", fragment="").geturl()
                     book_urls.append(clean)
 
-            if not await self._interact(self.Locators.NEXT_PAGE, "click"):
+            if not await self._click_next_page_if_present():
                 break
             await self._driver.wait_for_load_state("domcontentloaded")
             await self._sleep(self.delays.between_pagination_ms)
@@ -73,9 +73,20 @@ class ReadingListPage(BasePage):
             items = await self._driver.query_selector_all(self.Locators.BOOK_ITEM)
             total += len(items)
 
-            if not await self._interact(self.Locators.NEXT_PAGE, "click"):
+            if not await self._click_next_page_if_present():
                 break
             await self._driver.wait_for_load_state("domcontentloaded")
             await self._sleep(self.delays.between_pagination_ms)
 
         return total
+
+    async def _click_next_page_if_present(self) -> bool:
+        """Return False quietly when the shelf has no next page."""
+        css = self.Locators.NEXT_PAGE.css
+        if css:
+            try:
+                if await self._driver.locator_count(css) == 0:
+                    return False
+            except Exception:
+                pass
+        return await self._interact(self.Locators.NEXT_PAGE, "click")
