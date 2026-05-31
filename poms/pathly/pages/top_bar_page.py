@@ -45,6 +45,10 @@ class TopBarPage(BasePage):
     def _sidebar_nav_settings(self):
         return self._page.locator('[data-testid="sidebar-nav-settings"]')
 
+    @property
+    def _sidebar_nav_monitor(self):
+        return self._page.locator('[data-testid="sidebar-nav-monitor"]')
+
     async def navigate_to_panel(self, panel: str) -> None:
         if panel not in ["flow", "monitor", "settings"]:
             raise ValueError(f"Invalid panel '{panel}'. Must be 'flow', 'monitor', or 'settings'.")

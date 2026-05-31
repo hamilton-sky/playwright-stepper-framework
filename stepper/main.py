@@ -110,6 +110,8 @@ async def run(
     shadow: bool = False,
     ci: bool = False,
     ci_output: str | None = None,
+    browser_type: str = "chromium",
+    cdp_port: int = 9222,
 ):
     # ── 1. Planner ───────────────────────────────────────────────────────────
     if workflow_path:
@@ -145,10 +147,16 @@ async def run(
     # ── 4. Run ───────────────────────────────────────────────────────────────
     _owns_browser = _browser is None
     _pw_instance  = None
+    _electron_context = None
 
     if _owns_browser:
-        _pw_instance = await async_playwright().start()
-        browser = await launch_browser(_pw_instance, s.browser, headless, s.slow_mo)
+        if browser_type == "electron":
+            from engine.browser.electron_launcher import launch_electron_cdp
+            _electron_context = await launch_electron_cdp(port=cdp_port)
+            browser = None
+        else:
+            _pw_instance = await async_playwright().start()
+            browser = await launch_browser(_pw_instance, s.browser, headless, s.slow_mo)
     else:
         browser = _browser
 
@@ -193,7 +201,10 @@ async def run(
             context_kwargs["record_video_size"] = {"width": 1280, "height": 800}
             logger.info(f"Recording video → {videos_dir}")
 
-        context = await browser.new_context(**context_kwargs)
+        if _electron_context is not None:
+            context = _electron_context
+        else:
+            context = await browser.new_context(**context_kwargs)
         page    = await context.new_page()
         await page.add_init_script(
             "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
@@ -262,10 +273,11 @@ async def run(
         elif s.storage_state_path:
             logger.debug("Skipping storage_state write — no login action ran")
 
-        await context.close()
+        if _electron_context is None:
+            await context.close()
 
     finally:
-        if _owns_browser:
+        if _owns_browser and browser is not None:
             await browser.close()
             if _pw_instance:
                 await _pw_instance.stop()
@@ -448,6 +460,8 @@ def main():
         shadow=args.shadow,
         ci=args.ci,
         ci_output=args.ci_output,
+        browser_type=args.browser,
+        cdp_port=args.cdp_port,
     ))
 
 

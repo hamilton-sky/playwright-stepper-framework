@@ -37,6 +37,10 @@ class SettingsPage(BasePage):
     def _routing_python(self):
         return self._page.locator('[data-testid="settings-routing-python"]')
 
+    async def get_routing_engine(self) -> str:
+        llm_text = await self._routing_llm.inner_text()
+        return "llm" if "●" in llm_text else "python-fsm"
+
     async def set_routing_engine(self, engine: str) -> None:
         if engine not in ["llm", "python", "python-fsm"]:
             raise ValueError(f"Invalid routing engine '{engine}'. Must be 'llm', 'python', or 'python-fsm'.")
