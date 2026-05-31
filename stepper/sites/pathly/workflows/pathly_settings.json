@@ -1,0 +1,9 @@
+{
+  "name": "pathly-settings-check",
+  "description": "Navigate to Settings panel and screenshot current state. Read-only — does not mutate developer config.",
+  "variables": {},
+  "steps": [
+    { "action": "pathly_navigate_panel", "description": "Navigate to settings panel", "extra": { "panel": "settings" } },
+    { "action": "screenshot", "description": "Screenshot settings panel" }
+  ]
+}
