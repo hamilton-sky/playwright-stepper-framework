@@ -1,0 +1,17 @@
+{
+  "name": "pathly-wizard-smoke",
+  "description": "Smoke-test the FlowWizard end-to-end: open → template → name → navigate → save.",
+  "variables": { "flow_name": "test-automation-flow" },
+  "steps": [
+    { "action": "wait", "description": "Wait for Electron renderer", "extra": { "ms": 1000 } },
+    { "action": "pathly_open_wizard", "description": "Click '+' in User Flows sidebar section" },
+    { "action": "pathly_wizard_select_template", "description": "Select standard-pipeline template", "extra": { "template_id": "standard-pipeline" } },
+    { "action": "pathly_wizard_set_name", "description": "Enter flow name", "extra": { "name": "{{flow_name}}" } },
+    { "action": "pathly_wizard_next", "description": "Advance: step 1 → 2 (States)" },
+    { "action": "pathly_wizard_next", "description": "Advance: step 2 → 3 (Transitions)" },
+    { "action": "pathly_wizard_next", "description": "Advance: step 3 → 4 (Agents)" },
+    { "action": "pathly_wizard_next", "description": "Advance: step 4 → 5 (Review)" },
+    { "action": "pathly_wizard_save", "description": "Click Save Flow" },
+    { "action": "screenshot", "description": "Capture post-save state" }
+  ]
+}
