@@ -38,8 +38,8 @@ class SettingsPage(BasePage):
         return self._page.locator('[data-testid="settings-routing-python"]')
 
     async def set_routing_engine(self, engine: str) -> None:
-        if engine not in ["llm", "python"]:
-            raise ValueError(f"Invalid routing engine '{engine}'. Must be 'llm' or 'python'.")
+        if engine not in ["llm", "python", "python-fsm"]:
+            raise ValueError(f"Invalid routing engine '{engine}'. Must be 'llm', 'python', or 'python-fsm'.")
         if engine == "llm":
             await self._routing_llm.click()
         else:

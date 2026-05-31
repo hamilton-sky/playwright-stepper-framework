@@ -109,6 +109,12 @@ class StepperSession:
         PTHotelSearchPage.register(registry)
         PTHotelResultsPage.register(registry)
         PTHotelDetailPage.register(registry)
+        from sites.pathly.pages.home_screen_action import PathlyHomeScreen
+        from sites.pathly.pages.settings_action import PathlySettings
+        from sites.pathly.pages.top_bar_action import PathlyTopBar
+        PathlyHomeScreen.register(registry)
+        PathlySettings.register(registry)
+        PathlyTopBar.register(registry)
 
         self._reporter = CompositeReporter([
             ConsoleReporter(),
