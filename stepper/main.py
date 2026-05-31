@@ -406,6 +406,10 @@ def main():
                         help="Output structured JSON run summary to stdout (for CI/CD pipelines)")
     parser.add_argument("--ci-output",     metavar="FILE",
                         help="Write CI JSON summary to FILE in addition to stdout")
+    parser.add_argument("--browser",       choices=["chromium", "electron"], default="chromium",
+                        help="Browser type to use (default: chromium)")
+    parser.add_argument("--cdp-port",      type=int, default=9222,
+                        help="CDP port for Electron connection (default: 9222)")
     args = parser.parse_args()
 
     if args.apply_heals:

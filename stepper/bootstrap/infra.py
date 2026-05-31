@@ -20,7 +20,12 @@ def build_resolver(use_visual_ai: bool):
     )
 
 
-async def launch_browser(pw, cfg_browser: str, headless: bool, slow_mo: int):
+async def launch_browser(pw, cfg_browser: str, headless: bool, slow_mo: int,
+                         browser_type: str = "chromium", cdp_port: int | None = None):
+    if browser_type == "electron":
+        from engine.browser.electron_launcher import launch_electron_cdp
+        from sites.pathly.electron_config import DEFAULT_CDP_PORT
+        return await launch_electron_cdp(port=cdp_port or DEFAULT_CDP_PORT)
     launchers = {"chromium": pw.chromium, "firefox": pw.firefox, "webkit": pw.webkit}
     return await launchers.get(cfg_browser, pw.chromium).launch(
         headless=headless,

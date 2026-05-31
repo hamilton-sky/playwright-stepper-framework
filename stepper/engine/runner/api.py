@@ -51,15 +51,16 @@ class StepperSession:
       - storage_state.json loaded once, saved on exit
     """
 
-    def __init__(self, headless: bool = True):
-        self._headless = headless
-        self._pw       = None
-        self._browser  = None
-        self._ctx      = None
-        self._page     = None
-        self._runner   = None
-        self._reporter = None
-        self._settings = None
+    def __init__(self, headless: bool = True, electron_cdp_port: int = None):
+        self._headless          = headless
+        self._electron_cdp_port = electron_cdp_port
+        self._pw                = None
+        self._browser           = None
+        self._ctx               = None
+        self._page              = None
+        self._runner            = None
+        self._reporter          = None
+        self._settings          = None
 
     async def __aenter__(self) -> "StepperSession":
         from engine.browser.anti_detection import AntiDetection
@@ -115,20 +116,25 @@ class StepperSession:
             AllureReporter(str(_stepper_root / "reports" / "allure-results")),  # always on — like logs
         ])
 
-        self._pw      = await async_playwright().start()
-        self._browser = await self._pw.chromium.launch(
-            headless=self._headless,
-            slow_mo=self._settings.slow_mo_ms,
-            args=["--disable-blink-features=AutomationControlled"],
-        )
+        if self._electron_cdp_port is not None:
+            from engine.browser.electron_launcher import launch_electron_cdp
+            self._ctx  = await launch_electron_cdp(port=self._electron_cdp_port)
+            self._page = await self._ctx.new_page()
+        else:
+            self._pw      = await async_playwright().start()
+            self._browser = await self._pw.chromium.launch(
+                headless=self._headless,
+                slow_mo=self._settings.slow_mo_ms,
+                args=["--disable-blink-features=AutomationControlled"],
+            )
 
-        context_kwargs: dict = {"viewport": {"width": 1280, "height": 800}}
-        context_kwargs.update(AntiDetection.context_kwargs())
-        if self._settings.storage_state_path.exists():
-            context_kwargs["storage_state"] = str(self._settings.storage_state_path)
+            context_kwargs: dict = {"viewport": {"width": 1280, "height": 800}}
+            context_kwargs.update(AntiDetection.context_kwargs())
+            if self._settings.storage_state_path.exists():
+                context_kwargs["storage_state"] = str(self._settings.storage_state_path)
 
-        self._ctx  = await self._browser.new_context(**context_kwargs)
-        self._page = await self._ctx.new_page()
+            self._ctx  = await self._browser.new_context(**context_kwargs)
+            self._page = await self._ctx.new_page()
         await AntiDetection.apply_page_patches(self._page)
 
         self._runner = StepRunner(
