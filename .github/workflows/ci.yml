@@ -125,8 +125,11 @@ jobs:
         if: steps.creds.outputs.available == 'true'
         run: pytest stepper/tests/ --ignore=stepper/tests/unit -v --junitxml=reports/junit-integration.xml
 
+      # always() so the report still uploads when tests FAIL — that is when it is
+      # most wanted — but not when the suite was skipped, which produced a
+      # "No files were found" warning on every credential-less run.
       - name: Upload integration test results
-        if: always()
+        if: always() && steps.creds.outputs.available == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: junit-integration
