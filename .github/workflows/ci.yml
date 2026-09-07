@@ -83,7 +83,29 @@ jobs:
       - name: Download MiniLM model
         run: python stepper/download_models.py
 
+      # Reads the values from the job env rather than interpolating ${{ secrets.* }}
+      # into the shell, so nothing secret is ever expanded into a command line.
+      - name: Detect OpenLibrary credentials
+        id: creds
+        run: |
+          if [ -n "$OPENLIBRARY_USERNAME" ] && [ -n "$OPENLIBRARY_PASSWORD" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=OpenLibrary steps skipped::OPENLIBRARY_USERNAME / OPENLIBRARY_PASSWORD are not configured, so the OpenLibrary smoke workflow and integration tests did not run. Set them in Settings → Secrets and variables → Actions."
+            {
+              echo "### ⚠ OpenLibrary steps skipped"
+              echo
+              echo "\`OPENLIBRARY_USERNAME\` / \`OPENLIBRARY_PASSWORD\` are not configured for this repository,"
+              echo "so the OpenLibrary smoke workflow and the integration test suite were skipped."
+              echo "SauceDemo coverage still ran."
+              echo
+              echo "Set them in **Settings → Secrets and variables → Actions** to enable them."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Run smoke workflow (OpenLibrary)
+        if: steps.creds.outputs.available == 'true'
         run: >
           python stepper/main.py
           --workflow stepper/sites/openlibrary/workflows/ol_smoke_test.json
@@ -97,7 +119,10 @@ jobs:
           --ci
           --ci-output reports/ci-sd-smoke.json
 
+      # Every test under stepper/tests/ (excluding unit/) drives an OpenLibrary
+      # workflow, so the whole step depends on the credentials.
       - name: Run stepper integration tests
+        if: steps.creds.outputs.available == 'true'
         run: pytest stepper/tests/ --ignore=stepper/tests/unit -v --junitxml=reports/junit-integration.xml
 
       - name: Upload integration test results
