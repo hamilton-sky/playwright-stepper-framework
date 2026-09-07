@@ -15,6 +15,7 @@ or poms/saucedemo/config/config.yaml.
 from __future__ import annotations
 import logging
 
+from engine.browser.human_behaviour import HumanBehaviour
 from engine.interfaces import StepConfig, StepResult, ExecutionContext
 from engine.pages.base_page_module import PageModule
 from engine.pages.glue_action import GlueAction
@@ -45,7 +46,7 @@ class SDLoginPage(PageModule):
 
         async def _execute(
             self, page, step: StepConfig,
-            resolver, context: ExecutionContext, behaviour=None,
+            resolver, context: ExecutionContext, behaviour: HumanBehaviour | None = None,
         ) -> StepResult:
             try:
                 from poms.saucedemo.config import load_settings

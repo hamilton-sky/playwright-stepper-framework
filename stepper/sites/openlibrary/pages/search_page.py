@@ -44,7 +44,7 @@ class OLSearchPage(PageModule):
         async def _execute(
             self, page, step: StepConfig,
             resolver, context: ExecutionContext,
-            behaviour: HumanBehaviour
+            behaviour: HumanBehaviour | None = None,
         ) -> StepResult:
             try:
                 from poms.openLibrary.config import load_settings

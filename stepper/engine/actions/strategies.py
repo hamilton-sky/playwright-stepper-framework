@@ -47,7 +47,7 @@ class NavigateAction(ActionStrategy):
     action_name = "navigate"
 
     async def _execute(self, page, step: StepConfig, resolver,
-                       context: ExecutionContext) -> StepResult:
+                       context: ExecutionContext, behaviour=None) -> StepResult:
         url = step.input_value or step.url
         if not url.startswith("http"):
             url = f"https://{url}"
@@ -69,7 +69,7 @@ class ClickAction(ActionStrategy):
     action_name = "click"
 
     async def _execute(self, page, step: StepConfig, resolver,
-                       context: ExecutionContext) -> StepResult:
+                       context: ExecutionContext, behaviour=None) -> StepResult:
         _, err = _checked_input_value(step)
         if err:
             return err
@@ -115,7 +115,7 @@ class FillAction(ActionStrategy):
     action_name = "fill"
 
     async def _execute(self, page, step: StepConfig, resolver,
-                       context: ExecutionContext) -> StepResult:
+                       context: ExecutionContext, behaviour=None) -> StepResult:
         value, err = _checked_input_value(step)
         if err:
             return err
@@ -147,7 +147,7 @@ class HoverAction(ActionStrategy):
     read_only   = True
 
     async def _execute(self, page, step: StepConfig, resolver,
-                       context: ExecutionContext) -> StepResult:
+                       context: ExecutionContext, behaviour=None) -> StepResult:
         result = await resolver.resolve(page, step.element, step.description)
 
         if not result.found:
@@ -184,7 +184,7 @@ class SelectAction(ActionStrategy):
     action_name = "select"
 
     async def _execute(self, page, step: StepConfig, resolver,
-                       context: ExecutionContext) -> StepResult:
+                       context: ExecutionContext, behaviour=None) -> StepResult:
         result = await resolver.resolve(page, step.element, step.description)
 
         if not result.found:
@@ -225,7 +225,7 @@ class ScreenshotAction(ActionStrategy):
         self._screenshots_dir = screenshots_dir
 
     async def _execute(self, page, step: StepConfig, resolver,
-                       context: ExecutionContext) -> StepResult:
+                       context: ExecutionContext, behaviour=None) -> StepResult:
         label = (step.description or step.action).lower().replace(" ", "_")[:40]
         name = step.extra.get("filename") or f"screenshot_{label}.png"
         path = str(self._screenshots_dir / name)
@@ -239,7 +239,7 @@ class WaitAction(ActionStrategy):
     action_name = "wait"
 
     async def _execute(self, page, step: StepConfig, resolver,
-                       context: ExecutionContext) -> StepResult:
+                       context: ExecutionContext, behaviour=None) -> StepResult:
         target = step.wait_for or step.input_value
         if target:
             await _wait_for(page, target)
@@ -254,7 +254,7 @@ class ScrollToAction(ActionStrategy):
     read_only   = True
 
     async def _execute(self, page, step: StepConfig, resolver,
-                       context: ExecutionContext) -> StepResult:
+                       context: ExecutionContext, behaviour=None) -> StepResult:
         if not step.element:
             return StepResult(step=step, status="skipped",
                               error="scroll_to: no element specified")
@@ -276,7 +276,7 @@ class AssertCountAction(ActionStrategy):
     read_only   = True
 
     async def _execute(self, page, step: StepConfig, resolver,
-                       context: ExecutionContext) -> StepResult:
+                       context: ExecutionContext, behaviour=None) -> StepResult:
         selectors = step.extra.get("selectors", [])
         expected_from_context = step.extra.get("expected_from_context")
         delta = int(step.extra.get("delta", 0))
@@ -320,7 +320,7 @@ class StoreCountAction(ActionStrategy):
     read_only   = True
 
     async def _execute(self, page, step: StepConfig, resolver,
-                       context: ExecutionContext) -> StepResult:
+                       context: ExecutionContext, behaviour=None) -> StepResult:
         selectors = step.extra.get("selectors", [])
         context_key = step.extra.get("context_key", "count_before")
 
@@ -357,7 +357,7 @@ class ForEachItemAction(SubStepRunnerMixin, ActionStrategy):
         self._screenshots_dir = screenshots_dir
 
     async def _execute(self, page, step: StepConfig, resolver,
-                       context: ExecutionContext) -> StepResult:
+                       context: ExecutionContext, behaviour=None) -> StepResult:
         # Prefer typed context field; fall back to legacy page attribute
         items = (
             context.collected_items
@@ -391,6 +391,7 @@ class ForEachItemAction(SubStepRunnerMixin, ActionStrategy):
                     sub_steps_raw, page, resolver, context,
                     substitutions=subs,
                     stop_on_failure=False,
+                    behaviour=behaviour,
                 )
             except Exception as e:
                 logger.error(f"ForEach item {idx+1}: {e}")
@@ -417,7 +418,7 @@ class EnsureLoginAction(SubStepRunnerMixin, ActionStrategy):
         self._factory = action_factory
 
     async def _execute(self, page, step: StepConfig, resolver,
-                       context: ExecutionContext) -> StepResult:
+                       context: ExecutionContext, behaviour=None) -> StepResult:
         login_steps = step.extra.get("login_steps", [])
         check_url = step.extra.get("check_url")
         login_url_fragment = step.extra.get("login_url_fragment", "/account/login")
@@ -467,6 +468,7 @@ class EnsureLoginAction(SubStepRunnerMixin, ActionStrategy):
             results = await self._run_sub_steps(
                 login_steps, page, resolver, context,
                 stop_on_failure=True,
+                behaviour=behaviour,
             )
         except Exception as e:
             logger.error("ensure_login step failed: %s", e)
@@ -504,7 +506,7 @@ class MeasurePerformanceAction(ActionStrategy):
         self._default_output.parent.mkdir(parents=True, exist_ok=True)
 
     async def _execute(self, page, step: StepConfig, resolver,
-                       context: ExecutionContext) -> StepResult:
+                       context: ExecutionContext, behaviour=None) -> StepResult:
         url       = step.url or step.input_value
         threshold = step.extra.get("threshold_ms", 3000)
 
@@ -583,7 +585,7 @@ class VisualCompareAction(ActionStrategy):
         self._baselines_dir.mkdir(parents=True, exist_ok=True)
 
     async def _execute(self, page, step: StepConfig, resolver,
-                       context: ExecutionContext) -> StepResult:
+                       context: ExecutionContext, behaviour=None) -> StepResult:
         from PIL import Image, ImageChops, ImageEnhance
         import io
 
@@ -727,7 +729,7 @@ class ExtractDataAction(ActionStrategy):
     read_only   = True
 
     async def _execute(self, page, step: StepConfig, resolver,
-                       context: ExecutionContext) -> StepResult:
+                       context: ExecutionContext, behaviour=None) -> StepResult:
         try:
             selector = step.extra.get("selector")
             if not selector:
@@ -843,7 +845,7 @@ class PaginateAction(ActionStrategy):
         self._factory = action_factory
 
     async def _execute(self, page, step: StepConfig, resolver,
-                       context: ExecutionContext) -> StepResult:
+                       context: ExecutionContext, behaviour=None) -> StepResult:
         try:
             extract_config = step.extra.get("extract_config")
             if not extract_config or "selector" not in extract_config:
@@ -882,7 +884,7 @@ class PaginateAction(ActionStrategy):
                 
                 action = self._factory.create("extract_data")
                 extract_result = await action.execute(
-                    page, extract_step, resolver, context
+                    page, extract_step, resolver, context, behaviour
                 )
                 
                 if extract_result.status == "passed" and context.extracted_data:
@@ -961,7 +963,7 @@ class RunWorkflowAction(ActionStrategy):
         self._base_dir = base_dir or Path.cwd()
 
     async def _execute(self, page, step: StepConfig, resolver,
-                       context: ExecutionContext) -> StepResult:
+                       context: ExecutionContext, behaviour=None) -> StepResult:
         from engine.planner.planner import _substitute
 
         wf_path = (step.extra or {}).get("path") or (step.extra or {}).get("workflow")
@@ -1053,7 +1055,7 @@ class ParallelAction(ActionStrategy):
         self._launcher = browser_launcher
 
     async def _execute(self, page, step: StepConfig, resolver,
-                       context: ExecutionContext) -> StepResult:
+                       context: ExecutionContext, behaviour=None) -> StepResult:
         sub_steps_raw = step.extra.get("steps", [])
         mode          = step.extra.get("mode", "tabs")
 
@@ -1090,9 +1092,9 @@ class ParallelAction(ActionStrategy):
                         step=step, status="failed",
                         error="parallel isolated_browser mode requires a browser_launcher — none was injected",
                     )
-                results = await self._run_isolated_browsers(sub_steps, resolver, context)
+                results = await self._run_isolated_browsers(sub_steps, resolver, context, behaviour)
             else:
-                results = await self._run_tabs(page, sub_steps, resolver, context)
+                results = await self._run_tabs(page, sub_steps, resolver, context, behaviour)
         except Exception as e:
             logger.error(f"parallel execution error: {e}")
             return StepResult(step=step, status="failed", error=str(e))
@@ -1107,7 +1109,8 @@ class ParallelAction(ActionStrategy):
         return StepResult(step=step, status="passed")
 
     async def _run_tabs(self, page, sub_steps: list[StepConfig],
-                        resolver, context: ExecutionContext) -> list[StepResult]:
+                        resolver, context: ExecutionContext,
+                        behaviour=None) -> list[StepResult]:
         """Spawn one new tab per sub-step in the same browser context."""
         browser_context = page.context
 
@@ -1115,7 +1118,7 @@ class ParallelAction(ActionStrategy):
             tab = await browser_context.new_page()
             try:
                 action = self._factory.create(sub_step.action)
-                return await action.execute(tab, sub_step, resolver, context)
+                return await action.execute(tab, sub_step, resolver, context, behaviour)
             except Exception as e:
                 return StepResult(step=sub_step, status="failed", error=str(e))
             finally:
@@ -1124,13 +1127,14 @@ class ParallelAction(ActionStrategy):
         return list(await asyncio.gather(*[run_one(s) for s in sub_steps]))
 
     async def _run_isolated_browsers(self, sub_steps: list[StepConfig],
-                                     resolver, context: ExecutionContext) -> list[StepResult]:
+                                     resolver, context: ExecutionContext,
+                                     behaviour=None) -> list[StepResult]:
         """Spawn one isolated browser per sub-step via the injected IBrowserLauncher."""
         async def run_one(sub_step: StepConfig) -> StepResult:
             handle, tab = await self._launcher.create_page()
             try:
                 action = self._factory.create(sub_step.action)
-                return await action.execute(tab, sub_step, resolver, context)
+                return await action.execute(tab, sub_step, resolver, context, behaviour)
             except Exception as e:
                 return StepResult(step=sub_step, status="failed", error=str(e))
             finally:
@@ -1149,7 +1153,7 @@ class LoadTestDataAction(ActionStrategy):
     action_name = "load_test_data"
 
     async def _execute(self, page, step: StepConfig, resolver,
-                       context: ExecutionContext) -> StepResult:
+                       context: ExecutionContext, behaviour=None) -> StepResult:
         path_str = (step.extra or {}).get("path")
         if not path_str:
             return StepResult(step=step, status="failed",
@@ -1188,7 +1192,7 @@ class AssertTextAction(ActionStrategy):
     read_only   = True
 
     async def _execute(self, page, step: StepConfig, resolver,
-                       context: ExecutionContext) -> StepResult:
+                       context: ExecutionContext, behaviour=None) -> StepResult:
         result = await resolver.resolve(page, step.element, step.description)
         if not result.found:
             return StepResult(step=step, status="failed",
@@ -1220,7 +1224,7 @@ class AssertVisibleAction(ActionStrategy):
     read_only   = True
 
     async def _execute(self, page, step: StepConfig, resolver,
-                       context: ExecutionContext) -> StepResult:
+                       context: ExecutionContext, behaviour=None) -> StepResult:
         hidden = bool(step.extra.get("hidden", False))
         result = await resolver.resolve(page, step.element, step.description)
 
@@ -1252,7 +1256,7 @@ class StoreAction(ActionStrategy):
     read_only   = True
 
     async def _execute(self, page, step: StepConfig, resolver,
-                       context: ExecutionContext) -> StepResult:
+                       context: ExecutionContext, behaviour=None) -> StepResult:
         key = step.extra.get("key")
         if not key:
             return StepResult(step=step, status="failed",
@@ -1276,7 +1280,7 @@ class KeyboardPressAction(ActionStrategy):
     action_name = "keyboard_press"
 
     async def _execute(self, page, step: StepConfig, resolver,
-                       context: ExecutionContext) -> StepResult:
+                       context: ExecutionContext, behaviour=None) -> StepResult:
         key = step.extra.get("key") or step.input_value
         if not key:
             return StepResult(step=step, status="failed",
