@@ -10,8 +10,10 @@ StepRunner          Iterates steps, evaluates when-guards, dispatches actions,
 ActionFactory       Registry of action_name → ActionStrategy.
                     create(name) returns the registered strategy or raises.
 
-ActionStrategy      One action, one job. _execute() receives page, step, resolver,
-                    context. Returns StepResult (status, output dict, screenshots).
+ActionStrategy      One action, one job. execute() is the template method and must
+                    not be overridden; _execute() is the subclass slot and receives
+                    page, step, resolver, context, behaviour=None.
+                    Returns StepResult (status, output dict, screenshots).
                     output dict is persisted to results.json via reporter.
                     Never imports from runner/.
 
@@ -52,7 +54,7 @@ main.py
             ├─ evaluate_when(step.when, ctx, page)   → skip if False
             ├─ _resolve_context_vars(step, ctx)       → runtime {{key}} substitution
             ├─ ActionFactory.create(step.action)      → ActionStrategy
-            ├─ action.execute(page, step, resolver, ctx)
+            ├─ action.execute(page, step, resolver, ctx, behaviour)
             │       └─ writes to ExecutionContext (collected_items, counts, …)
             ├─ auto-screenshot
             ├─ reporter.record_step(result)
@@ -133,13 +135,13 @@ Actions communicate exclusively through context — never via return values.
 
 ```
 1. Create sites/<site>/pages/<action>.py
-       class MyAction(ActionStrategy):
-           action_name = "my_action"
-           async def _execute(self, page, step, resolver, ctx): ...
+       class MyAction(GlueAction):              # GlueAction, not ActionStrategy
+           action_name = "xx_my_action"         # must start with the site prefix
+           async def _execute(self, page, step, resolver, ctx, behaviour=None): ...
 
-2. Create sites/<site>/pages/__init__.py  (register via PageModule)
+2. Wrap it in a PageModule whose register(registry) adds the action
 
-3. Import the module in main.py (or auto-discover via register_all_pages())
+3. Call that PageModule from sites/<site>/register.py, which main.py invokes once
 
 4. Call the action by name in any workflow JSON:
        { "action": "my_action", "extra": { ... } }

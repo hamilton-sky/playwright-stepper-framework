@@ -243,7 +243,12 @@ async def run(
             summary = _build_ci_summary(results, workflow_path, resolver, _run_duration)
             print(json.dumps(summary, indent=2))
             if ci_output:
-                Path(ci_output).write_text(json.dumps(summary, indent=2), encoding="utf-8")
+                # Create the parent dir first: on a failing run nothing else has
+                # written to reports/ yet, and a FileNotFoundError here would
+                # discard the very summary that explains the failure.
+                out_path = Path(ci_output)
+                out_path.parent.mkdir(parents=True, exist_ok=True)
+                out_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
                 logger.info(f"CI summary written to {ci_output}")
 
         drift_log = getattr(resolver, "_drift_log", None)

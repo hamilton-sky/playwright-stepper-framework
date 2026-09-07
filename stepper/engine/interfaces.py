@@ -226,17 +226,26 @@ class ActionStrategy(ABC):
         """Must match the 'action' field in step JSON."""
 
     async def execute(self, page, step: StepConfig, resolver,
-                      context: "ExecutionContext | None" = None, behaviour: HumanBehaviour = None) -> StepResult:
-        """Template method — do NOT override this."""
+                      context: "ExecutionContext | None" = None,
+                      behaviour: "HumanBehaviour | None" = None) -> StepResult:
+        """
+        Template method — do NOT override this. Implement _execute() instead.
+
+        Every action, engine-level or glue-level, runs through this one path so
+        that pre_execute/post_execute hooks and context defaulting apply
+        uniformly. `behaviour` is forwarded to _execute so glue actions can pass
+        it into their POMs; engine actions that don't need it simply ignore it.
+        """
         ctx = context if context is not None else ExecutionContext()
         await self.pre_execute(page, step)
-        result = await self._execute(page, step, resolver, ctx)
+        result = await self._execute(page, step, resolver, ctx, behaviour)
         await self.post_execute(page, step, result)
         return result
 
     @abstractmethod
     async def _execute(self, page, step: StepConfig, resolver,
-                       context: "ExecutionContext" ,behaviour: HumanBehaviour) -> StepResult:
+                       context: "ExecutionContext",
+                       behaviour: "HumanBehaviour | None" = None) -> StepResult:
         """Core logic — subclasses implement this."""
 
     async def pre_execute(self, page, step: StepConfig):

@@ -1,7 +1,7 @@
 """
 sites/openlibrary/pages/detail_page.py — Stepper action module for OL book detail.
 
-Wires the exam's BookDetailPage into the Stepper ActionRegistry.
+Wires BookDetailPage into the Stepper ActionRegistry.
 Dependency direction: sites.openlibrary → stepper  (correct)
                       sites.openlibrary → openlibrary  (correct)
 """
@@ -42,13 +42,14 @@ class OLDetailPage(PageModule):
         async def _execute(
             self, page, step: StepConfig,
             resolver, context: ExecutionContext,
-            behaviour: HumanBehaviour
+            behaviour: HumanBehaviour | None = None,
         ) -> StepResult:
             try:
                 from poms.openLibrary.config import load_settings
                 from poms.openLibrary.pages.book_detail_page import BookDetailPage
                 
-                await behaviour.inter_step_delay() 
+                if behaviour:
+                    await behaviour.inter_step_delay()
                 settings        = load_settings()
                 driver          = self._driver(page)
                 screenshots_dir = self._screenshots_dir
@@ -69,7 +70,7 @@ class OLDetailPage(PageModule):
                                             url, settings.delays, page=page, resolver=resolver, behaviour=behaviour)
                     
                     await detail.open()
-                    await asyncio.sleep(behaviour.jitter(1500))
+                    await asyncio.sleep(behaviour.jitter(1500) if behaviour else 1.5)
                     
                     shelf = await detail.add_to_reading_list()
                     if not shelf:

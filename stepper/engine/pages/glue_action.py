@@ -6,8 +6,8 @@ site-specific action classes (OLEnsureLoginAction, SDLoginAction, …).
 
 It establishes the interface for "executing a step against a POM":
 
-  1. _build_pom(pom_cls, *args, page, resolver, **kwargs)
-       Constructs a POM with page= and resolver= always injected.
+  1. _build_pom(pom_cls, *args, page, resolver, behaviour, **kwargs)
+       Constructs a POM with page=, resolver= and behaviour= always injected.
        Using this instead of calling the POM constructor directly makes
        it structurally impossible to forget the resolver= argument.
 
@@ -17,18 +17,20 @@ It establishes the interface for "executing a step against a POM":
 
 Usage in a glue _execute:
 
-    async def _execute(self, page, step, resolver, context):
+    async def _execute(self, page, step, resolver, context, behaviour=None):
         from poms.mysite.config import load_settings
         from poms.mysite.pages.some_page import SomePage
 
         settings = load_settings()
         driver   = self._driver(page)
         pom      = self._build_pom(SomePage, driver, settings.base_url,
-                                   page=page, resolver=resolver)
+                                   page=page, resolver=resolver,
+                                   behaviour=behaviour)
         ...
 
 All site action inner classes (OLEnsureLoginAction, SDLoginAction, …) must
-subclass GlueAction, not ActionStrategy directly.
+subclass GlueAction, not ActionStrategy directly, and implement _execute with
+the signature (self, page, step, resolver, context, behaviour=None).
 """
 
 from __future__ import annotations
@@ -41,16 +43,24 @@ T = TypeVar("T")
 
 
 class GlueAction(ActionStrategy):
+    """
+    Base for every site-specific glue action.
 
-    async def execute(self, page, step, resolver, context, behaviour):
-        # The runner passes the 'official' behaviour instance here
-        return await self._execute(page, step, resolver, context, behaviour)
+    Deliberately does NOT override execute(): glue actions run through the same
+    ActionStrategy template method as engine actions, so pre_execute /
+    post_execute hooks and ExecutionContext defaulting apply to them too.
+    The template method forwards `behaviour` into _execute for us.
+    """
 
     def _build_pom(self, pom_cls, *args, page, resolver, behaviour, **kwargs):
         """
-        Updated to make behaviour a mandatory argument.
+        Construct a POM with page=, resolver= and behaviour= always injected.
+
+        behaviour is keyword-mandatory: forgetting it is a TypeError at the call
+        site rather than a silently un-humanised POM. Pass the behaviour handed
+        to _execute — it may be None when the action runs outside a StepRunner.
         """
-        return pom_cls(*args, page=page, resolver=resolver, 
+        return pom_cls(*args, page=page, resolver=resolver,
                        behaviour=behaviour, **kwargs)
 
     @staticmethod

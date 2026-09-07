@@ -1,603 +1,387 @@
-# Stepper Framework — Architecture & Components
+# Stepper Framework — Architecture
 
-## Directory Structure
+How a JSON step becomes a browser action, and what happens when it fails.
+
+- [The three layers](#the-three-layers)
+- [Repository map](#repository-map)
+- [Running a workflow, end to end](#running-a-workflow-end-to-end)
+- [One step's lifecycle](#one-steps-lifecycle)
+- [Action execution — the template method](#action-execution--the-template-method)
+- [Element resolution cascade](#element-resolution-cascade)
+- [Self-healing cascade](#self-healing-cascade)
+- [Configuration](#configuration)
+- [Reporting](#reporting)
+- [Extension points](#extension-points)
+
+---
+
+## The three layers
+
+The central constraint: **a CSS selector may exist in exactly one place — a `Locator`
+inside a POM.** Neither the JSON above nor the engine beside it may name an element.
+
+```mermaid
+flowchart TD
+    F["<b>Flow</b> — stepper/sites/*/workflows/*.json<br/><i>order, conditions, variables</i><br/>no selectors, no imperative logic"]
+    G["<b>Glue</b> — stepper/sites/*/pages/*.py<br/><i>one action, one job</i><br/>injects page, resolver, behaviour"]
+    P["<b>POM</b> — poms/*/pages/*.py<br/><i>selectors + raw page interactions</i><br/>no flow logic, no credentials"]
+    B["Playwright → Browser"]
+
+    F -->|action name + params| G
+    G -->|method calls| P
+    P -->|driver / resolver| B
+
+    style F fill:#e8f0fe,stroke:#4285f4,color:#111
+    style G fill:#e6f4ea,stroke:#34a853,color:#111
+    style P fill:#fef7e0,stroke:#fbbc04,color:#111
+    style B fill:#f1f3f4,stroke:#9aa0a6,color:#111
+```
+
+**Dependency direction is one-way: Flow → Glue → POM.** `poms/` imports nothing from
+`stepper/`, which is what lets the POM layer run with no engine at all — see
+[`examples/plain_pom/`](examples/plain_pom/).
+
+Rules: [three-layer-contract.md](.claude/rules/three-layer-contract.md) ·
+[pom-layer.md](.claude/rules/pom-layer.md) ·
+[glue-layer.md](.claude/rules/glue-layer.md)
+
+---
+
+## Repository map
 
 ```
-playwright-stepper-framework/
-│
-├── poms/                         # Pure Page Object Model layer
-│   ├── shared/                   # Shared across all sites
-│   │   ├── driver.py             # Playwright adapter (IBrowserDriver impl)
-│   │   ├── interfaces.py         # POM contracts (IBrowserDriver, IElementHandle)
-│   │   ├── base_page.py          # SharedBasePage — resolver helpers
-│   │   ├── constants.py          # CONFIDENCE_AUTO / CONFIDENCE_WARN thresholds
-│   │   ├── locator.py            # Shared locator utilities
-│   │   └── performance.py        # Performance metrics
-│   ├── openLibrary/              # OpenLibrary POMs
-│   │   ├── config.py             # Settings loader (YAML + env vars)
-│   │   └── pages/                # Pure POMs — selectors live here and nowhere else
-│   │       ├── base_page.py
-│   │       ├── login_page.py
-│   │       ├── book_search_page.py   # collect_books_under_year → list[dict{url,year}]
-│   │       ├── book_detail_page.py
-│   │       └── reading_list_page.py
-│   ├── saucedemo/                # SauceDemo POMs
-│   │   ├── config.py
-│   │   └── pages/
-│   │       ├── base_page.py
-│   │       ├── login_page.py
-│   │       ├── inventory_page.py
-│   │       ├── product_page.py
-│   │       ├── cart_page.py
-│   │       ├── checkout_info_page.py
-│   │       ├── checkout_overview_page.py
-│   │       └── checkout_complete_page.py
-│   └── phpTravels/               # phpTravels POMs
-│       ├── config.py
-│       └── pages/
-│           ├── base_page.py
-│           ├── login_page.py
-│           ├── home_page.py
-│           ├── hotel_results_page.py
-│           └── hotel_detail_page.py
-│
-├── stepper/                      # The Automation Engine
-│   ├── main.py                   # Entry point — wires everything together
-│   ├── pytest.ini                # asyncio_mode = auto, alluredir, log_cli settings
-│   ├── engine/                   # Core framework modules
-│   │   ├── interfaces.py         # Strategy/Observer abstractions + StepConfig
-│   │   ├── actions/
-│   │   │   ├── factory.py        # ActionRegistry (factory + registry pattern)
-│   │   │   ├── strategies.py     # Navigate, Click, Fill, ForEach, Parallel,
-│   │   │   │                     #   LoadTestData, etc.
-│   │   │   └── sub_step_mixin.py # SubStepRunnerMixin — shared logic for nested steps
-│   │   ├── ai/
-│   │   │   ├── providers.py      # AI provider adapters (Groq, Gemini, Claude)
-│   │   │   └── service.py        # Unified AI service interface
-│   │   ├── browser/
-│   │   │   ├── human_behaviour.py  # Per-action jitter, hover dwell, inter-step pauses
-│   │   │   └── anti_detection.py   # Setup-time bot-fingerprint suppression
-│   │   ├── healer/               # Self-healing element resolution
-│   │   │   ├── ai_healer.py      # AI-powered locator repair
-│   │   │   ├── annotator.py      # DOM annotation for healing context
-│   │   │   ├── dom_snapshot.py   # DOM snapshot capture
-│   │   │   ├── healing_cache.py  # Per-site persistent heal cache (JSON, SHA-256 keyed)
-│   │   │   ├── visual_bridge.py  # Fast pre-flight: hidden/disabled check + scroll/wait injection
-│   │   │   └── interfaces.py     # Healer contracts
-│   │   ├── resolvers/
-│   │   │   ├── element_resolver.py   # Cascade orchestrator (det → semantic → AI)
-│   │   │   ├── strategies.py         # 7 deterministic resolver strategies
-│   │   │   └── ai_pick_resolver.py   # AI disambiguation (Groq → Gemini → Claude)
-│   │   ├── runner/
-│   │   │   ├── step_runner.py    # Execution loop (retry + observers)
-│   │   │   ├── when_eval.py      # Conditional step evaluation
-│   │   │   └── api.py            # Programmatic API
-│   │   ├── planner/
-│   │   │   ├── planner.py        # Claude AI planner / JSON file planner
-│   │   │   ├── schema_extractor.py  # Extracts JSON schema from workflow
-│   │   │   └── validator.py      # Validates planner output against schema
-│   │   ├── reporter/
-│   │   │   ├── reporters.py      # Console, JSON, Allure reporters
-│   │   │   ├── test_report_manager.py
-│   │   │   └── test_report_reporter.py
-│   │   ├── pages/
-│   │   │   ├── base_page_module.py  # PageModule ABC (site-specific actions)
-│   │   │   ├── glue_action.py       # GlueAction base — enforces resolver injection
-│   │   │   └── page_objects.py      # POM registry
-│   │   └── utils.py
-│   │
-│   ├── bootstrap/                # Startup helpers extracted from main.py
-│   │   ├── infra.py              # build_resolver(), launch_browser(), register_all_sites()
-│   │   ├── reporting.py          # build_reporters(), serve_allure()
-│   │   └── settings.py           # load_env(), load_settings_safe() → RunSettings
-│   │
-│   ├── sites/openlibrary/        # Site-specific action layer
-│   │   ├── pages/
-│   │   │   ├── search_page.py        # Registers ol_collect_books
-│   │   │   ├── detail_page.py        # Registers ol_add_to_shelf
-│   │   │   ├── login_action.py       # Registers ol_ensure_login
-│   │   │   └── reading_list_action.py  # Registers ol_clear_reading_list,
-│   │   │                               #   ol_store_count, ol_assert_count, ol_ensure_count
-│   │   ├── register.py               # Auto-discovered by register_all_sites()
-│   │   └── workflows/                # 10 JSON workflows
-│   │       ├── ol_search_and_add.json
-│   │       ├── ol_smoke_test.json
-│   │       ├── ol_parallel_perf.json
-│   │       ├── ol_data_driven.json   # Data-driven via --data flag
-│   │       └── … (+ ol_add_only, ol_ensure_count, ol_regression_roundtrip,
-│   │              ol_multi_author, ol_idempotency_test, login)
-│   │
-│   ├── sites/saucedemo/          # SauceDemo site integration
-│   │   ├── pages/
-│   │   │   ├── login_action.py       # Registers sd_login
-│   │   │   ├── inventory_action.py   # Registers sd_add_to_cart, sd_sort_products
-│   │   │   ├── cart_action.py        # Registers sd_view_cart
-│   │   │   └── checkout_action.py    # Registers sd_checkout
-│   │   ├── register.py               # Auto-discovered by register_all_sites()
-│   │   └── workflows/
-│   │       ├── sd_happy_path.json
-│   │       ├── sd_multi_product.json
-│   │       ├── sd_smoke_test.json
-│   │       ├── sd_heal_test.json     # Self-healing locator test
-│   │       └── sd_full_heal_flow.json  # Full self-healing demonstration flow
-│   │
-│   ├── sites/phptravels/         # phpTravels site integration (fully wired)
-│   │   ├── pages/
-│   │   │   ├── login_action.py       # Registers pt_login
-│   │   │   ├── hotel_search_action.py  # Registers pt_search_hotels
-│   │   │   ├── hotel_results_action.py # Registers pt_select_hotel
-│   │   │   └── hotel_detail_action.py  # Registers pt_book_hotel
-│   │   ├── register.py               # Auto-discovered by register_all_sites()
-│   │   └── workflows/
-│   │       └── hotel_booking.json
-│   │
-│   ├── tests/                    # Stepper engine test suite
-│   │   ├── conftest.py           # --headed flag registration
-│   │   └── test_workflow.py      # Workflow integration tests
-│   │
-│   ├── models/
-│   │   └── all-MiniLM-L6-v2/    # Pre-trained semantic embedding model
-│   ├── artifacts/                # Runtime cache (storage_state.json, screenshots)
-│   └── reports/                  # Output: allure-results/, per-run folders
-│
-├── exam/                         # Exam test layer
-│   ├── conftest.py
-│   ├── flows.py                  # Orchestrate POMs into test flows
-│   ├── pytest.ini
-│   └── tests/
-│       └── test_openlibrary_exam.py
-│
-└── requirements.txt              # All dependencies (install from repo root)
+poms/                          POM layer — no dependency on stepper/
+├── shared/
+│   ├── base_page.py           BasePage — _interact() dispatches resolver vs driver
+│   ├── locator.py             Locator value object — to_cfg() / css_candidates()
+│   ├── driver.py              PlaywrightDriver — the Adapter over Playwright's Page
+│   ├── interfaces.py          IBrowserDriver, IElementHandle
+│   ├── constants.py           CONFIDENCE_AUTO / CONFIDENCE_WARN
+│   └── performance.py         Navigation-timing capture
+├── openLibrary/ saucedemo/ phpTravels/
+│   ├── config.py              load_settings() — YAML + env
+│   ├── data/testdata.json     Data-driven cases
+│   └── pages/                 One class per page; selectors live here and nowhere else
+
+stepper/
+├── main.py                    CLI entry — builds the registry, runner and reporters
+├── bootstrap/                 .env loading, infra and reporter wiring
+├── engine/
+│   ├── interfaces.py          ActionStrategy, ResolverStrategy, ReporterStrategy,
+│   │                          StepConfig, StepResult, ExecutionContext
+│   ├── actions/
+│   │   ├── factory.py         ActionRegistry + build_default_registry()
+│   │   ├── strategies.py      The 23 engine actions
+│   │   └── sub_step_mixin.py  Nested-step dispatch for for_each_item / ensure_login
+│   ├── resolvers/             The cascade — strategies.py, element_resolver.py,
+│   │                          ai_pick_resolver.py, shadow_runner.py
+│   ├── healer/                dom_snapshot.py, ai_healer.py, healing_cache.py,
+│   │                          visual_bridge.py, annotator.py
+│   ├── runner/                step_runner.py, when_eval.py, api.py
+│   ├── planner/               JSON + AI planners, schema extraction, validation
+│   ├── reporter/              Console, JSON, Allure, Composite
+│   ├── pages/                 PageModule ABC + GlueAction base
+│   ├── ai/                    Provider chain (Groq → Gemini → Claude)
+│   └── browser/               human_behaviour.py, anti_detection.py
+├── sites/<site>/
+│   ├── pages/                 Glue — wraps POMs into named actions
+│   ├── workflows/*.json       Declarative flows
+│   └── register.py            Wires the site's PageModules into the registry
+├── models/all-MiniLM-L6-v2/   Local embedding model (Phase 2)
+└── tests/unit/                Fast, mocked, no browser
+
+examples/plain_pom/            POMs driven with no engine and no resolver
+docs/playwright-pitfalls.md    Failure modes the POM layer guards against
 ```
 
 ---
 
-## Overall Data Flow
+## Running a workflow, end to end
 
+```mermaid
+flowchart LR
+    JSON["workflow.json"] --> PL["JsonFilePlanner<br/><i>substitutes variables{}</i>"]
+    PL --> SC["list[StepConfig]"]
+    SC --> SR["StepRunner.run()"]
+
+    SR --> AF["ActionRegistry.create(name)"]
+    AF --> AS["ActionStrategy.execute()"]
+    AS --> POM["POM method"]
+    POM --> ER["ElementResolver"]
+    ER --> PW["Playwright"]
+
+    SR -.notifies.-> OBS["StepObserver<br/>LoggingObserver"]
+    SR -.records.-> REP["CompositeReporter<br/>Console · JSON · Allure"]
+
+    style SR fill:#e8f0fe,stroke:#4285f4,color:#111
+    style ER fill:#fce8e6,stroke:#ea4335,color:#111
 ```
-  CLI / pytest
-      │
-      │  --workflow / --task / --vars / --data
-      ▼
-┌─────────────┐        ┌──────────────────────────────────┐
-│  main.py    │──────▶ │  Planner                         │
-│  (entry)    │        │  ─────────────────────────────── │
-└─────────────┘        │  JSON file  ──┐                  │
-                       │  Claude AI  ──┴─▶ [StepConfig]   │
-                       └──────────────────────────────────┘
-                                              │
-                                              ▼
-                       ┌──────────────────────────────────┐
-                       │  Infrastructure Setup            │
-                       │  ──────────────────────────────  │
-                       │  • Load Settings (YAML + env)    │
-                       │  • Build ElementResolver         │
-                       │  • Build ActionRegistry          │
-                       │  • Init Reporters                │
-                       │  • Launch Playwright browser     │
-                       └──────────────┬───────────────────┘
-                                      │
-                                      ▼
-                       ┌──────────────────────────────────┐
-                       │  StepRunner  (execution loop)    │
-                       │  ──────────────────────────────  │
-                       │  for each StepConfig:            │
-                       │    1. Eval 'when' condition       │
-                       │    2. Lookup ActionStrategy      │
-                       │    3. Retry loop                 │
-                       │       └▶ action.execute()        │
-                       │    4. Notify observers           │
-                       │    5. Record StepResult          │
-                       │    6. continue_on_failure?       │
-                       │       yes → warn + continue      │
-                       │       no  → hard-stop            │
-                       └──────┬───────────────────────────┘
-                              │
-           ┌──────────────────┼──────────────────┐
-           ▼                  ▼                  ▼
-    ┌─────────────┐   ┌──────────────┐   ┌─────────────────┐
-    │  Reporters  │   │  Observers   │   │  ExecutionCtx   │
-    │  ─────────  │   │  ──────────  │   │  ─────────────  │
-    │  Console    │   │  Logging     │   │  collected_items │
-    │  JSON       │   │  Callbacks   │   │  extracted_data │
-    │  Allure     │   │              │   │  counts{}       │
-    │  HTML report│   │              │   │                 │
-    └─────────────┘   └──────────────┘   └─────────────────┘
-```
+
+`variables{}` are substituted at **plan time** by the planner. Values written into
+`ExecutionContext` by earlier steps are substituted at **runtime** by `StepRunner`, which
+is why `"limit": "{{gap}}"` resolves to whatever the previous step stored.
 
 ---
 
-## Element Resolution Cascade
+## One step's lifecycle
 
-```
-  StepConfig.element  (dict of hints: role, text, css, xpath, …)
-         │
-         ▼
-  ┌──────────────────────────────────────────────┐
-  │  ElementResolver                             │
-  │                                              │
-  │  PHASE 1 — Deterministic (priority order)   │
-  │  ─────────────────────────────────────────  │
-  │  10  RoleResolver      (get_by_role)         │
-  │  20  LabelResolver     (get_by_label)        │
-  │  30  PlaceholderResolver                     │
-  │  40  TextResolver      (get_by_text)         │
-  │  50  IdResolver                              │
-  │  60  CssResolver                             │
-  │  70  XPathResolver                           │
-  │                                              │
-  │  exactly 1 match? ──────────────────▶ DONE  │
-  │  0 or 2+ matches?  ─────────────────────┐   │
-  └─────────────────────────────────────────┼───┘
-                                            │
-                                            ▼
-  ┌──────────────────────────────────────────────┐
-  │  PHASE 2 — Semantic Filter                   │
-  │  ─────────────────────────────────────────  │
-  │  • Embed step description (MiniLM-L6-v2)    │
-  │  • Score each candidate by cosine sim       │
-  │  • Keep candidates with score ≥ 0.80        │
-  │                                              │
-  │  1 shortlisted? ────────────────────▶ DONE  │
-  │  2+ shortlisted? ───────────────────────┐   │
-  │  0 shortlisted?  ──▶ Visual AI fallback │   │
-  └─────────────────────────────────────────┼───┘
-                                            │
-                                            ▼
-  ┌──────────────────────────────────────────────┐
-  │  PHASE 3 — AI Pick                           │
-  │  ─────────────────────────────────────────  │
-  │  Provider chain (cheapest first):            │
-  │    1. Groq                                   │
-  │    2. Gemini                                 │
-  │    3. Claude                                 │
-  │                                              │
-  │  "Which candidate best matches the step?"   │
-  │  confidence ≥ 0.70 ─────────────────▶ DONE  │
-  │  all fail ──────────────────▶ top semantic  │
-  └──────────────────────────────────────────────┘
+This is the loop that actually runs. Retry, healing and `continue_on_failure` live
+here — **not** inside the actions.
 
-  CONFIDENCE THRESHOLDS
-  ─────────────────────
-  CONFIDENCE_AUTO        0.80   auto-act, no warning
-  CONFIDENCE_WARN        0.50   warn but still act
-  CONFIDENCE_SEMANTIC    0.80   semantic filter cutoff
-  CONFIDENCE_AI_PICK     0.70   AI picker acceptance
-  CONFIDENCE_DESCRIPTION 0.40   description fallback minimum
+```mermaid
+flowchart TD
+    S["next step"] --> W{"when guard?"}
+    W -->|false| SKIP["status = skipped"] --> NEXT
+    W -->|true| VARS["substitute runtime {{vars}}"]
+    VARS --> CAP{"CAPTCHA on page?"}
+    CAP -->|yes| FAILFAST["status = failed<br/>manual intervention"] --> NEXT
+    CAP -->|no| DELAY["behaviour.inter_step_delay()"]
+    DELAY --> TRY["action.execute()"]
+    TRY --> OK{"passed?"}
+    OK -->|yes| SHOT
+    OK -->|no| RETRY{"attempts left?<br/>step.retry"}
+    RETRY -->|yes| TRY
+    RETRY -->|no| HEALQ{"healer on<br/>and step.heal != false?"}
+    HEALQ -->|no| HARD
+    HEALQ -->|yes| HEAL["heal loop"]
+    HEAL --> HOK{"healed?"}
+    HOK -->|yes| SHOT
+    HOK -->|no| HARD{"continue_on_failure?"}
+    HARD -->|true| SHOT
+    HARD -->|false| STOP["hard stop — run ends"]
+    SHOT["auto-screenshot unless<br/>the action took one"] --> NEXT["record + notify observers"]
+
+    style HEAL fill:#fef7e0,stroke:#fbbc04,color:#111
+    style STOP fill:#fce8e6,stroke:#ea4335,color:#111
 ```
+
+Step-level controls — `when`, `retry`, `retry_delay_ms`, `continue_on_failure`, `heal`,
+`heal_assert`, `skip_screenshot` — are documented with their defaults in the
+[README](README.md#step-controls). Flow-level defaults pass down to every step; a step
+always wins over the flow.
 
 ---
 
-## Action Execution (Template Method Pattern)
+## Action execution — the template method
 
+`ActionStrategy.execute()` is the **only** path into an action. Engine actions and glue
+actions share it; neither may override it.
+
+```mermaid
+flowchart TD
+    E["execute(page, step, resolver, context, behaviour)"] --> C["context ?? ExecutionContext()"]
+    C --> PRE["pre_execute(page, step)"]
+    PRE --> X["_execute(page, step, resolver, ctx, behaviour)"]
+    X --> POST["post_execute(page, step, result)"]
+    POST --> R["StepResult"]
+
+    style X fill:#e6f4ea,stroke:#34a853,color:#111
 ```
-  ActionRegistry.create("action_name")
-          │
-          ▼
-  ┌──────────────────────────────────────────┐
-  │  ActionStrategy.execute()               │
-  │  ──────────────────────────────────────  │
-  │                                          │
-  │  1.  pre_execute(page, step)            │
-  │      └─ override for setup              │
-  │                                          │
-  │  2.  _execute(page, step, resolver)     │  ◀── concrete impl
-  │      └─ resolve element if needed       │
-  │         └─ act on element               │
-  │                                          │
-  │  3.  post_execute(page, step, result)  │
-  │      └─ screenshot, teardown            │
-  │                                          │
-  │  Returns: StepResult                    │
-  │  ─────────────────────────────────────  │
-  │  status:        passed|failed|skip|warn │
-  │                 |healed                 │
-  │  confidence:    resolver confidence     │
-  │  duration_ms:   execution time          │
-  │  screenshot:    file path               │
-  │  heal_attempts: int (0 = no healing)    │
-  │  healed_element:{original, healed}      │
-  │  output:        dict (step-produced     │
-  │                 data → results.json)    │
-  └──────────────────────────────────────────┘
 
-  BUILT-IN ACTIONS
-  ────────────────
-  navigate            → goto(url), wait_for_load_state
-  click               → resolve element → click()
-  fill                → resolve element → fill(text)
-  hover               → resolve element → hover()
-  select              → resolve element → selectOption()
-  screenshot          → page.screenshot()
-  wait                → asyncio.sleep / wait_for_selector
-  scroll_to           → resolve element → scroll_into_view_if_needed()  [read_only, healer-safe]
-  store_count         → locator.count() → context.counts[key]
-  assert_count        → context.counts[key] vs expected value
-  extract_data        → collect elements → context.extracted_data
-  paginate            → loop pages, accumulate items → context.paginated_data
-  for_each_item       → iterate context.collected_items, run sub-steps
-  ensure_login        → delegate to site-specific login action
-  measure_performance → capture performance metrics
-  visual_compare      → screenshot diff against stored baseline (pixel-level)
-  parallel            → run read-only actions concurrently in separate tabs
-  run_workflow        → nested sub-workflow execution
-  load_test_data      → load JSON test-data file → context.test_data
+`_execute` is the subclass's slot and takes five parameters, with `behaviour` defaulting
+to `None` — nested dispatch (`for_each_item`, `ensure_login`, `parallel`, `paginate`) may
+not have one to pass.
 
-  SITE-SPECIFIC ACTIONS (OpenLibrary)
-  ────────────────────────────────────
-  ol_ensure_login       → LoginPage.is_session_live() → fill + submit if needed
-  ol_collect_books      → BookSearchPage.collect_books() → context.collected_items
-                          list[dict{url, year}] — also written to StepResult.output
-                          limit: step.extra["limit"] or context.counts["gap"] or 5
-  ol_add_to_shelf       → BookDetailPage.add_to_reading_list() per collected item
-                          StepResult.output = {books: [{url, year, shelf}, …]}
-  ol_clear_reading_list → ReadingListPage.clear() (removes all books)
-  ol_store_count        → ReadingListPage.count() → context[context_key]
-  ol_assert_count       → assert context count == expected (delta or absolute)
-  ol_ensure_count       → count shelf, store gap in context if top-up needed
-                          flow controls collect / add / assert via when-guards
+Overriding `execute()` silently disables the hooks and context defaulting. That bug
+shipped once already; `stepper/tests/unit/test_action_template_method.py` now fails if it
+returns.
 
-  SITE-SPECIFIC ACTIONS (SauceDemo)
-  ───────────────────────────────────
-  sd_login          → LoginPage.login() → fills credentials, submits
-  sd_add_to_cart    → InventoryPage.add_products() → adds named products to cart
-  sd_sort_products  → InventoryPage.sort() → sets dropdown sort order
-  sd_view_cart      → CartPage.open() → navigates to cart, reads item list
-  sd_checkout       → CartPage → CheckoutInfoPage → CheckoutOverviewPage → CompletePage
+`GlueAction` adds two helpers on top:
 
-  STEP-LEVEL CONTROLS (resolved at plan time by JsonFilePlanner)
-  ──────────────────────────────────────────────────────────────
-  when:                  skip step if condition is false
-  retry: N               retry on failure up to N times (retry_delay_ms between)
-  continue_on_failure:   true  → warn + continue on failure
-                         false → hard-stop on failure (default)
+| Helper | Guarantee |
+|---|---|
+| `_build_pom(cls, …, page=, resolver=, behaviour=)` | All three keyword-mandatory — a forgotten resolver is a `TypeError`, not a silently degraded run |
+| `_driver(page)` | Wraps the page in `PlaywrightDriver`, imported lazily so glue has no top-level `poms` import |
 
-  FLOW-LEVEL DEFAULTS (pass down to all steps, step always wins)
-  ──────────────────────────────────────────────────────────────
-  continue_on_failure: true   → all steps soft-fail unless they override to false
-  variables: {}               → substituted into all step values at plan time
+**`StepResult` fields**
 
-  THREE-LAYER CONTRACT
-  ─────────────────────
-  POM   (poms/*/pages/)          owns selectors + raw page interactions
-  Glue  (sites/*/pages/)         wraps POM into named behavior — one action, one job
-  Flow  (workflows/*.json)       controls order, conditions, variables — no selectors
-```
+| Field | Meaning |
+|---|---|
+| `status` | `passed` · `failed` · `skipped` · `warned` · `healed` |
+| `error` / `skip_reason` | Populated by failure / by a false `when` guard |
+| `confidence` | Resolver confidence for the element that was acted on |
+| `duration_ms` | Wall time including retries |
+| `screenshot` / `screenshots` | Path, or all paths from multi-shot actions |
+| `output` | Step-produced data, persisted to `results.json` |
+| `heal_attempts` | `0` when no healing was needed |
+| `healed_element` | `{original, healed}` cfg pair |
+
+Action catalogues live in one place each: engine actions in the
+[README](README.md#engine-actions), site actions in
+[site-actions.md](.claude/rules/site-actions.md).
 
 ---
 
-## Configuration Loading
+## Element resolution cascade
 
+Strategies are tried in ascending `priority`. Phase 1 is free and deterministic; Phase 2
+is local and costs ~30ms; Phase 3 costs money. The cascade stops at the first
+**unique** match.
+
+```mermaid
+flowchart TD
+    CFG["Locator.to_cfg()"] --> P1
+
+    subgraph P1["Phase 1 — deterministic, free"]
+        direction TB
+        R10["10 · role + name"] --> R20["20 · label"] --> R30["30 · placeholder"]
+        R30 --> R40["40 · text"] --> R50["50 · id"] --> R60["60 · css"] --> R70["70 · xpath"]
+    end
+
+    P1 --> U{"exactly<br/>1 match?"}
+    U -->|yes| ACT["act — confidence from CONFIDENCE_MAP"]
+    U -->|"0 or 2+"| P2["Phase 2 — SemanticResolver (80)<br/>MiniLM-L6-v2, local, ~30ms<br/>cosine similarity vs element text"]
+
+    P2 --> S{"score ≥ 0.80<br/>and unique?"}
+    S -->|yes| ACT
+    S -->|no| P3["Phase 3 — AIPickResolver<br/>Groq → Gemini → Claude"]
+
+    P3 --> A{"confidence ≥ 0.70?"}
+    A -->|yes| ACT
+    A -->|no| FB["fall back to top semantic result"]
+
+    style P1 fill:#e6f4ea,stroke:#34a853,color:#111
+    style P2 fill:#fef7e0,stroke:#fbbc04,color:#111
+    style P3 fill:#fce8e6,stroke:#ea4335,color:#111
 ```
-  DEFAULTS (hardcoded in config.py)
-         │
-         ▼  override
-  config.yaml  (optional — falls back to defaults if absent)
-         │
-         ▼  override
-  Environment variables  (OPENLIBRARY_*)
-         │
-         ▼
-  Settings (frozen dataclass)
-  ──────────────────────────
-  base_url            "https://openlibrary.org"
-  headless            True
-  slow_mo_ms          300
-  browser             "chromium"
-  username / password credentials
-  screenshots_dir     Path
-  storage_state_path  Path  (session cache)
-  performance_output  Path
-  logs_dir            Path
-  delays              Delays (page_load_wait_ms, …)
-  use_visual_ai       bool
-  login_url           str
-  max_login_attempts  int
-  shelf_paths         tuple[str]
-```
+
+Priority order mirrors Playwright's own locator guidance, and the confidence assigned to
+a hit reflects how well that strategy survives a redesign:
+
+| Strategy | Priority | Confidence | Why there |
+|---|---|---|---|
+| `role` + `name` | 10 | 0.95 | Accessible name — survives restyling and DOM moves |
+| `label` | 20 | 0.93 | Associated `<label>`, semantically stable |
+| `placeholder` | 30 | 0.90 | Visible input hint |
+| `text` | 40 | 0.85 | Can match non-interactive elements |
+| `id` | 50 | 0.82 | Unique, but fragile when ids are generated |
+| `css` | 60 | 0.75 | Implementation detail — breaks on class refactors |
+| `xpath` | 70 | 0.70 | Encodes the DOM shape; breaks first |
+| semantic | 80 | actual score | Phase 2 |
+| visual-AI | 90 | model score | Last resort |
+
+Below `CONFIDENCE_WARN` (0.50) `_interact` refuses to act; between 0.50 and
+`CONFIDENCE_AUTO` (0.80) it acts and logs a warning.
+
+**Zero-selector mode:** a cfg with no recognised element key falls through to keyword-fuzzy
+→ accessibility-semantic → AI pick, driven purely by the step's description.
+
+Full rules: [resolver-cascade.md](.claude/rules/resolver-cascade.md)
 
 ---
 
-## Reporting & Observer Chain
+## Self-healing cascade
 
+Healing runs only after retries are exhausted. Every stage before the AI is free.
+
+```mermaid
+flowchart TD
+    F["step failed / element not found"] --> CACHE{"HealCache hit?"}
+    CACHE -->|"yes — 0 tokens"| REPLAY["replay healed step<br/><i>nested runner, healer off</i>"]
+    REPLAY --> RG{"passed?"}
+    RG -->|yes| HEALED["status = healed"]
+    RG -->|"no — stale"| BRIDGE
+    CACHE -->|no| BRIDGE{"VisualBridge check"}
+
+    BRIDGE -->|hidden| SCROLL["inject scroll_to"] --> SG{"passed?"}
+    BRIDGE -->|disabled| WAIT["inject wait"] --> WG{"passed?"}
+    BRIDGE -->|neither| SNAP
+    SG -->|yes| HEALED
+    SG -->|no| SNAP
+    WG -->|yes| HEALED
+    WG -->|no| DEAD["failed — element disabled"]
+
+    SNAP["DOMSnapshotCascade.capture()"] --> B1["Phase 1 — MiniLM bi-encoder ~30ms<br/>score all ~50 interactive elements"]
+    B1 --> TOP5["top 5 candidates"]
+    TOP5 --> B2["Phase 2 — cross-encoder re-rank ~50ms<br/>reads (query | element) as one string"]
+    B2 --> D{"score"}
+    D -->|"≥ 0.85 unique — 0 tokens"| HEALED
+    D -->|"≥ 0.85 ambiguous"| AI30["AI · ~30 tokens"]
+    D -->|"0.50 – 0.85"| AI100["AI · scoped DOM · ~100 tokens"]
+    D -->|"< 0.50"| AI400["AI · full ARIA snapshot · ~400 tokens"]
+    AI30 --> APPLY
+    AI100 --> APPLY
+    AI400 --> APPLY
+    APPLY["replacement step<br/>+ heal_assert if declared"] --> HEALED
+
+    style HEALED fill:#e6f4ea,stroke:#34a853,color:#111
+    style DEAD fill:#fce8e6,stroke:#ea4335,color:#111
 ```
-                    StepRunner
-                        │
-              ┌─────────┴──────────┐
-              │                    │
-              ▼                    ▼
-       REPORTER CHAIN        OBSERVER CHAIN
-       (Strategy)            (Observer)
 
-  ┌──────────────────┐   ┌──────────────────┐
-  │ ConsoleReporter  │   │ LoggingObserver  │
-  │ └ stdout summary │   │ └ Python logger  │
-  ├──────────────────┤   ├──────────────────┤
-  │ JsonReporter     │   │ CallbackObserver │
-  │ └ report.json    │   │ └ custom hooks   │
-  ├──────────────────┤   └──────────────────┘
-  │ TestReportRep.   │
-  │ └ test-<label>/  │
-  │   ├ index.html   │
-  │   ├ logs/run.log │
-  │   └ artifacts/   │
-  ├──────────────────┤
-  │ AllureReporter   │
-  │ └ allure-results/│
-  └──────────────────┘
+A successful heal writes back to `HealCache`, so the next run takes the zero-token path.
+Suggestions are also written to `reports/<run>/heal_suggestions.json`, which
+`--apply-heals` folds back into the workflow JSON after a diff.
 
-  REPORTER CONTRACT           OBSERVER CONTRACT
-  ─────────────────           ────────────────
-  start_suite(name)           on_step_start(idx, step)
-  record_step(result)         on_step_done(idx, result)
-  finish_suite() → path       on_log(message, level)
-```
+Opt a step out with `"heal": false`. Verify a heal actually landed with
+`"heal_assert": {"url_contains": "/inventory"}`.
 
 ---
 
-## Workflow Example: "Search & Add" End-to-End
+## Configuration
 
+```mermaid
+flowchart LR
+    ENV[".env at repo root"] --> S["Settings"]
+    YAML["config.yaml"] --> S
+    DEF["defaults in config.py"] --> S
+    CLI["--vars / --data / --show"] --> S
+    S --> RUN["StepRunner + POMs"]
 ```
-  ol_search_and_add.json
-  ──────────────────────
-  Variables: query="Dune"  max_year=1980  limit=5
 
-  Step 1  ol_ensure_login
-          └─▶ LoginPage.is_session_live() → already logged in, skip
-              or  LoginPage.open() → fill_username → fill_password → submit
-
-  Step 2  ol_clear_reading_list
-          └─▶ ReadingListPage.clear() → shelf is empty
-
-  Step 3  ol_store_count
-          └─▶ count shelf items
-          └─▶ context.counts["count_before"] = 0
-
-  Step 4  ol_collect_books
-          extra: { query:"Dune", filter:{year_max:1980}, limit:5 }
-          └─▶ BookSearchPage.search("Dune")
-          └─▶ BookSearchPage.collect_books_under_year(1980, limit=5)
-          └─▶ context.collected_items = [{url, year}, …]  (list[dict])
-          └─▶ StepResult.output = {items: [{url, year}, …]}
-
-  Step 5  ol_add_to_shelf
-          └─▶ for item in context.collected_items:
-                  navigate(item["url"]) → click shelf button → screenshot()
-          └─▶ StepResult.output = {books: [{url, year, shelf}, …]}
-
-  Step 6  ol_assert_count
-          extra: { delta: 5 }
-          └─▶ new_count == context.counts["count_before"] + 5
-          └─▶ PASS / hard-stop on FAIL
-
-  Output
-  ──────
-  Console        6 / 6 passed
-  report.json    structured step results
-  test-<label>/  index.html + logs + screenshots
-  allure-results allure serve
-```
+Precedence, lowest to highest: dataclass defaults → YAML → environment → CLI flags.
+Each site exposes `load_settings()`; credentials and API keys come from the environment
+and never from code. `.env` belongs at the repo root — both the engine and the examples
+look there first.
 
 ---
 
-## Workflow Example: "Top-Up" with Context-Driven when-guards
+## Reporting
 
+`StepRunner` knows nothing about output formats. It notifies observers and hands each
+`StepResult` to a reporter.
+
+```mermaid
+flowchart LR
+    SR["StepRunner"] -->|"on_step_start / on_step_done / on_log"| OBS["StepObserver"]
+    SR -->|record_step| CR["CompositeReporter"]
+    CR --> C["ConsoleReporter"]
+    CR --> J["JsonReporter → report.json"]
+    CR --> A["AllureReporter → allure-results/"]
+    CR --> T["TestReportReporter → reports/&lt;run&gt;/"]
 ```
-  ol_ensure_count.json
-  ────────────────────
-  Variables: target_count=5  query="Dune"  max_year=1980
 
-  Step 1  ol_ensure_login        → always runs
+| Artifact | Location |
+|---|---|
+| Allure results | `reports/allure-results/` |
+| JSON report | `report.json` |
+| Per-run folder | `reports/<timestamp>_<name>/` |
+| Step results | `reports/<run>/results.json` |
+| Heal suggestions | `reports/<run>/heal_suggestions.json` |
+| Screenshots | `reports/<run>/screenshots/` |
+| Run log | `reports/<run>/logs/run.log` |
+| Performance data | `artifacts/performance.json` |
 
-  Step 2  ol_ensure_count
-          extra: { target_count: 5 }
-          IF current >= 5  → pass, gap NOT stored → steps 3-5 skip
-          IF current < 5   → gap = 5 - current stored in context.counts["gap"]
-
-  Step 3  ol_collect_books       when: context_key_exists: gap
-          limit read from context.counts["gap"] (no limit in extra)
-          └─▶ context.collected_items = [url1 … urlN]
-
-  Step 4  ol_add_to_shelf        when: context_key_exists: collected_items
-          └─▶ adds collected books to shelf
-
-  Step 5  ol_assert_count        when: context_key_exists: gap
-          extra: { expected_count: 5 }
-          └─▶ verifies final count == target
-
-  Context as signal: ol_ensure_count produces "gap", when-guards consume it.
-  Flow controls everything. No action calls another action.
-```
+Adding a format means implementing `ReporterStrategy` and adding it to the composite —
+no engine change.
 
 ---
 
-## Self-Healing Cascade
+## Extension points
 
-```
-  Step fails (status = "failed" or "skipped")
-  and healer is injected and heal != False
-         │
-         ▼
-  ┌────────────────────────────────────────────────┐
-  │  HealCache.get(step)                           │
-  │  Key: SHA256(action|description|element)[:16]  │
-  │                                                │
-  │  HIT  → run cached healed_cfg (0 AI tokens)   │──▶ healed ✓
-  │  MISS → fall through                           │
-  └──────────────────────────┬─────────────────────┘
-                             │
-                             ▼
-  ┌────────────────────────────────────────────────┐
-  │  VisualBridge.check(page, step)                │
-  │  Fast pre-flight — skips expensive cascade     │
-  │                                                │
-  │  "hidden"   → inject scroll_to step            │
-  │               retry original step              │
-  │               success → healed ✓               │
-  │               fail    → fall through to cascade│
-  │                                                │
-  │  "disabled" → inject wait step (2 s)           │
-  │               retry original step              │
-  │               success → healed ✓               │
-  │               fail    → failed (disabled)      │
-  │                                                │
-  │  None / "ok"→ fall through to cascade          │
-  └──────────────────────────┬─────────────────────┘
-                             │
-                             ▼
-  ┌────────────────────────────────────────────────┐
-  │  DOMSnapshotCascade.capture()                  │
-  │  Two-phase scoring + embed-first token min     │
-  │                                                │
-  │  Phase 1 — MiniLM bi-encoder (~30ms)           │
-  │    scores all ~50 elements independently       │
-  │    sort descending → take top 5                │
-  │                                                │
-  │  Phase 2 — Cross-encoder re-rank (~50ms)       │
-  │    reads "query | element" as one string       │
-  │    attention flows across both sides           │
-  │    logits sigmoid-normalised → [0,1]           │
-  │    falls back to MiniLM order if unavailable   │
-  │                                                │
-  │  Decision tree on re-ranked list:              │
-  │  embed_direct  (score≥0.85, unique) → 0 tokens │
-  │  embed_candidates (≥0.85, many)    → ~30 tokens│
-  │  scoped        (0.50–0.85)         → ~100 tok  │
-  │  aria          (<0.50)             → ~400 tok  │
-  └──────────────────────────┬─────────────────────┘
-                             │
-                             ▼
-  ┌────────────────────────────────────────────────┐
-  │  AiHealer.heal()                               │
-  │  Provider cascade: Groq → Gemini → Claude      │
-  │                                                │
-  │  Returns replacement StepConfig(s)             │
-  │  Caches healed_cfg → HealCache for next run    │
-  └──────────────────────────┬─────────────────────┘
-                             │
-                             ▼
-                        healed ✓ or failed
+| I want to… | Do this | Touches existing code? |
+|---|---|---|
+| Add a site | New `poms/<site>/` + `stepper/sites/<site>/`, then `register.py` | No |
+| Add an engine action | Subclass `ActionStrategy`, register in `build_default_registry()` | One line |
+| Add a site action | Subclass `GlueAction` inside a `PageModule`, register it | No |
+| Add a resolver strategy | Implement `ResolverStrategy`, give it a priority, add to the chain | One line |
+| Add a report format | Implement `ReporterStrategy`, add to the composite | One line |
+| Add a planner | Implement `Planner`, inject at `StepRunner` construction | No |
+| Swap the browser adapter | Implement `IBrowserDriver` | No |
 
-  STEP INJECTION (scroll_to / wait)
-  ──────────────────────────────────
-  Safe steps are injected as a pre-step in a disposable StepRunner.
-  Pre-step uses continue_on_failure=True so original step always runs.
-  Only read_only=True actions are eligible for injection (no app-state side effects).
-```
+The patterns behind these seams — Strategy, Template Method, Factory + Registry,
+Observer, Chain of Responsibility, Adapter, Value Object, Mixin, Dependency Inversion —
+are catalogued with their locations in
+[design-patterns.md](.claude/rules/design-patterns.md).
 
----
-
-## Design Patterns Summary
-
-```
-  Pattern              Where                         Purpose
-  ───────────────────  ────────────────────────────  ──────────────────────────────
-  Strategy             ActionStrategy, Resolver,      Swap algorithms without
-                       Reporter, Planner              changing caller code
-  Template Method      ActionStrategy.execute()       Skeleton in base, steps in sub
-  Factory + Registry   ActionRegistry                 Register & create by name
-  Observer             StepRunner + StepObserver      Decouple reporting from exec
-  Chain of Resp.       ElementResolver cascade        Try strategies in order
-  Adapter              PlaywrightDriver wraps Page    Isolate from Playwright API
-  Dependency Inversion All interfaces                 Depend on abstractions only
-```
+For the engine's internal responsibility map, see
+[stepper/engine/ARCHITECTURE.md](stepper/engine/ARCHITECTURE.md).

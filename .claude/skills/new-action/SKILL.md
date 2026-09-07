@@ -25,22 +25,30 @@ If arguments are missing, ask before proceeding.
 Create `stepper/sites/<site-name>/pages/<action_name>_action.py`:
 
 ```python
+from engine.browser.human_behaviour import HumanBehaviour
+from engine.interfaces import StepConfig, StepResult, ExecutionContext
 from engine.pages.glue_action import GlueAction
-from poms.<site>.pages.<pom_module> import <PomClass>
-from poms.<site>.config import get_settings
 
 
 class <ActionClass>(GlueAction):
-    action_name = "<action-name>"
+    action_name = "<site-prefix>_<action-name>"     # must start with the site prefix
+    read_only   = False                             # True → safe inside ParallelAction
 
-    async def _execute(self, page, step, resolver, context):
-        settings = get_settings()
-        driver = self._driver(page)
-        pom = self._build_pom(
+    async def _execute(self, page, step: StepConfig, resolver,
+                       context: ExecutionContext,
+                       behaviour: HumanBehaviour | None = None) -> StepResult:
+        # Import POMs lazily so the glue module has no top-level poms dependency.
+        from poms.<site>.config import load_settings
+        from poms.<site>.pages.<pom_module> import <PomClass>
+
+        settings = load_settings()
+        driver   = self._driver(page)
+        pom      = self._build_pom(
             <PomClass>, driver, settings.base_url, settings.delays,
-            page=page, resolver=resolver          # ← enforced by _build_pom
+            page=page, resolver=resolver, behaviour=behaviour,   # ← enforced by _build_pom
         )
         # implementation here
+        return StepResult(step=step, status="passed")
 
     @classmethod
     def register(cls, registry) -> None:
@@ -49,6 +57,7 @@ class <ActionClass>(GlueAction):
 
 ## After creating
 
-1. Register the action: confirm `register()` is called at module import or in site init.
+1. Register the action: confirm the PageModule's `register()` is reached from
+   `stepper/sites/<site>/register.py`, which `main.py` calls once at startup.
 2. Add a usage example step to the relevant workflow JSON.
 3. Remind: run `/verify-layers` to confirm the new action doesn't violate the three-layer contract.

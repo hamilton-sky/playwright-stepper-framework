@@ -1,15 +1,21 @@
 """
-flows.py -- The 4 exact exam function signatures (OpenLibrary).
+flows.py -- Plain-POM orchestration over the OpenLibrary page objects.
 
-Each function orchestrates one end-to-end flow by delegating to
-openLibrary POM classes. No direct Playwright calls here.
+Reference example: drives the POM layer directly, with no Stepper engine, no
+resolver cascade and no AI. POMs are constructed without page= or resolver=, so
+they run in driver-only mode (see .claude/rules/pom-layer.md, "Two operating
+modes"). This is the proof that the POM layer stands on its own and that the
+engine above it is optional.
 
-Layer position in the architecture:
-    openLibrary/pages/   <- interact with a single page        (POM layer)
-    exam/flows.py        <- orchestrate pages into flows       <- THIS FILE
-    exam/tests/          <- call flows and assert outcomes     (test layer)
+For the same flows expressed declaratively, see
+stepper/sites/openlibrary/workflows/ol_search_and_add.json.
 
-Public API — exam-spec signatures (accept a Playwright ``page`` object):
+Layer position:
+    poms/openLibrary/pages/     <- interact with a single page   (POM layer)
+    examples/plain_pom/flows.py <- orchestrate pages into flows  <- THIS FILE
+    examples/plain_pom/tests/   <- call flows and assert         (test layer)
+
+Public API (each accepts a Playwright ``page`` object):
     search_books_by_title_under_year(page, query, max_year, limit=5) -> list[str]
     add_books_to_reading_list(page, urls)                             -> None
     assert_reading_list_count(page, expected_count)                   -> None
@@ -58,7 +64,7 @@ async def _impl_add_books(
             driver, settings.base_url, book_url=url, delays=settings.delays,
         )
         await detail.open()
-        chosen_shelf = await detail.add_to_reading_list()  # random shelf (exam spec)
+        chosen_shelf = await detail.add_to_reading_list()  # random shelf
         slug = re.sub(r"[^\w\-]", "_", url.split("/")[-1])[:60]
         try:
             await screenshot_mgr.capture(f"book_{idx}_{slug}")
@@ -116,8 +122,7 @@ async def _impl_measure_perf(
     )
 
 
-# ─── Exam-spec public API ─────────────────────────────────────────────────────
-# Signatures match the exam specification exactly.
+# ─── Public API ───────────────────────────────────────────────────────────────
 # Each wrapper accepts a Playwright ``page`` object, builds the driver and
 # settings internally, then delegates to the corresponding ``_impl_*`` helper.
 

@@ -19,7 +19,7 @@ process.stdin.on('end', () => {
     const command = (data.tool_input && data.tool_input.command) || '';
 
     // Block rm -rf on critical project directories
-    if (/rm\s+(-[a-zA-Z]*r[a-zA-Z]*f|--force.*--recursive|--recursive.*--force)\s+(\.|\.\/|poms|stepper|exam|\.claude)/i.test(command)) {
+    if (/rm\s+(-[a-zA-Z]*r[a-zA-Z]*f|--force.*--recursive|--recursive.*--force)\s+(\.|\.\/|poms|stepper|examples|docs|\.claude)/i.test(command)) {
       process.stderr.write('BLOCKED: Destructive rm on critical project directories. Use specific file paths instead.\n');
       process.exit(2);
     }

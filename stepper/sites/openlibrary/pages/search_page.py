@@ -1,13 +1,13 @@
 """
 sites/openlibrary/pages/search_page.py — Stepper action module for OL search.
 
-Wires the exam's BookSearchPage into the Stepper ActionRegistry.
+Wires BookSearchPage into the Stepper ActionRegistry.
 This file is Stepper glue — it imports from both:
-  - src/ (Stepper framework interfaces)
-  - openlibrary_exam/ (exam POM)
+  - stepper/engine/ (framework interfaces)
+  - poms/openLibrary/ (the page objects)
 
-Dependency direction: sites.openlibrary → stepper  (correct)
-                      sites.openlibrary → openlibrary  (correct — exam is the dependency)
+Dependency direction: stepper.sites → stepper.engine  (correct)
+                      stepper.sites → poms           (correct — glue depends on POM)
 """
 
 from __future__ import annotations
@@ -44,7 +44,7 @@ class OLSearchPage(PageModule):
         async def _execute(
             self, page, step: StepConfig,
             resolver, context: ExecutionContext,
-            behaviour: HumanBehaviour
+            behaviour: HumanBehaviour | None = None,
         ) -> StepResult:
             try:
                 from poms.openLibrary.config import load_settings

@@ -14,21 +14,25 @@ Review code at $ARGUMENTS against stepper framework standards.
 
 ### POM layer (`poms/*/pages/*.py`)
 
-- [ ] Every `fill()` / `click()` call uses a cfg list locator (not a plain CSS string)
-- [ ] cfg dicts have explicit `"priority"` values; lower = tried first
-- [ ] `_resolve_and_fill_any` / `_resolve_and_click_any` used (not direct driver calls for interactive elements)
-- [ ] No imports from `stepper/sites/` — POMs must not depend on glue layer
+- [ ] Every `fill()` / `click()` target is a `Locator` object (not a plain CSS string)
+- [ ] Every `Locator` sets `description=` — Phase 2 embeds it for semantic resolution
+- [ ] Semantic fields (`role`/`name`, `label`, `placeholder`) filled in where they exist; `css`/`xpath` are fallbacks
+- [ ] Interactions go through `_interact(locator, "fill"|"click")`, not direct driver calls
+- [ ] No new `_CFG` lists or `"priority"` keys — that convention is superseded by `Locator`
+- [ ] POM still works with `resolver=None` and `behaviour=None`
+- [ ] No imports from `stepper/` — POMs must not depend on the glue layer
 - [ ] No flow logic (no multi-page loops, no orchestration)
 - [ ] No hardcoded credentials or environment values
 - [ ] Read-only operations (text reads, count checks) may use plain CSS strings — that's fine
 
 ### Glue layer (`stepper/sites/*/pages/*.py`)
 
-- [ ] Every POM construction passes `page=page, resolver=resolver`
-- [ ] No raw `page.locator("css-string")` calls — selectors belong in POM cfg lists
-- [ ] Action name in `register()` matches the `"action"` key used in workflow JSON
-- [ ] `_execute` signature is `(self, page, step, resolver, context)`
-- [ ] Settings loaded from `config.get_settings()`, not hardcoded
+- [ ] POMs built via `self._build_pom(...)` with `page=`, `resolver=` and `behaviour=`
+- [ ] No raw `page.locator("css-string")` calls — selectors belong in POM `Locator`s
+- [ ] `action_name` matches the `"action"` key used in workflow JSON, and starts with `f"{site}_"`
+- [ ] `_execute` signature is `(self, page, step, resolver, context, behaviour=None)` — five params, default on `behaviour`
+- [ ] `execute()` is NOT overridden (it is the template method)
+- [ ] Settings loaded from the site's `config.load_settings()`, not hardcoded
 
 ### Workflow JSON (`stepper/sites/*/workflows/*.json`)
 

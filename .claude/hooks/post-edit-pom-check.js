@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * PostToolUse hook: After writing/editing a POM file, reminds about the cfg list rule.
+ * PostToolUse hook: After writing/editing a POM file, reminds about the Locator rule.
  *
- * Triggers on any Write or Edit to poms/*/pages/*.py
+ * Triggers on any Write or Edit to a POM page file under poms/<site>/pages/.
  * Provides informational feedback only — does NOT block edits.
  * Exit code is always 0.
  */
@@ -23,9 +23,12 @@ process.stdin.on('end', () => {
       const msg = JSON.stringify({
         systemMessage: [
           'POM file edited. Self-check before proceeding:',
-          '  1. Every fill() / click() call → locator must be a cfg list (list of dicts with "priority")',
-          '  2. Plain CSS strings are only OK for read-only checks (query_selector, locator_count)',
-          '  3. No imports from stepper/sites/ — POMs must not depend on the glue layer',
+          '  1. Every fill() / click() target → a Locator object (poms/shared/locator.py), not a bare CSS string',
+          '  2. Route interactions through _interact(locator, "fill"|"click") — not the driver directly',
+          '  3. Give every Locator a description= — Phase 2 embeds it for semantic resolution',
+          '  4. Plain CSS strings are only OK for read-only checks (query_selector, locator_count)',
+          '  5. No imports from stepper/ — POMs must not depend on the glue layer',
+          '  6. The POM must still work with resolver=None and behaviour=None',
           'See .claude/rules/pom-layer.md for the full rule set.'
         ].join('\n')
       });

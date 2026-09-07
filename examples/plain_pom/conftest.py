@@ -1,7 +1,7 @@
 """
-conftest.py -- Pytest fixtures for the OpenLibrary exam solution.
+conftest.py -- Pytest fixtures for the plain-POM OpenLibrary example.
 
-Provides browser, page, and auth fixtures used by tests/test_openlibrary_exam.py.
+Provides browser, page, and auth fixtures used by tests/test_openlibrary_flows.py.
 
 Authentication order:
   1. If stepper/sites/openlibrary/artifacts/storage_state.json exists -> loads saved cookies (instant).
@@ -16,10 +16,20 @@ import os
 from pathlib import Path
 
 # ── Load .env file before anything else ──────────────────────────────────────
-# Looks in project root first, then exam/, then stepper/ as fallback.
+# Looks in project root first, then this example's dir, then stepper/ as fallback.
+def _repo_root() -> Path:
+    """Walk up until a repo marker is found — survives moving this example."""
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        if (parent / "pyproject.toml").exists() or (parent / ".git").exists():
+            return parent
+    return here.parent.parent
+
+
 def _load_env() -> None:
     _here = Path(__file__).resolve().parent
-    for candidate in (_here.parent / ".env", _here / ".env", _here.parent / "stepper" / ".env"):
+    _root = _repo_root()
+    for candidate in (_root / ".env", _here / ".env", _root / "stepper" / ".env"):
         if not candidate.exists():
             continue
         for line in candidate.read_text(encoding="utf-8").splitlines():
@@ -33,6 +43,11 @@ def _load_env() -> None:
         break  # stop after first found
 
 _load_env()
+
+# Make `poms` importable regardless of the working directory pytest ran from.
+import sys
+if str(_repo_root()) not in sys.path:
+    sys.path.insert(0, str(_repo_root()))
 
 import argparse
 

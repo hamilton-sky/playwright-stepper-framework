@@ -46,7 +46,7 @@ class OLReadingListPage(PageModule):
         async def _execute(
             self, page, step: StepConfig,
             resolver, context: ExecutionContext,
-            behaviour: HumanBehaviour
+            behaviour: HumanBehaviour | None = None,
         ) -> StepResult:
             try:
                 from poms.openLibrary.config import load_settings
@@ -101,7 +101,7 @@ class OLReadingListPage(PageModule):
         async def _execute(
             self, page, step: StepConfig,
             resolver, context: ExecutionContext,
-            behaviour: HumanBehaviour
+            behaviour: HumanBehaviour | None = None,
         ) -> StepResult:
             try:
                 from poms.openLibrary.config import load_settings
@@ -139,7 +139,7 @@ class OLReadingListPage(PageModule):
         read_only   = True
 
         async def _execute(self, page, step: StepConfig,
-                           resolver, context: ExecutionContext, behaviour: HumanBehaviour) -> StepResult:
+                           resolver, context: ExecutionContext, behaviour: HumanBehaviour | None = None) -> StepResult:
             try:
                 from poms.openLibrary.config import load_settings
                 from poms.openLibrary.pages.reading_list_page import ReadingListPage
@@ -197,7 +197,7 @@ class OLReadingListPage(PageModule):
         async def _execute(
             self, page, step: StepConfig,
             resolver, context: ExecutionContext,
-            behaviour: HumanBehaviour
+            behaviour: HumanBehaviour | None = None,
         ) -> StepResult:
             try:
                 from poms.openLibrary.config import load_settings

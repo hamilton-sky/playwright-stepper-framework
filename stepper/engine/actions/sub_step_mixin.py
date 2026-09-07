@@ -67,7 +67,7 @@ class SubStepRunnerMixin:
         context,
         substitutions: dict | None = None,
         stop_on_failure: bool = False,
-        
+        behaviour=None,
     ) -> list:
         """
         Run a list of raw step dicts as sub-steps.
@@ -77,6 +77,9 @@ class SubStepRunnerMixin:
             substitutions:   Token → value map; {{token}} is replaced in every
                              string field of each step dict before execution.
             stop_on_failure: When True, stop after the first non-passed result.
+            behaviour:       HumanBehaviour forwarded to each sub-step, so glue
+                             sub-steps get the same humanisation as top-level
+                             steps instead of silently running without it.
 
         Returns:
             List of StepResult for every sub-step that was attempted.
@@ -105,7 +108,7 @@ class SubStepRunnerMixin:
                     continue
 
             action = self._factory.create(sub_cfg.action)
-            result = await action.execute(page, sub_cfg, resolver, context)
+            result = await action.execute(page, sub_cfg, resolver, context, behaviour)
             results.append(result)
 
             if stop_on_failure and result.status != "passed":

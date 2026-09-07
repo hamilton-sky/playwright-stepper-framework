@@ -9,8 +9,7 @@ SRP: BookSearchPage only knows about the search page.
      ReadingListPage only knows about the reading list.
 DRY: Selectors live in one place per page.
 
-These classes are the direct answer to the exam's
-"POM, OOP, SRP" requirement (40% of the grade).
+Selectors are declared as Locator objects; see .claude/rules/pom-layer.md.
 """
 
 from __future__ import annotations

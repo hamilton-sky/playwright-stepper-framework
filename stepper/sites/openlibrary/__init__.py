@@ -1,2 +1,2 @@
-# sites/openlibrary — Stepper action modules that wire openlibrary_exam POMs into the ActionRegistry.
-# These files belong to the Stepper framework side, not the exam module.
+# sites/openlibrary — Stepper action modules that wire poms/openLibrary into the ActionRegistry.
+# These files belong to the glue layer, not the POM layer.

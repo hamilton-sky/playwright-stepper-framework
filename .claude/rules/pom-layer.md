@@ -1,78 +1,96 @@
----
-description: POM layer rules — locator cfg lists, SharedBasePage API, what POMs must not do
-globs:
-  - "poms/**/*.py"
----
-
 ## POM Layer Rules
 
 POMs live in `poms/*/pages/`. They own **selectors and raw page interactions only**.
 
-### The cfg list rule
+### The Locator rule
 
-Every interactive element (anything that calls `fill()` or `click()`) must be a **prioritised list of dicts**. This is the single source of truth — no parallel plain strings.
+Every interactive element (anything that gets filled or clicked) must be a
+`Locator` value object from `poms/shared/locator.py` — never a bare CSS string.
+One `Locator` describes one element by every identifier known for it, and it is the
+single source of truth for that element.
 
 ```python
-class Locators:
-    # Interactive inputs — MUST be cfg lists
-    USERNAME_CFG = [
-        {"label":       "Username",       "priority": 10},
-        {"placeholder": "Username",       "priority": 20},
-        {"id":          "username",       "priority": 30},
-        {"css":         "#username",      "priority": 40},
-    ]
-    SUBMIT_CFG = [
-        {"role": "button", "name": "Log in",  "priority": 10},
-        {"role": "button", "name": "Sign in", "priority": 20},
-        {"css":  ".cta-btn--primary",         "priority": 30},
-    ]
+from poms.shared.locator import Locator
 
-    # Read-only state checks — plain CSS/text strings are fine
-    ERROR_MSG = "[data-test='error']"
-    APP_LOGO  = ".app_logo"
+class LoginPage(BasePage):
+    class Locators:
+        # ── Interactive → must be Locator objects ────────────────────────────
+        USERNAME = Locator(
+            css="[data-test='username']",
+            css_fallbacks=["#user-name"],
+            description="username input field",
+        )
+        SUBMIT = Locator(
+            role="button", name="Login",
+            css="[data-test='login-button']",
+            description="login submit button",
+        )
+
+        # ── Read-only state checks → plain CSS is fine ───────────────────────
+        ERROR_MSG = "[data-test='error']"
+        APP_LOGO  = ".app_logo"
 ```
 
-**Rule:** `fill()` or `click()` call → cfg list required. `query_selector`, `locator_count`, text reads → plain CSS is fine.
+**Rule:** fill or click → `Locator` required. `query_selector`, `locator_count`, text
+reads → plain CSS string is fine.
 
-### cfg dict keys
+### Locator fields
 
-| Key | Resolver strategy | Priority (default) |
+| Field | Kind | Used by |
 |---|---|---|
-| `role` + `name` | RoleResolver (get_by_role) | 10 |
-| `label` | LabelResolver (get_by_label) | 20 |
-| `placeholder` | PlaceholderResolver | 30 |
-| `text` | TextResolver (get_by_text) | 40 |
-| `id` | IdResolver | 50 |
-| `css` | CssResolver | 60 |
-| `xpath` | XPathResolver | 70 |
+| `role` + `name` | semantic | RoleResolver — `get_by_role` |
+| `label` | semantic | LabelResolver — `get_by_label` |
+| `placeholder` | semantic | PlaceholderResolver |
+| `text` | semantic | TextResolver — `get_by_text` |
+| `aria_label` | semantic | metadata |
+| `id` | structural | IdResolver |
+| `css` | structural | CssResolver — the primary selector |
+| `xpath` | structural | XPathResolver |
+| `css_fallbacks` | structural | **driver-fallback path only** — not sent to the resolver |
+| `description` | metadata | Phase 2 embedding + log messages |
 
-Always set explicit `"priority"` values — lower = tried first.
+Priority is **not** set per-element. `Locator.to_cfg()` emits a cfg dict and the
+resolver cascade applies its own fixed strategy order (see
+[resolver-cascade.md](resolver-cascade.md)). Prefer filling in semantic fields —
+they survive redesigns; `css`/`xpath` are the fallbacks, not the plan.
 
-### SharedBasePage helper methods
+Always set `description`: it is what Phase 2 embeds, so a vague one degrades semantic
+resolution.
 
-`poms/shared/base_page.py` provides all resolver-aware helpers. Every site BasePage inherits from it.
+### SharedBasePage — `poms/shared/base_page.py`
+
+`BasePage` there is the canonical base every site's `BasePage` inherits from.
+The one method that matters:
 
 ```
-SharedBasePage
-    ├── _ordered_cfgs(cfgs)              → sorted by priority
-    ├── _resolve_and_fill(cfg, value)    → single cfg → fill
-    ├── _resolve_and_click(cfg)          → single cfg → click
-    ├── _resolve_and_fill_any(cfgs, v)   → try list in priority order → fill first match
-    └── _resolve_and_click_any(cfgs)     → try list in priority order → click first match
+_interact(locator: Locator, action: str, **kwargs) -> bool
+    action="fill"  → kwargs must contain value=str
+    action="click" → kwargs may contain js_click=bool
+    Returns True on success, False if not found or the action failed. Never raises.
 ```
 
-Use `_resolve_and_fill_any` / `_resolve_and_click_any` for interactive elements — never call driver directly with a raw CSS string for clicks/fills.
+`_interact` is the only path interactive elements should take — it dispatches to the
+resolver cascade when a resolver is injected and to the driver's CSS candidates when
+it is not. There are older `_resolve_and_fill_any` / `_resolve_and_click_any` cfg-list
+helpers still present for compatibility; **do not use them in new code.**
 
 ### Two operating modes
 
-| Mode | resolver= at construction | Behaviour |
+| Mode | `resolver=` at construction | Behaviour |
 |---|---|---|
-| driver-only | `None` | CSS/id extracted from cfg dict, called via driver |
-| resolver-enhanced | `ElementResolver` instance | Full 10-stage cascade; falls back to driver on low confidence |
+| driver-only | `None` | `Locator.css_candidates()` tried in order: id → css → css_fallbacks → xpath |
+| resolver-enhanced | `ElementResolver` instance | Full cascade via `Locator.to_cfg()`; returns False below `CONFIDENCE_WARN` |
+
+Both modes are live: the glue layer always injects a resolver, and
+`examples/plain_pom/` exercises driver-only mode. Neither may be broken.
+
+`behaviour=` is a third optional constructor argument (`HumanBehaviour`). When present,
+`_interact` adds jitter before fills and hover-dwell before clicks; when `None`, it acts
+immediately. POMs must work with `behaviour=None`.
 
 ### What POMs must NOT do
 
 - No flow logic (no loops across pages, no multi-step orchestration)
 - No credentials or environment values hardcoded
-- No imports from `stepper/sites/` (glue layer) — dependency direction is one-way
+- No imports from `stepper/` — dependency direction is one-way
 - No test assertions — POMs return data, tests assert on it

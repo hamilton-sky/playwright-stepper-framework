@@ -1,48 +1,48 @@
 [
   {
-    "comment": "Exam example — Dune, broad era, matches exam spec default limit=5",
+    "comment": "Dune \u2014 Herbert, broad era, default limit",
     "query": "Dune",
     "max_year": 1980,
     "limit": 5,
     "expected_count": 5
   },
   {
-    "comment": "Second case — Foundation, Asimov, enough editions exist before 1990",
+    "comment": "Foundation \u2014 Asimov, enough editions exist before 1985",
     "query": "Foundation",
     "max_year": 1985,
     "limit": 7,
     "expected_count": 7
   },
   {
-    "comment": "Third case — 1984, Orwell, matches default limit=2",
+    "comment": "1984 \u2014 Orwell, narrow era, small limit",
     "query": "1984",
     "max_year": 1950,
     "limit": 2,
     "expected_count": 2
   },
   {
-    "comment": "Fourth case — Pride and Prejudice, Austen, matches default limit=4",
+    "comment": "Pride and Prejudice \u2014 Austen, pre-1935 editions",
     "query": "Pride and Prejudice",
     "max_year": 1935,
     "limit": 4,
     "expected_count": 4
   },
   {
-    "comment": "Fifth case — The Hobbit, Tolkien, matches default limit=3",
+    "comment": "The Hobbit \u2014 Tolkien, pre-1950 editions",
     "query": "The Hobbit",
     "max_year": 1950,
     "limit": 3,
     "expected_count": 3
   },
   {
-    "comment": "Sixth case — The Great Gatsby, Fitzgerald, matches default limit=2",
+    "comment": "The Great Gatsby \u2014 Fitzgerald, pre-1950 editions",
     "query": "The Great Gatsby",
     "max_year": 1950,
     "limit": 2,
     "expected_count": 2
   },
   {
-    "comment": "nothing limit=0",
+    "comment": "Empty query \u2014 edge case, expects zero results",
     "query": "",
     "max_year": 0,
     "limit": 0,
