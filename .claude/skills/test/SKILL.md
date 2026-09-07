@@ -1,12 +1,12 @@
 ---
 name: test
-description: Run pytest tests for the stepper framework (exam suite or specific test/mark).
-argument-hint: "[all|exam|<test-name>|<file-path>] [--headless] [-k <mark>]"
+description: Run pytest tests for the stepper framework (unit suite, plain-POM example, or a specific test/mark).
+argument-hint: "[all|unit|example|<test-name>|<file-path>] [--headless] [-k <mark>]"
 ---
 
 Run tests for the stepper framework.
 
-## Target: $ARGUMENTS (default: all exam tests)
+## Target: $ARGUMENTS (default: the unit suite)
 
 ### Parse flags from arguments:
 - `--headless` → pass through to pytest via `HEADLESS=true` env or pytest flag
@@ -14,25 +14,33 @@ Run tests for the stepper framework.
 - A specific file path → run that file only
 - A test name → pass to `-k`
 
-### Default (no args or "all"):
+### Default (no args, "all" or "unit") — fast, no browser, no network:
 ```bash
-pytest exam/ -v
+PYTHONPATH=stepper pytest stepper/tests/unit/ -v
+```
+
+### Plain-POM example suite (real browser + OpenLibrary credentials):
+```bash
+cd examples/plain_pom && pytest tests/ -v
+```
+
+### Stepper integration tests (real browser):
+```bash
+PYTHONPATH=stepper pytest stepper/tests/ --ignore=stepper/tests/unit -v
 ```
 
 ### Specific test file:
 ```bash
-pytest exam/tests/test_openlibrary_exam.py -v
+PYTHONPATH=stepper pytest <file-path> -v
 ```
 
 ### Filter by keyword/mark:
 ```bash
-pytest exam/ -k "<mark>" -v
+PYTHONPATH=stepper pytest stepper/tests/unit/ -k "<mark>" -v
 ```
 
-### With headless browser:
-```bash
-pytest exam/ -v --headless
-```
+Start with the unit suite: it needs no browser and no credentials, so it is the
+fastest way to tell whether a change broke something.
 
 ## After running
 

@@ -1,7 +1,7 @@
 """
 runner/api.py — Programmatic API for running Stepper workflows.
 
-Lets exam functions, tests, and scripts run steps through the full
+Lets plain functions, tests, and scripts run steps through the full
 Stepper pipeline (resolver cascade, retry, observer, reporter)
 without going through main.py's CLI.
 

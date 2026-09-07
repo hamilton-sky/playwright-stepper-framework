@@ -1,6 +1,6 @@
 ---
 name: new-site
-description: Scaffold a new site — POM layer + glue layer with correct structure, cfg lists, and resolver injection.
+description: Scaffold a new site — POM layer + glue layer with correct structure, Locator objects, and resolver injection.
 argument-hint: "<site-name> <base-url>"
 ---
 
@@ -19,12 +19,12 @@ If arguments are missing, ask for them before proceeding.
 
 ```
 poms/<site-name>/
-├── config.py          ← Settings dataclass + get_settings() loader
+├── config.py          ← Settings dataclass + load_settings() loader
 ├── data/
 │   └── testdata.json  ← Empty JSON object {}
 └── pages/
     ├── base_page.py   ← BasePage(SharedBasePage) with delays + open()
-    └── login_page.py  ← Example page with cfg list locators
+    └── login_page.py  ← Example page with Locator objects
 ```
 
 **base_page.py** must inherit `SharedBasePage` from `poms.shared.base_page`:
@@ -38,24 +38,29 @@ class BasePage(SharedBasePage):
         self.delays = delays
 ```
 
-**login_page.py** must use cfg lists for all interactive locators:
+**login_page.py** must use `Locator` objects for all interactive locators:
 ```python
+from poms.shared.locator import Locator
+
 class Locators:
-    USERNAME_CFG = [
-        {"label": "Username", "priority": 10},
-        {"placeholder": "Username", "priority": 20},
-        {"id": "username", "priority": 30},
-        {"css": "#username", "priority": 40},
-    ]
-    PASSWORD_CFG = [
-        {"label": "Password", "priority": 10},
-        {"css": "#password", "priority": 20},
-    ]
-    SUBMIT_CFG = [
-        {"role": "button", "name": "Login", "priority": 10},
-        {"css": "[type='submit']", "priority": 20},
-    ]
+    USERNAME = Locator(
+        label="Username", placeholder="Username",
+        id="username", css="#username",
+        description="username input field",
+    )
+    PASSWORD = Locator(
+        label="Password", css="#password",
+        description="password input field",
+    )
+    SUBMIT = Locator(
+        role="button", name="Login", css="[type='submit']",
+        description="login submit button",
+    )
 ```
+
+Fill in the semantic fields (`role`/`name`, `label`, `placeholder`) — they survive
+redesigns. `css`/`xpath` are fallbacks. There is no per-locator `priority`: strategy
+order is fixed by the cascade. Always set `description` — Phase 2 embeds it.
 
 ### 2. Glue layer — `stepper/sites/<site-name>/`
 

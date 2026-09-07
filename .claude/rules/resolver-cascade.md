@@ -54,9 +54,18 @@ Lives in `stepper/engine/resolvers/`. Orchestrated by `element_resolver.py`.
 
 ### cfg key → strategy mapping
 
-A cfg dict can contain multiple keys. The resolver tries each applicable strategy in ascending priority order and stops at the first unique match.
+POMs do not build cfg dicts by hand — `Locator.to_cfg()` produces one, dropping any
+field left as `None`. A cfg may therefore carry several keys at once; the resolver
+walks its strategies in ascending **strategy** priority and stops at the first unique
+match.
 
 ```python
-# This cfg will try RoleResolver first, then CssResolver
-{"role": "button", "name": "Submit", "css": ".submit-btn", "priority": 10}
+# Locator(role="button", name="Submit", css=".submit-btn").to_cfg()
+{"role": "button", "name": "Submit", "css": ".submit-btn"}
+# → RoleResolver (10) tried first, CssResolver (60) only if that is not unique
 ```
+
+Ordering comes from the strategy classes' own `priority` attributes, listed in the
+table above — **not** from anything inside the cfg. A `"priority"` key in a cfg dict is
+read only by the legacy cfg-list helpers in `poms/shared/base_page.py`, which strip it
+before calling the resolver. Don't add one to new code.

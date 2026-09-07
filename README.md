@@ -1,361 +1,174 @@
-# OpenLibrary Automation — Stepper Framework
+# Stepper Framework
 
-End-to-end automation framework for [openlibrary.org](https://openlibrary.org) built with Playwright + Python.
+A JSON-driven browser automation engine built on Playwright + Python.
 
-Implements the full exam specification using a clean POM layer, then extends it with a JSON-driven Stepper engine that adds retry, smart locators, conditional flows, and multi-site orchestration — all without touching Python code.
+Workflows are declarative: a JSON file names *what* to do, the engine decides *how* to run
+it — retries, conditional branching, context passing, parallelism and reporting — and a
+three-layer architecture keeps every CSS selector in the page-object layer, out of both the
+engine and the JSON.
 
-> **Examiner**: see [SUBMISSION.md](SUBMISSION.md) for a SOLID walkthrough with file references and an architectural patterns guide.
+When a selector breaks, the resolver cascade and the self-healing pipeline try to find the
+element anyway, escalating from free local strategies to paid AI only when they have to.
+
+```
+JSON Workflow    →    Stepper Engine    →    POM Layer    →    Playwright
+  WHAT to do          HOW to run it        WHERE elements are      DO it
+```
 
 ---
 
 ## Quick Start
 
-### 1. Install dependencies
-
 ```bash
-# from repo root
+# 1. Install
 pip install -r requirements.txt
 playwright install chromium
+
+# 2. Configure — .env belongs at the repo root, where both the engine and
+#    the examples look for it first
+cp stepper/.env.example .env
+#    Fill in OPENLIBRARY_USERNAME / OPENLIBRARY_PASSWORD, plus at least one of
+#    GROQ_API_KEY / GEMINI_API_KEY / ANTHROPIC_API_KEY if you want AI resolution.
+
+# 3. Verify the install — no browser, no network, no credentials
+PYTHONPATH=stepper pytest stepper/tests/unit/
+
+# 4. Run a workflow
+python stepper/main.py --workflow stepper/sites/saucedemo/workflows/sd_happy_path.json
 ```
 
-### 2. Configure credentials
-
-```bash
-cp .env.example .env
-# Fill in:
-# OPENLIBRARY_USERNAME=your@email.com
-# OPENLIBRARY_PASSWORD=yourpassword
-```
-
-### 3. Run
-
-**Option A — Exam pytest suite:**
-```bash
-cd exam
-pytest tests/ -v
-```
-
-**Option B — Stepper JSON workflow:**
-```bash
-cd stepper
-python main.py --workflow sites/openlibrary/workflows/ol_search_and_add.json
-```
-
-**Option C — Headed browser (watch the automation):**
-```bash
-python main.py --workflow sites/openlibrary/workflows/ol_search_and_add.json --show
-```
-
-**Option D — Record video + serve Allure report:**
-```bash
-python main.py --workflow sites/openlibrary/workflows/ol_search_and_add.json --video --allure-serve
-```
+Useful flags: `--show` (headed browser), `--video`, `--allure-serve`, `--ci`,
+`--vars '{"query":"Dune"}'`, `--data <testdata.json>`.
 
 ---
-
-# Part I — Exam Solution (POM Approach)
-
-## What the exam required
-
-Four orchestration functions, clean POM separation, and data-driven test cases.
-
-```
-exam/
-├── flows.py                      ← 4 required functions
-├── conftest.py                   ← fixtures, parametrization, auth
-├── pytest.ini
-└── tests/
-    └── test_openlibrary_exam.py  ← TestOpenLibraryExam: search → add → assert → perf
-```
-
-## Four Required Functions
-
-All live in `exam/flows.py` and delegate directly to `poms/` classes:
-
-```python
-async def search_books_by_title_under_year(
-    page, query: str, max_year: int, limit: int = 5
-) -> list[str]:
-    """Search OpenLibrary, filter by publication year, paginate until limit reached."""
-    driver = PlaywrightDriver(page)
-    search_page = BookSearchPage(driver, settings.base_url, settings.delays)
-    await search_page.search(query)
-    return await search_page.collect_books_under_year(max_year, limit)
-
-
-async def add_books_to_reading_list(page, urls: list[str]) -> None:
-    """Open each book URL and add to Want to Read / Already Read + screenshot."""
-    driver = PlaywrightDriver(page)
-    for idx, url in enumerate(urls, start=1):
-        detail = BookDetailPage(driver, settings.base_url, book_url=url, delays=settings.delays)
-        await detail.open()
-        await detail.add_to_reading_list()
-        await screenshot_mgr.capture(f"book_{idx}_{slug}")
-
-
-async def assert_reading_list_count(page, expected_count: int) -> None:
-    """Navigate to both shelves, count books, assert against expected."""
-    driver = PlaywrightDriver(page)
-    reading_list = ReadingListPage(driver, settings.base_url, settings.delays)
-    actual = await reading_list.get_book_count()
-    assert actual == expected_count, f"Expected {expected_count} books, got {actual}"
-
-
-async def measure_page_performance(page, url: str, threshold_ms: int) -> dict:
-    """Measure first_paint_ms, dom_content_loaded_ms, load_time_ms."""
-    driver = PlaywrightDriver(page)
-    return await _measure_perf(driver, url, threshold_ms, output_path=settings.performance_output)
-```
-
-## Data-Driven Test Cases
-
-Test parameters live in `poms/openLibrary/data/testdata.json` and are automatically parametrized
-via `pytest_generate_tests` in `conftest.py` — no test code changes needed to add a new case:
-
-```json
-[
-  { "query": "Dune",               "max_year": 1980, "limit": 5 },
-  { "query": "Foundation",         "max_year": 1990, "limit": 3 },
-  { "query": "1984",               "max_year": 1950, "limit": 2 },
-  { "query": "Pride and Prejudice","max_year": 1820, "limit": 4 }
-]
-```
-
-```bash
-pytest tests/ -v              # default case (index 0)
-pytest tests/ -v --case 2     # run case at index 2
-pytest tests/ -v --all-cases  # run all 4 cases
-```
-
-## Running the Exam Suite
-
-**Authentication**: first run logs in and saves `artifacts/storage_state.json`.
-Subsequent runs load saved cookies — no re-login.
-
-```bash
-cd exam
-
-pytest tests/ -v
-pytest tests/ -v --headed                             # watch the browser
-pytest tests/ -v --case 1                             # specific test case
-pytest tests/ -v --all-cases                          # all parametrised cases
-pytest tests/ -v --alluredir=reports/allure-results   # generate Allure report
-allure serve reports/allure-results
-```
-
----
-
-# Where Plain POM Reaches Its Limits
-
-The exam layer is clean and correct. At scale, the friction points are:
-
-- **No built-in retry** — a flaky network click fails the whole test; recovery requires manual `try/except`
-- **Orchestration accumulates in Python** — conditional branching, step sequencing, and
-  context-passing between functions all live in imperative code
-- **Intermediate values don't flow declaratively** — results pass through a `_shared_results` dict;
-  later steps can't reference earlier results by name in configuration
-- **No composable sub-flows** — reusing a login sequence across tests means copy-paste or a helper
-  with a growing parameter list
-- **No parallel step execution** — running three pages concurrently requires asyncio boilerplate
-  in the test itself
-- **Extending to a new site** means new flow functions, new fixtures, new conftest entries
-
-These aren't bugs — they're the natural ceiling of the pattern. The Stepper externalises the
-orchestration engine so the Python layer stays thin.
-
----
-
-# Part II — Stepper Framework
-
-```bash
-cd stepper
-
-# run one case (default: index 0)
-pytest tests/test_workflow.py::test_data_driven -v --workflow ol_search_and_add.json --data ../poms/openLibrary/data/testdata.json
-
-# run a specific case by index
-pytest tests/test_workflow.py::test_data_driven -v --workflow ol_search_and_add.json --data ../poms/openLibrary/data/testdata.json --case 2
-
-# run all cases
-pytest tests/test_workflow.py::test_data_driven -v --workflow ol_search_and_add.json --data ../poms/openLibrary/data/testdata.json --all-cases
-
-```
-
-
 
 ## Three-Layer Architecture
 
 ```
   Layer         Location                      Responsibility
   ────────────  ────────────────────────────  ──────────────────────────────────────────
-  Flow (JSON)   stepper/sites/*/workflows/    Controls order, conditions, variables.
+  Flow (JSON)   stepper/sites/*/workflows/    Order, conditions, variables.
                                               No selectors. No imperative logic.
 
-  Glue          stepper/sites/*/pages/        Wraps POM into a named Stepper action.
+  Glue          stepper/sites/*/pages/        Wraps a POM into a named Stepper action.
                                               One action, one job.
-                                              Always injects page=page, resolver=resolver.
+                                              Injects page=, resolver=, behaviour=.
 
   POM           poms/*/pages/                 Selectors + raw page interactions only.
                                               No flow logic. No credentials.
-                                              All interactive locators are cfg lists.
+                                              Interactive locators are Locator objects.
 ```
 
 **Dependency direction is one-way: Flow → Glue → POM. Never reversed.**
 
-## Architecture in One Diagram
+Every element identifier lives in a `Locator` value object inside a POM's `Locators` inner
+class. Workflow JSON contains action names and parameters only — never a CSS selector.
 
-```
-JSON Workflow          Stepper Engine              POM Layer               Browser
-──────────────         ──────────────              ─────────               ───────
-{                      StepRunner                  BookSearchPage
-  "action":       →    ActionFactory.create()  →   .search()           →   Playwright
-  "ol_collect_         OLCollectBooksAction         .collect_books()        page.fill()
-   books",             ._execute()                                          page.click()
-  "extra": {                                        BookDetailPage
-    "query":           (retries, screenshots,       .add_to_reading_list()
-    "Dune"             reporting all handled    →   .remove_from_shelf()
-  }                     by the engine)
-}                                                   ReadingListPage
-                                                    .get_book_count()
-                                                    .collect_all_book_urls()
-
-   WHAT to do            HOW to run it            WHERE elements are        DO it
-```
-
-> JSON contains action names and parameters only — never CSS selectors or XPaths.
-> All element knowledge lives exclusively in the POM `Locators` inner classes.
-
-## Exam Layer vs Stepper — Side by Side
-
-| Capability | Exam layer | Stepper |
-|---|---|---|
-| Data-driven test cases | `testdata.json` → `pytest_generate_tests` | `variables{}` in workflow JSON |
-| Runtime context between steps | Python `_shared_results` dict | `{{gap}}`, `{{count}}` resolved at execution time |
-| Conditional execution | Python `if` in test body | `when:` guard — declarative, zero Python |
-| Retry per step | Manual `try/except` | `retry`, `retry_delay_ms` per step |
-| Sub-workflow composition | Copy-paste helpers | `run_workflow` action |
-| Parallel steps | `asyncio` boilerplate in test | `parallel` action |
-| Screenshots / reports | Manual calls | Observer fires automatically after every step |
+Full diagrams: [ARCHITECTURE.md](ARCHITECTURE.md).
+Layer rules: [.claude/rules/three-layer-contract.md](.claude/rules/three-layer-contract.md).
 
 ---
 
 ## Smart Locators — Resolver Cascade
 
-The `ElementResolver` tries strategies in resilience order, stopping at the first confident match:
+`ElementResolver` tries strategies in resilience order and stops at the first confident
+match, escalating only when cheaper phases are ambiguous:
 
 ```
   cfg dict  (role / label / placeholder / text / id / css / xpath)
        │
        ▼
-  PHASE 1 — Deterministic
-  ──────────────────────────────────────────────────────────────────
-  Priority  Strategy             Playwright call           Confidence
-  ────────  ───────────────────  ───────────────────────── ──────────
-  10        RoleResolver         get_by_role(role, name=n) 0.95
-  20        LabelResolver        get_by_label(label)       0.93
-  30        PlaceholderResolver  get_by_placeholder(ph)    0.90
-  40        TextResolver         get_by_text(text)         0.85
-  50        IdResolver           locator(f"#{id}")         0.82
-  60        CssResolver          locator(css)              0.75
-  70        XPathResolver        locator(f"xpath={x}")     0.70
-
-  Exactly 1 match → act immediately
-  0 or 2+ matches → Phase 2
-
-  PHASE 2 — Semantic Filter
-  ──────────────────────────────────────────────────────────────────
-  Model:   MiniLM-L6-v2 (sentence-transformers, bundled locally)
-  Method:  embed cfg description → cosine similarity vs. element text
-  score ≥ 0.80 and exactly 1 match → act
-  2+ shortlisted at threshold    → Phase 3
-
-  PHASE 3 — AI Pick
-  ──────────────────────────────────────────────────────────────────
-  Provider chain (cheapest first):  Groq → Gemini → Claude
-  confidence ≥ 0.70 → act
-  all providers fail → fall back to top semantic result
+  PHASE 1 — Deterministic          role → label → placeholder → text → id → css → xpath
+       │                           exactly 1 match → act immediately
+       ▼
+  PHASE 2 — Semantic filter        MiniLM-L6-v2 embeddings, local, ~30ms, no network
+       │                           score ≥ 0.80 and unique → act
+       ▼
+  PHASE 3 — AI pick                Groq → Gemini → Claude (cheapest first)
+                                   confidence ≥ 0.70 → act
 ```
 
-**Why this matters:** CSS selectors break on class renames. ARIA roles and labels survive redesigns.
-The cascade tries the most stable locator first and falls back gracefully — no test rewrite needed
-when the UI changes.
+Priority order mirrors Playwright's own locator guidance: `role` survives redesigns,
+`xpath` encodes the whole DOM shape and breaks first. Details and the confidence
+constants: [.claude/rules/resolver-cascade.md](.claude/rules/resolver-cascade.md).
+
+The cascade is optional. A POM built with `resolver=None` falls back to its `Locator`'s
+CSS candidates and works with no AI, no keys and no network — see
+[`examples/plain_pom/`](examples/plain_pom/).
 
 ---
 
 ## Self-Healing — DOM Snapshot Cascade
 
-When a step fails, `DOMSnapshotCascade` finds the correct element using a two-phase scoring pipeline before calling the AI:
+When a step fails, `DOMSnapshotCascade` scores every interactive element on the page
+before spending a single AI token:
 
 ```
-  All ~50 interactive elements on the page
+  All ~50 interactive elements
        │
-       ▼  Phase 1 — MiniLM bi-encoder (~30ms)
-       │  scores all elements independently via cosine similarity
-       ▼
+       ▼  Phase 1 — MiniLM bi-encoder (~30ms), scores each element independently
   Top 5 candidates
        │
-       ▼  Phase 2 — Cross-encoder re-ranking (~50ms)
-       │  reads (query | element description) as ONE string
-       │  attention flows across both sides → more accurate ranking
-       │  logits sigmoid-normalised → [0,1]
-       ▼
-  Decision tree (thresholds unchanged):
-    ≥ 0.85, unique     → healed_cfg ready, zero AI tokens
+       ▼  Phase 2 — cross-encoder re-ranking (~50ms), reads (query | element) as one string
+  Decision:
+    ≥ 0.85, unique     → healed cfg ready, zero AI tokens
     ≥ 0.85, ambiguous  → ~30 tokens to AI
     0.50–0.85          → scoped DOM area, ~100 tokens
     < 0.50             → full ARIA snapshot, ~400 tokens
 ```
 
-Apply cached heal suggestions back to the workflow JSON after a run:
+Opt a step out with `"heal": false`. Verify a heal landed with `"heal_assert"`.
+
+Apply cached heal suggestions back into the workflow JSON after a run:
 
 ```bash
 python stepper/main.py --apply-heals stepper/sites/saucedemo/workflows/sd_full_heal_flow.json
-python stepper/main.py --apply-heals stepper/sites/saucedemo/workflows/sd_full_heal_flow.json --yes
 ```
 
-`--apply-heals` automatically finds the most recent `heal_suggestions.json` from the `reports/` directory, shows a before/after diff per step, and patches the workflow JSON in place.
+It finds the most recent `heal_suggestions.json` under `reports/`, shows a per-step
+before/after diff, and patches the JSON in place (`--yes` to skip confirmation).
+
+`sd_heal_test.json` and `sd_full_heal_flow.json` ship with deliberately broken selectors,
+so the healer has to work for those workflows to pass.
 
 ---
 
 ## Step Controls
 
-Every step supports these optional fields:
-
 | Field | Default | Effect |
 |---|---|---|
-| `when` | — | Skip step if condition is false |
+| `when` | — | Skip the step if the condition is false |
 | `retry` | `0` | Retry on failure up to N times |
 | `retry_delay_ms` | `1000` | Milliseconds between retries |
 | `continue_on_failure` | `false` | `true` → warn and continue; `false` → hard-stop |
-| `extra` | — | Arbitrary config passed to action; supports `{{var}}` substitution |
-| `read_only` | `false` | For `parallel` steps: `true` → run in shared read-only tab; `false` → separate tab with fresh state |
-| `screenshot_on` | `failure` | `always` → capture after every attempt; `failure` → capture only on final failure |
+| `heal` | `true` | `false` → opt this step out of the healing loop |
+| `heal_assert` | — | Post-heal assertion, e.g. `{"url_contains": "/inventory"}` |
+| `skip_screenshot` | `false` | Suppress the automatic post-step screenshot |
+| `extra` | — | Arbitrary action config; supports `{{var}}` substitution |
 
+Retry, `continue_on_failure` and healing are handled by `StepRunner`, not by the actions
+themselves — an action's job is one attempt at one thing.
 
-### `when` condition reference
+### `when` conditions
 
-| Condition | Syntax | Notes |
-|---|---|---|
-| `context_equals` | `{ "key": "k", "value": 0 }` | Exact match |
-| `context_key_exists` | `"key_name"` | True if key is set and non-empty |
-| `context_greater_than` | `{ "key": "gap", "value": 0 }` | Numeric `>` |
-| `context_less_than` | `{ "key": "count", "value": 10 }` | Numeric `<` |
-| `context_between` | `{ "key": "count", "min": 2, "max": 8 }` | Inclusive range |
-| `url_contains` | `"/account/login"` | Current page URL |
-| `element_exists` | `"input[name='q']"` | Live DOM check |
-| `not` | `<any condition>` | Invert |
-| `all` | `[<cond>, ...]` | AND short-circuit |
-| `any` | `[<cond>, ...]` | OR short-circuit |
-
+| Condition | Syntax |
+|---|---|
+| `context_equals` | `{ "key": "k", "value": 0 }` |
+| `context_key_exists` | `"key_name"` |
+| `context_greater_than` | `{ "key": "gap", "value": 0 }` |
+| `context_less_than` | `{ "key": "count", "value": 10 }` |
+| `context_between` | `{ "key": "count", "min": 2, "max": 8 }` |
+| `url_contains` | `"/account/login"` |
+| `element_exists` | `"input[name='q']"` |
+| `not` / `all` / `any` | invert / AND / OR |
 
 ### Flow-level defaults
 
-Declare once at the top; all steps inherit unless they override:
+Declared once at the top; every step inherits unless it overrides. Step always wins:
 
 ```json
 {
   "continue_on_failure": true,
-  
   "steps": [
     { "action": "ol_ensure_login", "continue_on_failure": false },
     { "action": "screenshot" }
@@ -363,145 +176,162 @@ Declare once at the top; all steps inherit unless they override:
 }
 ```
 
-Step always wins over flow. `ol_ensure_login` hard-stops; `screenshot` soft-fails.
+### Variables
 
----
-
-## Runtime Variable Resolution
-
-`variables{}` in JSON are substituted at **plan time** by `JsonFilePlanner`.
-Context values set by earlier steps are substituted at **runtime** by `StepRunner` —
-so `{{gap}}` resolves to the integer stored by `ol_ensure_count` at the moment the step runs:
+`variables{}` are substituted at **plan time**; context values written by earlier steps are
+substituted at **runtime**, so `{{gap}}` resolves to whatever the previous step stored:
 
 ```json
 { "action": "ol_collect_books",
   "when":  { "context_greater_than": { "key": "gap", "value": 0 } },
-  "extra": { "limit": "{{gap}}" }
-}
+  "extra": { "limit": "{{gap}}" } }
 ```
 
-A pure `"{{key}}"` reference preserves the original type (int, bool).
-Mixed strings like `"page_{{n}}"` are string-substituted.
-
-Override any variable at runtime without touching the JSON:
+A pure `"{{key}}"` reference preserves its type (int, bool); mixed strings like
+`"page_{{n}}"` are string-substituted. Override any variable without touching the JSON:
 
 ```bash
-cd stepper
-python main.py --workflow sites/openlibrary/workflows/ol_regression_roundtrip.json \
+python stepper/main.py --workflow stepper/sites/openlibrary/workflows/ol_regression_roundtrip.json \
   --vars '{"query":"Asimov","max_year":1960,"limit":2}'
 ```
-# run one case (default: index 0)
-pytest tests/test_workflow.py::test_data_driven -v --workflow ol_search_and_add.json --data ../poms/openLibrary/data/testdata.json
-
-# run a specific case by index
-pytest tests/test_workflow.py::test_data_driven -v --workflow ol_search_and_add.json --data ../poms/openLibrary/data/testdata.json --case 2
-
-# run all cases
-pytest tests/test_workflow.py::test_data_driven -v --workflow ol_search_and_add.json --data ../poms/openLibrary/data/testdata.json --all-cases
-
-
 
 ---
 
-## Showcase Workflows
+## Engine Actions
 
-Sixteen ready-to-run JSON workflows demonstrating every engine capability:
-
-**OpenLibrary (10 workflows)**
-
-| Workflow | What it showcases | Command (run from `stepper/`) |
-|---|---|---|
-| `ol_search_and_add.json` | Main exam flow: clear → search → add → assert | `python main.py --workflow sites/openlibrary/workflows/ol_search_and_add.json` |
-| `ol_add_only.json` | Idempotent append — no clear step | `python main.py --workflow sites/openlibrary/workflows/ol_add_only.json` |
-| `ol_ensure_count.json` | Top-up to target N via `when` + `{{gap}}` | `python main.py --workflow sites/openlibrary/workflows/ol_ensure_count.json` |
-| `ol_regression_roundtrip.json` | Full lifecycle + delta and absolute asserts | `python main.py --workflow sites/openlibrary/workflows/ol_regression_roundtrip.json` |
-| `ol_multi_author.json` | Two-query sequential composition (Dune + Tolkien) | `python main.py --workflow sites/openlibrary/workflows/ol_multi_author.json` |
-| `ol_parallel_perf.json` | Three pages benchmarked concurrently in separate tabs | `python main.py --workflow sites/openlibrary/workflows/ol_parallel_perf.json` |
-| `ol_smoke_test.json` | `when`-guarded + `continue_on_failure` soft-fail | `python main.py --workflow sites/openlibrary/workflows/ol_smoke_test.json` |
-| `ol_idempotency_test.json` | Add same books twice → count must not grow | `python main.py --workflow sites/openlibrary/workflows/ol_idempotency_test.json` |
-| `ol_data_driven.json` | Data-driven runs via `--data testdata.json` | `python main.py --workflow sites/openlibrary/workflows/ol_data_driven.json --data ../poms/openLibrary/data/testdata.json` |
-| `login.json` | Generic reusable login subflow | `python main.py --workflow sites/openlibrary/workflows/login.json` |
-
-**SauceDemo (5 workflows)**
-
-| Workflow | What it showcases | Command (run from `stepper/`) |
-|---|---|---|
-| `sd_happy_path.json` | Login → add to cart → checkout | `python main.py --workflow sites/saucedemo/workflows/sd_happy_path.json` |
-| `sd_multi_product.json` | Add multiple products, verify cart | `python main.py --workflow sites/saucedemo/workflows/sd_multi_product.json` |
-| `sd_smoke_test.json` | Smoke check with `continue_on_failure` | `python main.py --workflow sites/saucedemo/workflows/sd_smoke_test.json` |
-| `sd_heal_test.json` | Self-healing locator resolution under UI change | `python main.py --workflow sites/saucedemo/workflows/sd_heal_test.json` |
-| `sd_full_heal_flow.json` | Full self-healing demonstration flow | `python main.py --workflow sites/saucedemo/workflows/sd_full_heal_flow.json` |
-
-**phpTravels (1 workflow)**
-
-| Workflow | What it showcases | Command (run from `stepper/`) |
-|---|---|---|
-| `hotel_booking.json` | Login → search hotels → select → book | `python main.py --workflow sites/phptravels/workflows/hotel_booking.json` |
-
----
-
-## Available Stepper Actions
+Site-agnostic, registered in `build_default_registry()`:
 
 | Action | Description |
 |---|---|
-| `ol_ensure_login` | `LoginPage.is_session_live()` → fill + submit if needed |
-| `ol_collect_books` | Search + filter by year + paginate → fills `context.collected_items`; supports `"{{gap}}"` runtime limit |
-| `ol_add_to_shelf` | Add each collected book to a reading shelf + screenshot |
-| `ol_clear_reading_list` | Remove all books from want-to-read shelf |
-| `ol_store_count` | Count books across both shelves → stores in `context` |
-| `ol_assert_count` | Assert count equals `expected_count` or `count_before + delta` |
-| `ol_ensure_count` | Count shelf, store `gap` in context if top-up needed |
-| `sd_login` | SauceDemo login — fills credentials, submits |
-| `sd_add_to_cart` | Add named products to cart by title |
-| `sd_sort_products` | Set inventory sort order (az, za, lohi, hilo) |
-| `sd_view_cart` | Navigate to cart, read item list into context |
-| `sd_checkout` | Full checkout flow: info → overview → confirm |
-| `navigate` | Go to URL |
-| `click` | Click element via resolver cascade |
-| `fill` | Type into input + press Enter |
-| `hover` | Hover over element (triggers CSS `:hover` menus) |
-| `select` | Select from `<select>` dropdown by label, index, or value |
-| `screenshot` | Capture screenshot to file |
-| `wait` | Wait for selector, URL fragment, or fixed seconds |
-| `scroll_to` | Scroll element into viewport (`read_only` — safe for healer injection) |
+| `navigate` | Go to a URL |
+| `click` | Click an element via the resolver cascade |
+| `fill` | Type into an input |
+| `hover` | Hover (triggers CSS `:hover` menus) |
+| `select` | Choose from a `<select>` by label, index or value |
+| `keyboard_press` | Press a key or chord |
+| `scroll_to` | Scroll an element into view |
+| `wait` | Wait for a selector, URL fragment or fixed seconds |
+| `screenshot` | Capture a screenshot to file |
+| `store` | Write an arbitrary value into the execution context |
+| `store_count` | Count elements via CSS selectors, store in context |
+| `assert_count` | Assert element count matches expected |
+| `assert_text` | Assert an element's text |
+| `assert_visible` | Assert an element is visible |
 | `extract_data` | Scrape DOM data into `context.extracted_data` |
-| `paginate` | Loop pages, accumulate results → `context.paginated_data` |
-| `for_each_item` | Loop over `context.collected_items`, run sub-steps per item |
-| `store_count` | Count elements via CSS selectors, store in `context` |
-| `assert_count` | Assert element count matches expected (CSS or context source) |
+| `paginate` | Loop pages, accumulate into `context.paginated_data` |
+| `for_each_item` | Loop `context.collected_items`, run sub-steps per item |
+| `ensure_login` | Generic login subflow — takes a `login_steps` list |
+| `run_workflow` | Run a sub-workflow JSON, then return to the parent flow |
+| `parallel` | Run `read_only` sub-steps concurrently in separate tabs |
 | `measure_performance` | Collect `first_paint_ms`, `dom_content_loaded_ms`, `load_time_ms` |
-| `visual_compare` | Pixel-level screenshot diff against stored baseline |
-| `ensure_login` | Generic login subflow — accepts `login_steps` list in config |
-| `run_workflow` | Execute a sub-workflow JSON file then return to parent flow |
-| `parallel` | Run multiple `read_only` sub-steps concurrently in separate tabs |
+| `visual_compare` | Pixel diff against a stored baseline |
 | `load_test_data` | Load a JSON test-data file into `context.test_data` |
 
+Site-specific actions (`ol_*`, `sd_*`, `pt_*`) are catalogued in
+[.claude/rules/site-actions.md](.claude/rules/site-actions.md).
+
 ---
 
-# Design Principles
+## Workflows
 
-| Principle | Implementation |
+Sixteen ready-to-run workflows. Run any of them from the repo root:
+
+```bash
+python stepper/main.py --workflow stepper/sites/<site>/workflows/<file>.json
+```
+
+**OpenLibrary** — `stepper/sites/openlibrary/workflows/`
+
+| Workflow | What it showcases |
 |---|---|
-| **SRP** | Each class has one job: `StepRunner` runs steps, `ElementResolver` finds elements, `BookSearchPage` knows the search page |
-| **OCP** | Add a new site: create a folder + register. Add a new action: subclass `ActionStrategy` + register. Zero edits to existing code |
-| **DIP** | `StepRunner` depends on `ActionFactory` interface, never on `OLCollectBooksAction` directly |
-| **POM** | All selectors live in `Locators` inner classes. JSON and glue layers never duplicate selector strings |
-| **Data-Driven** | Workflow logic is JSON; parameters are variables; env overrides config; test data separates from code |
+| `ol_search_and_add.json` | Main flow: clear → search → add → assert |
+| `ol_add_only.json` | Idempotent append — no clear step |
+| `ol_ensure_count.json` | Top-up to target N via `when` + `{{gap}}` |
+| `ol_regression_roundtrip.json` | Full lifecycle + delta and absolute asserts |
+| `ol_multi_author.json` | Two-query sequential composition |
+| `ol_parallel_perf.json` | Three pages benchmarked concurrently |
+| `ol_smoke_test.json` | `when`-guarded + `continue_on_failure` soft-fail |
+| `ol_idempotency_test.json` | Add the same books twice → count must not grow |
+| `ol_data_driven.json` | Data-driven runs via `--data testdata.json` |
+| `login.json` | Reusable login subflow |
+
+**SauceDemo** — `stepper/sites/saucedemo/workflows/`
+
+| Workflow | What it showcases |
+|---|---|
+| `sd_happy_path.json` | Login → add to cart → checkout |
+| `sd_multi_product.json` | Add multiple products, verify cart |
+| `sd_smoke_test.json` | Smoke check with `continue_on_failure` |
+| `sd_heal_test.json` | Self-healing under a changed selector |
+| `sd_full_heal_flow.json` | Full heal demo — broken selectors throughout |
+
+**phpTravels** — `stepper/sites/phptravels/workflows/` (in progress)
+
+| Workflow | What it showcases |
+|---|---|
+| `hotel_booking.json` | Login → search → select → book |
 
 ---
 
-# Reports & Artifacts
+## Examples
+
+[`examples/plain_pom/`](examples/plain_pom/) drives the same OpenLibrary page objects
+directly from pytest — no engine, no resolver, no AI. It is the counterpart to
+`ol_search_and_add.json`: the same flow written imperatively.
+
+```bash
+cd examples/plain_pom && pytest tests/ -v
+```
+
+It exists to keep the POM layer honest. POMs there are constructed without `page=` or
+`resolver=`, so if anything in the POM layer ever starts depending on the engine, this
+suite breaks first.
+
+The trade-off it demonstrates:
+
+| Capability | Plain POM | Stepper workflow |
+|---|---|---|
+| Data-driven cases | `testdata.json` + `pytest_generate_tests` | `variables{}` in JSON |
+| State between steps | a Python dict passed around | `{{gap}}` resolved at runtime |
+| Conditional execution | `if` in the test body | declarative `when:` guard |
+| Retry | manual `try/except` | `retry` / `retry_delay_ms` per step |
+| Composition | copy-paste or a helper | `run_workflow` action |
+| Parallelism | asyncio boilerplate in the test | `parallel` action |
+| Screenshots / reports | manual calls | observer fires after every step |
+| Broken selector | test fails | resolver cascade, then healer |
+
+---
+
+## Testing
+
+```bash
+# Unit — fast, mocked, no browser or credentials. 79 tests.
+PYTHONPATH=stepper pytest stepper/tests/unit/
+
+# Stepper integration — real browser
+PYTHONPATH=stepper pytest stepper/tests/ --ignore=stepper/tests/unit
+
+# Plain-POM example — real browser + OpenLibrary credentials
+cd examples/plain_pom && pytest tests/
+```
+
+CI runs the unit suite as a fast gate, then smoke workflows and integration tests against
+a real browser. See [.github/workflows/ci.yml](.github/workflows/ci.yml).
+
+---
+
+## Reports & Artifacts
 
 | Artifact | Location | Generated by |
 |---|---|---|
 | Allure report | `reports/allure-results/` | `AllureReporter` |
 | JSON report | `report.json` | `JsonReporter` |
 | Test run folder | `reports/<timestamp>_<name>/` | `TestReportReporter` |
-| Step results | `reports/<run>/results.json` | `TestReportReporter` — includes `heal_attempts` on healed steps |
-| Heal suggestions | `reports/<run>/heal_suggestions.json` | `StepRunner` — original → healed element mappings |
-| Screenshots | `reports/<run>/screenshots/` | Auto after each step |
-| Run log | `reports/<run>/logs/run.log` | File log handler |
-| Performance data | `artifacts/performance.json` | `measure_performance` action |
+| Step results | `reports/<run>/results.json` | includes `heal_attempts` on healed steps |
+| Heal suggestions | `reports/<run>/heal_suggestions.json` | `StepRunner` |
+| Screenshots | `reports/<run>/screenshots/` | auto after each step |
+| Run log | `reports/<run>/logs/run.log` | file log handler |
+| Performance data | `artifacts/performance.json` | `measure_performance` |
 
 ```bash
 allure serve reports/allure-results
@@ -509,178 +339,37 @@ allure serve reports/allure-results
 
 ---
 
-# Project Structure
+## Design Principles
 
-```
-playwright-stepper-framework/
-│
-├── poms/                             # Pure Page Object Model layer
-│   ├── shared/                       # Shared across ALL sites
-│   │   ├── interfaces.py             # IBrowserDriver, IElementHandle, Delays (DIP contracts)
-│   │   ├── driver.py                 # PlaywrightDriver — implements IBrowserDriver
-│   │   ├── base_page.py              # SharedBasePage — resolver helpers
-│   │   ├── constants.py              # CONFIDENCE_AUTO / CONFIDENCE_WARN — single source of truth
-│   │   ├── locator.py                # Shared locator utilities
-│   │   └── performance.py            # measure_page_performance() — raw timing via JS API
-│   ├── openLibrary/
-│   │   ├── config.py                 # 3-tier settings: defaults → config.yaml → ENV
-│   │   ├── pages/
-│   │   │   ├── base_page.py          # BasePage: open(), navigate(), delay helpers
-│   │   │   ├── login_page.py         # LoginPage: selectors + is_session_live()
-│   │   │   ├── book_search_page.py   # search(), collect_books_under_year() + pagination
-│   │   │   ├── book_detail_page.py   # add_to_reading_list(), remove_from_shelf()
-│   │   │   └── reading_list_page.py  # get_book_count(), collect_all_book_urls()
-│   │   ├── utils/
-│   │   │   ├── book_filter.py        # extract_year_from_text(), is_under_year()
-│   │   │   ├── shelf.py              # SHELF_LABEL_WANT / SHELF_LABEL_ALREADY constants
-│   │   │   └── screenshot.py         # ScreenshotManager helper
-│   │   └── data/
-│   │       └── testdata.json         # Parametrised test cases (query, max_year, limit)
-│   ├── saucedemo/
-│   │   ├── config.py                 # SauceDemo settings
-│   │   ├── pages/
-│   │   │   ├── base_page.py
-│   │   │   ├── login_page.py
-│   │   │   ├── inventory_page.py
-│   │   │   ├── product_page.py
-│   │   │   ├── cart_page.py
-│   │   │   ├── checkout_info_page.py
-│   │   │   ├── checkout_overview_page.py
-│   │   │   └── checkout_complete_page.py
-│   │   └── data/
-│   │       └── testdata.json
-│   └── phpTravels/                   # phpTravels POMs
-│
-├── exam/                             # Pytest exam suite — calls poms/ directly
-│   ├── flows.py                      # 4 exam function signatures (orchestration layer)
-│   ├── conftest.py                   # Fixtures, parametrization, auth via storage_state.json
-│   ├── pytest.ini                    # asyncio_mode = auto
-│   └── tests/
-│       └── test_openlibrary_exam.py  # TestOpenLibraryExam: search → add → assert → perf
-│
-├── stepper/                          # Stepper framework + site integrations
-│   ├── main.py                       # DIP root — wires registry, resolver, runner, reporter
-│   ├── bootstrap/                    # Startup helpers extracted from main.py
-│   │   ├── infra.py                  # build_resolver(), launch_browser(), register_all_sites()
-│   │   ├── reporting.py              # build_reporters(), serve_allure()
-│   │   └── settings.py               # load_env(), load_settings_safe() → RunSettings
-│   ├── engine/                       # Core engine (site-agnostic)
-│   │   ├── interfaces.py             # StepConfig, StepResult, ExecutionContext (all abstract)
-│   │   ├── actions/
-│   │   │   ├── factory.py            # ActionRegistry + build_default_registry()
-│   │   │   ├── strategies.py         # navigate, click, fill, hover, select, screenshot,
-│   │   │   │                         #   wait, scroll_to, store_count, assert_count,
-│   │   │   │                         #   for_each_item, extract_data, paginate, ensure_login,
-│   │   │   │                         #   measure_performance, visual_compare,
-│   │   │   │                         #   run_workflow, parallel, load_test_data
-│   │   │   └── sub_step_mixin.py     # SubStepRunnerMixin — shared nested-step logic
-│   │   ├── ai/
-│   │   │   ├── providers.py          # AI provider adapters (Groq, Gemini, Claude)
-│   │   │   └── service.py            # Unified AI service interface
-│   │   ├── browser/
-│   │   │   ├── human_behaviour.py    # Per-action jitter, hover dwell, inter-step pauses
-│   │   │   └── anti_detection.py     # Setup-time bot-fingerprint suppression
-│   │   ├── healer/               # Self-healing element resolution
-│   │   │   ├── ai_healer.py      # AI-powered locator repair
-│   │   │   ├── annotator.py      # DOM annotation for healing context
-│   │   │   ├── dom_snapshot.py   # DOM snapshot capture
-│   │   │   ├── healing_cache.py  # Persistent per-site heal cache (JSON, SHA-256 keyed)
-│   │   │   ├── visual_bridge.py  # Pre-flight: hidden → scroll injection, disabled → wait injection
-│   │   │   └── interfaces.py     # Healer contracts
-│   │   ├── resolvers/
-│   │   │   ├── element_resolver.py   # Cascade executor + DefaultResolverFactory
-│   │   │   ├── strategies.py         # Role → Label → Placeholder → Text → Id → Css → XPath
-│   │   │   └── ai_pick_resolver.py   # AI disambiguation (Groq → Gemini → Claude)
-│   │   ├── runner/
-│   │   │   ├── step_runner.py        # Execution loop, retry, observer notifications
-│   │   │   ├── api.py                # StepperSession + run_steps() public API
-│   │   │   └── when_eval.py          # Condition evaluator: context_equals, url_contains,
-│   │   │                             #   element_exists, context_key_exists, not/all/any
-│   │   ├── reporter/
-│   │   │   ├── reporters.py          # CompositeReporter, ConsoleReporter, JsonReporter,
-│   │   │   │                         #   AllureReporter, TestReportReporter
-│   │   │   └── test_report_reporter.py
-│   │   ├── pages/
-│   │   │   ├── base_page_module.py   # PageModule ABC
-│   │   │   ├── glue_action.py        # GlueAction base — enforces resolver injection
-│   │   │   └── page_objects.py       # POM registry
-│   │   └── planner/
-│   │       ├── planner.py            # JsonFilePlanner (loads JSON) + ClaudePlanner (AI)
-│   │       ├── schema_extractor.py   # Extracts JSON schema from workflow
-│   │       └── validator.py          # Validates planner output against schema
-│   │
-│   ├── sites/openlibrary/
-│   │   ├── pages/                    # Glue layer — wires POMs into Stepper actions
-│   │   │   ├── login_action.py       # ol_ensure_login
-│   │   │   ├── search_page.py        # ol_collect_books
-│   │   │   ├── detail_page.py        # ol_add_to_shelf
-│   │   │   └── reading_list_action.py  # ol_clear_reading_list, ol_store_count,
-│   │   │                               #   ol_assert_count, ol_ensure_count
-│   │   ├── register.py               # Auto-discovered by register_all_sites()
-│   │   └── workflows/                # JSON orchestration — zero selectors
-│   │       ├── ol_search_and_add.json
-│   │       ├── ol_add_only.json
-│   │       ├── ol_ensure_count.json
-│   │       ├── ol_regression_roundtrip.json
-│   │       ├── ol_multi_author.json
-│   │       ├── ol_parallel_perf.json
-│   │       ├── ol_smoke_test.json
-│   │       ├── ol_idempotency_test.json
-│   │       ├── ol_data_driven.json
-│   │       └── login.json
-│   │
-│   ├── sites/saucedemo/
-│   │   ├── pages/                    # Glue layer
-│   │   │   ├── login_action.py       # sd_login
-│   │   │   ├── inventory_action.py   # sd_add_to_cart, sd_sort_products
-│   │   │   ├── cart_action.py        # sd_view_cart
-│   │   │   └── checkout_action.py    # sd_checkout
-│   │   ├── register.py               # Auto-discovered by register_all_sites()
-│   │   └── workflows/
-│   │       ├── sd_happy_path.json
-│   │       ├── sd_multi_product.json
-│   │       ├── sd_smoke_test.json
-│   │       ├── sd_heal_test.json
-│   │       └── sd_full_heal_flow.json
-│   │
-│   └── sites/phptravels/
-│       ├── pages/                    # Glue layer
-│       │   ├── login_action.py       # pt_login
-│       │   ├── hotel_search_action.py  # pt_search_hotels
-│       │   ├── hotel_results_action.py # pt_select_hotel
-│       │   └── hotel_detail_action.py  # pt_book_hotel
-│       ├── register.py               # Auto-discovered by register_all_sites()
-│       └── workflows/
-│           └── hotel_booking.json
-│
-└── requirements.txt
-```
+| Principle | Implementation |
+|---|---|
+| **SRP** | `StepRunner` runs steps, `ElementResolver` finds elements, `BookSearchPage` knows one page |
+| **OCP** | New site = new folder + register. New action = subclass + register. No edits to existing code |
+| **DIP** | `StepRunner` depends on the `ActionFactory` interface, never on a concrete action |
+| **POM** | Every selector lives in a `Locators` inner class — never duplicated in JSON or glue |
+| **Data-driven** | Logic is JSON, parameters are variables, env overrides config |
+
+Patterns used and where: [.claude/rules/design-patterns.md](.claude/rules/design-patterns.md).
 
 ---
 
-# Environment Variables
+## Documentation
 
-| Variable | Default | Description |
-|---|---|---|
-| `OPENLIBRARY_USERNAME` | — | Login email (required) |
-| `OPENLIBRARY_PASSWORD` | — | Login password (required) |
-| `OPENLIBRARY_HEADLESS` | `true` | `false` to watch the browser |
-| `OPENLIBRARY_SLOW_MO_MS` | `0` | Slow down actions (ms) for debugging |
-| `OPENLIBRARY_BROWSER` | `chromium` | `firefox` or `webkit` also supported |
-| `OPENLIBRARY_BASE_URL` | `https://openlibrary.org` | Override for local/staging |
-| `GROQ_API_KEY` | — | AI resolver fallback (free tier) |
-| `GEMINI_API_KEY` | — | AI resolver fallback |
-| `ANTHROPIC_API_KEY` | — | AI resolver last resort |
+| Topic | Where |
+|---|---|
+| Architecture diagrams and data flow | [ARCHITECTURE.md](ARCHITECTURE.md) |
+| Engine responsibility map | [stepper/engine/ARCHITECTURE.md](stepper/engine/ARCHITECTURE.md) |
+| Working in this repo (for Claude Code) | [CLAUDE.md](CLAUDE.md) |
+| POM layer rules | [.claude/rules/pom-layer.md](.claude/rules/pom-layer.md) |
+| Glue layer rules | [.claude/rules/glue-layer.md](.claude/rules/glue-layer.md) |
+| Three-layer contract | [.claude/rules/three-layer-contract.md](.claude/rules/three-layer-contract.md) |
+| Resolver cascade | [.claude/rules/resolver-cascade.md](.claude/rules/resolver-cascade.md) |
+| Site action reference | [.claude/rules/site-actions.md](.claude/rules/site-actions.md) |
+| Design patterns | [.claude/rules/design-patterns.md](.claude/rules/design-patterns.md) |
+| Playwright pitfalls the POMs guard against | [docs/playwright-pitfalls.md](docs/playwright-pitfalls.md) |
 
 ---
 
-# Summary
+## License
 
-This project demonstrates two complementary approaches to automation:
-
-1. **Exam layer** (`exam/`) — clean POM + pytest, exam-compliant, data-driven via `testdata.json`
-2. **Stepper Framework** (`stepper/`) — JSON-driven orchestration engine with smart locators,
-   retry, conditional flows, parallel execution, and multi-site support
-
-Both layers share the same `poms/` classes. Neither duplicates the other — they are complementary,
-not redundant.
+See [LICENSE](LICENSE).

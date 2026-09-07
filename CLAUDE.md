@@ -30,11 +30,13 @@ playwright-stepper-framework/
 │       ├── phptravels/pages/
 │       └── */workflows/*.json        # Declarative workflow definitions
 │
-├── exam/                             # Exam test layer (OpenLibrary)
-│   ├── conftest.py
-│   ├── flows.py
-│   └── tests/test_openlibrary_exam.py
+├── examples/
+│   └── plain_pom/                    # Reference: POMs driven with no engine, no resolver
+│       ├── conftest.py
+│       ├── flows.py
+│       └── tests/test_openlibrary_flows.py
 │
+├── docs/playwright-pitfalls.md       # Failure modes the POMs guard against
 ├── ARCHITECTURE.md                   # Full architecture diagrams
 └── CLAUDE.md                         # This file
 ```
@@ -53,6 +55,7 @@ Read the relevant rule file **before** making changes in that area:
 | Site-specific action reference tables | [.claude/rules/site-actions.md](.claude/rules/site-actions.md) |
 | Three-layer contract + dependency direction | [.claude/rules/three-layer-contract.md](.claude/rules/three-layer-contract.md) |
 | Design patterns used throughout the framework | [.claude/rules/design-patterns.md](.claude/rules/design-patterns.md) |
+| Playwright failure modes the POMs guard against | [docs/playwright-pitfalls.md](docs/playwright-pitfalls.md) |
 | Full architecture diagrams | [ARCHITECTURE.md](ARCHITECTURE.md) |
 
 ---
@@ -60,11 +63,14 @@ Read the relevant rule file **before** making changes in that area:
 ## Run Commands
 
 ```bash
-# Run all exam tests
-pytest exam/
+# Unit suite — no browser, no network, no credentials. Start here.
+PYTHONPATH=stepper pytest stepper/tests/unit/
 
-# Run a specific test
-pytest exam/tests/test_openlibrary_exam.py -k <test_name>
+# Stepper integration tests (real browser)
+PYTHONPATH=stepper pytest stepper/tests/ --ignore=stepper/tests/unit
+
+# Plain-POM example suite (real browser + OpenLibrary credentials)
+cd examples/plain_pom && pytest tests/
 
 # Run a workflow
 python stepper/main.py --workflow stepper/sites/openlibrary/workflows/<file>.json
@@ -78,7 +84,8 @@ python stepper/main.py --workflow <file>.json --show
 ## Adding a New Site (quick reference)
 
 1. `poms/<site>/pages/base_page.py` — inherit `SharedBasePage`
-2. Add POM files — all interactive locators as cfg lists (see [pom-layer rules](.claude/rules/pom-layer.md))
+2. Add POM files — every interactive locator a `Locator` object (see [pom-layer rules](.claude/rules/pom-layer.md))
 3. `stepper/sites/<site>/pages/` — one glue file per logical group
-4. Pass `page=page, resolver=resolver` on every POM construction (see [glue-layer rules](.claude/rules/glue-layer.md))
-5. Register actions in each glue file's `register()` classmethod
+4. Build POMs via `self._build_pom(..., page=page, resolver=resolver, behaviour=behaviour)` (see [glue-layer rules](.claude/rules/glue-layer.md))
+5. Register actions in each PageModule's `register(registry)` classmethod
+6. Wire that PageModule into `stepper/sites/<site>/register.py`

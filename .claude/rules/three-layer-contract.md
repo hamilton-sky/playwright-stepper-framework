@@ -13,7 +13,7 @@ globs:
   ──────  ────────────────────────────  ──────────────────────────────────────────
   POM     poms/*/pages/                 Selectors + raw page interactions only.
                                         No flow logic. No credentials.
-                                        All interactive locators are cfg lists.
+                                        All interactive locators are Locator objects.
 
   Glue    stepper/sites/*/pages/        Wraps POM into a named Stepper behavior.
                                         One action, one job.
@@ -26,7 +26,7 @@ globs:
 **Dependency direction: Flow → Glue → POM. Never reversed.**
 
 ### Belongs in POM
-- Locator definitions (cfg lists)
+- Locator definitions (`Locator` value objects — see pom-layer.md)
 - Low-level page interaction methods (fill, click, wait, read text)
 - Page navigation (`open()`, `goto()`)
 - State reads (`get_book_count()`, `is_logged_in()`)
@@ -52,5 +52,6 @@ globs:
 | Glue calls `page.locator()` directly with CSS strings | Bypasses resolver cascade |
 | Flow JSON contains CSS selectors | Mixes selector concerns into flow |
 | Glue constructs POM without `resolver=resolver` | Disables the entire cascade |
+| Glue overrides `execute()` instead of `_execute()` | Skips pre/post hooks and context defaulting |
 | POM contains `for book in books:` multi-page loop | Flow logic in wrong layer |
 | Credentials hardcoded in POM or Glue | Should come from config/env |

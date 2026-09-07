@@ -84,7 +84,7 @@ class ClaudePlanner(PlannerStrategy):
         return [_dict_to_step(s) for s in steps_raw]
 
 
-# ── JSON file planner (exam: pre-built workflows) ─────────────────────────────
+# ── JSON file planner (pre-built workflows) ───────────────────────────────
 
 class JsonFilePlanner(PlannerStrategy):
     """

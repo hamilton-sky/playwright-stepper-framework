@@ -32,4 +32,4 @@ Use a generous timeout (300000ms) — workflows can be slow.
 ## After running
 
 - Exit code 0 → "Workflow completed successfully." Show step summary if available in output.
-- Exit code non-0 → Show the error, identify which step failed (look for step name in output), suggest whether it's a locator issue (check pom cfg list), a config issue (check site config.py), or a network/auth issue.
+- Exit code non-0 → Show the error, identify which step failed (look for step name in output), suggest whether it's a locator issue (check the POM's `Locator` for that element), a config issue (check the site's `config.py`), or a network/auth issue.

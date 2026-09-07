@@ -42,15 +42,15 @@ class TestReportManager:
         Create a new test report directory with unique ID.
         
         Args:
-            test_name: Name of the test (e.g., 'exam_001', 'search_and_add')
+            test_name: Name of the test (e.g., 'smoke_001', 'search_and_add')
             run_num: Run number for this test today
             
         Returns:
             Path to the created test directory
             
         Example:
-            manager.create_test_report_dir('exam_001', 1)
-            → reports/test-20260331_134509_exam_001_001/
+            manager.create_test_report_dir('smoke_001', 1)
+            → reports/test-20260331_134509_smoke_001_001/
         """
         now = datetime.now()
         date_str = now.strftime("%Y-%m-%d")

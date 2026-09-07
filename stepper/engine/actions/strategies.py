@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 
 # ──────────────────────────────────────────────────────────
-# PHASE 1 — Basic actions (exam requirements)
+# PHASE 1 — Basic actions
 # ──────────────────────────────────────────────────────────
 
 class NavigateAction(ActionStrategy):

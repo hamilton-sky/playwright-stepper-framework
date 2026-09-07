@@ -1,6 +1,6 @@
 ---
 name: verify-layers
-description: Audit the entire codebase for three-layer contract violations — dependency direction, cfg list rule, resolver injection.
+description: Audit the entire codebase for three-layer contract violations — dependency direction, Locator rule, resolver injection.
 argument-hint: "[pom|glue|flows|all]"
 ---
 
@@ -23,24 +23,27 @@ Any match = **VIOLATION**: POM depends on glue layer (reversed dependency).
 
 ---
 
-## Check 2 — Glue using raw Playwright locators instead of POM cfg lists (HIGH)
+## Check 2 — Glue using raw Playwright locators instead of POM Locators (HIGH)
 
 ```
 grep -rn "page\.locator\s*(" stepper/sites/
 grep -rn "page\.get_by_role\s*(" stepper/sites/
 grep -rn "page\.get_by_label\s*(" stepper/sites/
 ```
-Any match = **VIOLATION**: Glue is calling Playwright directly, bypassing resolver cascade. Selectors belong in POM cfg lists.
+Any match = **VIOLATION**: Glue is calling Playwright directly, bypassing the resolver cascade. Selectors belong in POM `Locator`s.
 
 ---
 
 ## Check 3 — POM construction without resolver injection (HIGH)
 
-In glue files, find POM constructors called without `resolver=`:
+In glue files, POMs must be built via `_build_pom`, which makes `page=`, `resolver=`
+and `behaviour=` keyword-mandatory:
 ```
 grep -rn "Page(" stepper/sites/
+grep -rn "_build_pom(" -A 4 stepper/sites/
 ```
-For each match, check whether `resolver=resolver` is present. Missing = **VIOLATION**.
+A direct `SomePage(...)` constructor call, or a `_build_pom` call missing any of the
+three keywords = **VIOLATION**.
 
 ---
 
@@ -49,7 +52,9 @@ For each match, check whether `resolver=resolver` is present. Missing = **VIOLAT
 ```
 grep -rn "css\|xpath\|locator\|#[a-z]" stepper/sites/*/workflows/
 ```
-Any CSS/XPath value in a JSON workflow step = **VIOLATION**: selector logic belongs in POM cfg lists.
+Any CSS/XPath value in a JSON workflow step = **VIOLATION**: selector logic belongs in POM `Locator`s.
+(Exception: `sd_heal_test.json` / `sd_full_heal_flow.json` carry deliberately broken
+selectors as healer fixtures.)
 
 ---
 
@@ -58,7 +63,19 @@ Any CSS/XPath value in a JSON workflow step = **VIOLATION**: selector logic belo
 ```
 grep -rn "\.fill\s*(\|\.click\s*(" poms/
 ```
-For each match, check if the locator argument is a cfg list call or a plain string. Plain string = **VIOLATION**.
+For each match, check the locator argument is a `Locator` object routed through
+`_interact`, not a plain CSS string. Plain string on an interactive element = **VIOLATION**.
+
+---
+
+## Check 6 — Glue overriding the template method (HIGH)
+
+```
+grep -rn "async def execute" stepper/sites/ stepper/engine/pages/
+```
+Any match = **VIOLATION**: `execute()` is the `ActionStrategy` template method. Overriding
+it skips `pre_execute` / `post_execute` and context defaulting. Implement `_execute` instead.
+`stepper/tests/unit/test_action_template_method.py` guards this.
 
 ---
 

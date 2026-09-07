@@ -26,8 +26,8 @@ Before writing any plans, explore the codebase to understand:
 1. **Three-layer contract**: Read `.claude/rules/three-layer-contract.md` — know what belongs in POM vs. Glue vs. Flow
 2. **Existing patterns**: Find similar sites/actions and how they were implemented (e.g., `stepper/sites/saucedemo/` for a new site)
 3. **Key files**: Identify which files need to be created or modified across all three layers
-4. **Resolver rules**: Check `.claude/rules/resolver-cascade.md` for cfg list conventions
-5. **Test patterns**: Check `exam/` for existing test conventions if tests are in scope
+4. **Locator + resolver rules**: Check `.claude/rules/pom-layer.md` for `Locator` conventions and `.claude/rules/resolver-cascade.md` for the cascade
+5. **Test patterns**: Check `stepper/tests/unit/` (fast, mocked) and `examples/plain_pom/` (browser) for existing conventions if tests are in scope
 
 ## Step 3: Create the plans folder
 
@@ -90,9 +90,9 @@ Flow (JSON)  →  Glue (stepper/sites/…)  →  POM (poms/…)
 - `stepper/sites/<site>/pages/<file>.py` — NEW: [what it does]
 
 **Details:**
-[Specific implementation instructions — cfg list keys, method signatures, action names]
+[Specific implementation instructions — Locator fields, method signatures, action names]
 
-**Verify:** `pytest exam/` or `python stepper/main.py --workflow stepper/sites/<site>/workflows/<file>.json --show`
+**Verify:** `PYTHONPATH=stepper pytest stepper/tests/unit/` or `python stepper/main.py --workflow stepper/sites/<site>/workflows/<file>.json --show`
 
 ### Phase 2: [Phase Title] (estimated effort)
 ...
@@ -164,11 +164,11 @@ Scope:
 - Phase Y: [specific instructions with file paths and layer]
 
 Three-layer rules to observe:
-- All interactive locators must be cfg lists (see .claude/rules/pom-layer.md)
+- All interactive locators must be `Locator` objects (see .claude/rules/pom-layer.md)
 - Every POM construction must pass page=page, resolver=resolver (see .claude/rules/glue-layer.md)
 - No raw page.locator() calls in glue files
 
-Do NOT touch [exclusions — other layers, other sites, exam tests, etc.].
+Do NOT touch [exclusions — other layers, other sites, the plain-POM example, etc.].
 Verify: python stepper/main.py --workflow stepper/sites/<site>/workflows/<file>.json --show
 After done, update plans/$ARGUMENTS/PROGRESS.md phases X-Y to DONE.
 
@@ -261,10 +261,10 @@ Flow layer   (plans/$ARGUMENTS — JSON workflow)
      │  "action": "xx_action_name"
      ▼
 Glue layer   (stepper/sites/<site>/pages/<action>.py)
-     │  _build_pom(SomePage, …, page=page, resolver=resolver)
+     │  _build_pom(SomePage, …, page=page, resolver=resolver, behaviour=behaviour)
      ▼
 POM layer    (poms/<site>/pages/<page>.py)
-     │  _resolve_and_click_any(BUTTON_CFG)
+     │  _interact(Locators.BUTTON, "click")
      ▼
 ElementResolver cascade → Playwright
 ```
@@ -309,7 +309,7 @@ An ASCII flow diagram specific to **this feature** — shows how data flows thro
         │  _build_pom(Page, …, page=page, resolver=resolver)
         ▼
 [POM method]
-        │  _resolve_and_click_any(CFG_LIST)
+        │  _interact(Locators.BUTTON, "click")
         ▼
 [ElementResolver cascade]
         │
@@ -352,7 +352,7 @@ Follow these principles when deciding how to split phases into conversations:
 1. **Each conversation must leave the codebase runnable.** End every prompt with a verify command.
 2. **Hard cap: 4 conversations per folder.** If you need more, create part-2 folder.
 3. **Natural seams for splits in this framework:**
-   - POM layer first (cfg lists, locators, page methods) — everything depends on these
+   - POM layer first (Locator objects, page methods) — everything depends on these
    - Glue layer second (action classes, `register()`) — depends on POM shape being stable
    - Flow layer (workflow JSON) + integration test — always last
    - Engine changes (new resolver strategy, new action base) — always their own conversation
@@ -366,17 +366,17 @@ Follow these principles when deciding how to split phases into conversations:
 Prompts MUST be resilient to codebase changes between conversations:
 
 1. **NEVER reference specific line numbers.** Use function/class names instead:
-   - BAD: `"Add cfg entry after line 42"`
-   - GOOD: `"Add cfg entry to the Locators class in LoginPage (search for 'class Locators')"`
+   - BAD: `"Add the locator after line 42"`
+   - GOOD: `"Add the Locator to the Locators class in LoginPage (search for 'class Locators')"`
 2. **NEVER reference exact test counts.** Use relative language:
    - BAD: `"All 12 existing tests must still pass"`
-   - GOOD: `"All existing exam tests must still pass"`
+   - GOOD: `"All existing unit tests must still pass"`
 3. **Reference code by class/method name:**
    - BAD: `"Modify the method at line 80"`
    - GOOD: `"Modify the _execute method in HotelSearchAction"`
 4. **Always include the three-layer checklist** in prompts that touch glue or POM:
-   - "cfg lists for all interactive elements (fill/click)"
-   - "page=page, resolver=resolver on every POM constructor"
+   - "Locator objects for all interactive elements (fill/click)"
+   - "page=, resolver= and behaviour= on every _build_pom call"
    - "No raw page.locator() in glue files"
 5. **Include a recovery instruction in every prompt:**
    - `"If verification fails and the fix requires out-of-scope changes, stop and report. If fundamentally broken, rollback with git checkout on affected files and retry."`

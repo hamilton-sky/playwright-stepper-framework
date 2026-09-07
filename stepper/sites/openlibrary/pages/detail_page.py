@@ -1,7 +1,7 @@
 """
 sites/openlibrary/pages/detail_page.py — Stepper action module for OL book detail.
 
-Wires the exam's BookDetailPage into the Stepper ActionRegistry.
+Wires BookDetailPage into the Stepper ActionRegistry.
 Dependency direction: sites.openlibrary → stepper  (correct)
                       sites.openlibrary → openlibrary  (correct)
 """

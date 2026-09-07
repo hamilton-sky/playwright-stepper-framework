@@ -140,12 +140,16 @@ playwright-stepper-framework/
 │   ├── artifacts/                # Runtime cache (storage_state.json, screenshots)
 │   └── reports/                  # Output: allure-results/, per-run folders
 │
-├── exam/                         # Exam test layer
-│   ├── conftest.py
-│   ├── flows.py                  # Orchestrate POMs into test flows
-│   ├── pytest.ini
-│   └── tests/
-│       └── test_openlibrary_exam.py
+├── examples/
+│   └── plain_pom/                # POMs driven with no engine and no resolver
+│       ├── conftest.py
+│       ├── flows.py              # Orchestrate POMs into flows, imperatively
+│       ├── pytest.ini
+│       └── tests/
+│           └── test_openlibrary_flows.py
+│
+├── docs/
+│   └── playwright-pitfalls.md    # Failure modes the POM layer guards against
 │
 └── requirements.txt              # All dependencies (install from repo root)
 ```

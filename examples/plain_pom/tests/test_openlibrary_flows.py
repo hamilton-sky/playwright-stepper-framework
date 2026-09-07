@@ -1,11 +1,11 @@
 """
-tests/test_openlibrary_exam.py -- Pytest test class for the OpenLibrary exam.
+tests/test_openlibrary_flows.py -- Tests for the plain-POM OpenLibrary example.
 
 This file contains ONLY test logic -- no browser setup, no navigation code.
-All flow logic lives in exam/flows.py.
+All flow logic lives in examples/plain_pom/flows.py.
 
 Run:
-    cd exam/
+    cd examples/plain_pom/
     pytest tests/ -v
     pytest tests/ -v --headed
     pytest tests/ -v --alluredir=reports/allure-results
@@ -33,13 +33,13 @@ logger = logging.getLogger(__name__)
 BASE_URL = load_settings().base_url
 
 
-@allure.epic("OpenLibrary Exam")
+@allure.epic("OpenLibrary — plain POM")
 @allure.feature("Book Search & Reading List")
-class TestOpenLibraryExam:
+class TestOpenLibraryFlows:
     """
     End-to-end: search -> add -> assert -> measure performance.
 
-    Mirrors the exam's main() flow:
+    The flow:
         urls = search_books_by_title_under_year(driver, settings, "Dune", 1980, 5)
         add_books_to_reading_list(driver, settings, urls)
         assert_reading_list_count(driver, settings, len(urls))
