@@ -10,9 +10,16 @@ engine and the JSON.
 When a selector breaks, the resolver cascade and the self-healing pipeline try to find the
 element anyway, escalating from free local strategies to paid AI only when they have to.
 
-```
-JSON Workflow    →    Stepper Engine    →    POM Layer    →    Playwright
-  WHAT to do          HOW to run it        WHERE elements are      DO it
+```mermaid
+flowchart LR
+    A["<b>JSON Workflow</b><br/>WHAT to do"] --> B["<b>Stepper Engine</b><br/>HOW to run it"]
+    B --> C["<b>POM Layer</b><br/>WHERE elements are"]
+    C --> D["<b>Playwright</b><br/>DO it"]
+
+    style A fill:#e8f0fe,stroke:#4285f4,color:#111
+    style B fill:#e6f4ea,stroke:#34a853,color:#111
+    style C fill:#fef7e0,stroke:#fbbc04,color:#111
+    style D fill:#f1f3f4,stroke:#9aa0a6,color:#111
 ```
 
 ---
@@ -74,18 +81,23 @@ Layer rules: [.claude/rules/three-layer-contract.md](.claude/rules/three-layer-c
 `ElementResolver` tries strategies in resilience order and stops at the first confident
 match, escalating only when cheaper phases are ambiguous:
 
-```
-  cfg dict  (role / label / placeholder / text / id / css / xpath)
-       │
-       ▼
-  PHASE 1 — Deterministic          role → label → placeholder → text → id → css → xpath
-       │                           exactly 1 match → act immediately
-       ▼
-  PHASE 2 — Semantic filter        MiniLM-L6-v2 embeddings, local, ~30ms, no network
-       │                           score ≥ 0.80 and unique → act
-       ▼
-  PHASE 3 — AI pick                Groq → Gemini → Claude (cheapest first)
-                                   confidence ≥ 0.70 → act
+```mermaid
+flowchart TD
+    CFG["Locator.to_cfg()"] --> P1["<b>Phase 1 — deterministic</b> · free<br/>role → label → placeholder → text → id → css → xpath"]
+    P1 --> Q1{"exactly 1 match?"}
+    Q1 -->|yes| ACT["act"]
+    Q1 -->|"0 or 2+"| P2["<b>Phase 2 — semantic</b> · local, ~30ms<br/>MiniLM-L6-v2 cosine similarity"]
+    P2 --> Q2{"score ≥ 0.80<br/>and unique?"}
+    Q2 -->|yes| ACT
+    Q2 -->|no| P3["<b>Phase 3 — AI pick</b> · paid<br/>Groq → Gemini → Claude"]
+    P3 --> Q3{"confidence ≥ 0.70?"}
+    Q3 -->|yes| ACT
+    Q3 -->|no| FB["fall back to top semantic result"]
+
+    style P1 fill:#e6f4ea,stroke:#34a853,color:#111
+    style P2 fill:#fef7e0,stroke:#fbbc04,color:#111
+    style P3 fill:#fce8e6,stroke:#ea4335,color:#111
+    style ACT fill:#e8f0fe,stroke:#4285f4,color:#111
 ```
 
 Priority order mirrors Playwright's own locator guidance: `role` survives redesigns,
@@ -103,18 +115,19 @@ CSS candidates and works with no AI, no keys and no network — see
 When a step fails, `DOMSnapshotCascade` scores every interactive element on the page
 before spending a single AI token:
 
-```
-  All ~50 interactive elements
-       │
-       ▼  Phase 1 — MiniLM bi-encoder (~30ms), scores each element independently
-  Top 5 candidates
-       │
-       ▼  Phase 2 — cross-encoder re-ranking (~50ms), reads (query | element) as one string
-  Decision:
-    ≥ 0.85, unique     → healed cfg ready, zero AI tokens
-    ≥ 0.85, ambiguous  → ~30 tokens to AI
-    0.50–0.85          → scoped DOM area, ~100 tokens
-    < 0.50             → full ARIA snapshot, ~400 tokens
+```mermaid
+flowchart TD
+    E["all ~50 interactive elements"] --> B1["Phase 1 — MiniLM bi-encoder · ~30ms<br/>score every element independently"]
+    B1 --> T5["top 5 candidates"]
+    T5 --> B2["Phase 2 — cross-encoder re-rank · ~50ms<br/>reads (query | element) as one string"]
+    B2 --> D{"score"}
+    D -->|"≥ 0.85, unique"| Z["healed cfg ready<br/><b>0 AI tokens</b>"]
+    D -->|"≥ 0.85, ambiguous"| A1["~30 tokens"]
+    D -->|"0.50 – 0.85"| A2["scoped DOM · ~100 tokens"]
+    D -->|"< 0.50"| A3["full ARIA snapshot · ~400 tokens"]
+
+    style Z fill:#e6f4ea,stroke:#34a853,color:#111
+    style A3 fill:#fce8e6,stroke:#ea4335,color:#111
 ```
 
 Opt a step out with `"heal": false`. Verify a heal landed with `"heal_assert"`.
