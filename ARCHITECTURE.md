@@ -64,7 +64,8 @@ poms/                          POM layer — no dependency on stepper/
 │   └── pages/                 One class per page; selectors live here and nowhere else
 
 stepper/
-├── main.py                    CLI entry — builds the registry, runner and reporters
+├── main.py                    CLI entry — RunConfig, prepare_run (plan + validate,
+│                              no browser), build_pipeline, execute
 ├── bootstrap/                 .env loading, infra and reporter wiring
 ├── engine/
 │   ├── interfaces.py          ActionStrategy, ResolverStrategy, ReporterStrategy,

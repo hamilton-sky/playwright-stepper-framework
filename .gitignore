@@ -21,6 +21,15 @@ allure-results/*
 stepper/sites/openlibrary/artifacts/*
 openlibrary/allure-results/*
 
+# Runtime artifacts for every other site. Each run now writes screenshots and
+# drift/session state into its own site directory rather than OpenLibrary's, so
+# these have to be ignored per site. Committed fixtures (heal_cache.json,
+# perf_smoke.json) are deliberately not matched.
+stepper/sites/*/artifacts/screenshots/
+stepper/sites/*/artifacts/drift_log.json
+stepper/sites/*/artifacts/heal_suggestions.json
+stepper/sites/shared/
+
 jira-to-stepper-pipeline/
 plans/
 strategy/

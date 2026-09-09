@@ -958,13 +958,32 @@ class RunWorkflowAction(ActionStrategy):
     """
     action_name = "run_workflow"
 
-    def __init__(self, run_steps_callable, base_dir: Path | None = None):
+    def __init__(self, run_steps_callable=None, base_dir: Path | None = None):
         self._run_steps = run_steps_callable
         self._base_dir = base_dir or Path.cwd()
+
+    def bind(self, run_steps_callable):
+        """
+        Attach the runner's run() after construction.
+
+        A plan can only be validated once every action it names is registered,
+        but the runner cannot exist before its page does. Registering this
+        action unbound and binding it here breaks that cycle, so validation
+        happens before a browser is launched.
+        """
+        self._run_steps = run_steps_callable
+        return self
 
     async def _execute(self, page, step: StepConfig, resolver,
                        context: ExecutionContext, behaviour=None) -> StepResult:
         from engine.planner.planner import _substitute
+
+        if self._run_steps is None:
+            return StepResult(
+                step=step,
+                status="failed",
+                error="run_workflow: action was registered but never bound to a runner",
+            )
 
         wf_path = (step.extra or {}).get("path") or (step.extra or {}).get("workflow")
         if not wf_path:
