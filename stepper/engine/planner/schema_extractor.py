@@ -27,7 +27,7 @@ class ActionSchemaExtractor:
         action_name itself when no docstring is present.
         """
         schema: dict[str, dict] = {}
-        for name, action in registry._registry.items():
+        for name, action in registry.items():
             doc = inspect.getdoc(action) or ""
             first_line = next((ln.strip() for ln in doc.splitlines() if ln.strip()), "")
             schema[name] = {"description": first_line or name}

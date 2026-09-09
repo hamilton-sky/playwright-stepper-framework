@@ -20,7 +20,7 @@ playwright-stepper-framework/
 │   ├── engine/                       # Core framework modules
 │   │   ├── actions/                  # ActionRegistry + strategies
 │   │   ├── resolvers/                # Element resolution cascade
-│   │   ├── runner/                   # StepRunner, when_eval, API
+│   │   ├── runner/                   # StepRunner, when_eval
 │   │   ├── planner/                  # Claude AI planner / JSON planner
 │   │   ├── reporter/                 # Reporters + test report manager
 │   │   └── pages/                    # PageModule ABC + POM registry
@@ -72,12 +72,23 @@ PYTHONPATH=stepper pytest stepper/tests/ --ignore=stepper/tests/unit
 # Plain-POM example suite (real browser + OpenLibrary credentials)
 cd examples/plain_pom && pytest tests/
 
-# Run a workflow
-python stepper/main.py --workflow stepper/sites/openlibrary/workflows/<file>.json
+# Discover what is available
+python stepper/main.py list                  # every workflow, by site
+python stepper/main.py actions --site sd     # what one site can do
+python stepper/main.py --help                # all commands
+
+# Run a workflow — by name, resolved across sites
+python stepper/main.py run ol_smoke_test
 
 # Show browser window (headless is the default)
-python stepper/main.py --workflow <file>.json --show
+python stepper/main.py run ol_smoke_test --show
+
+# Check every workflow without launching a browser (exits 1 if any is invalid)
+python stepper/main.py validate
 ```
+
+The pre-subcommand form (`--workflow <path>`) still works and prints a one-line
+note pointing at the new spelling.
 
 ---
 

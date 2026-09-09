@@ -92,7 +92,7 @@ Flow (JSON)  →  Glue (stepper/sites/…)  →  POM (poms/…)
 **Details:**
 [Specific implementation instructions — Locator fields, method signatures, action names]
 
-**Verify:** `PYTHONPATH=stepper pytest stepper/tests/unit/` or `python stepper/main.py --workflow stepper/sites/<site>/workflows/<file>.json --show`
+**Verify:** `PYTHONPATH=stepper pytest stepper/tests/unit/` or `python stepper/main.py run <workflow-name> --show`
 
 ### Phase 2: [Phase Title] (estimated effort)
 ...
@@ -169,7 +169,7 @@ Three-layer rules to observe:
 - No raw page.locator() calls in glue files
 
 Do NOT touch [exclusions — other layers, other sites, the plain-POM example, etc.].
-Verify: python stepper/main.py --workflow stepper/sites/<site>/workflows/<file>.json --show
+Verify: python stepper/main.py run <workflow-name> --show
 After done, update plans/$ARGUMENTS/PROGRESS.md phases X-Y to DONE.
 
 If verification fails and the fix requires out-of-scope changes, stop and report.

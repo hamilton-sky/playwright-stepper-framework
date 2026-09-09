@@ -45,6 +45,58 @@ class ActionRegistry(ActionFactory):
             )
         return action
 
+    # ── Read API ──────────────────────────────────────────────────────────────
+    # Callers that need to enumerate actions (PlanValidator, ActionSchemaExtractor)
+    # go through these instead of reaching into the backing dict.
+
+    def names(self) -> list[str]:
+        """Sorted names of every registered action, aliases included."""
+        return sorted(self._registry)
+
+    def items(self) -> list[tuple[str, ActionStrategy]]:
+        """(name, action) pairs in registration order. Aliases appear twice."""
+        return list(self._registry.items())
+
+    def __contains__(self, action_name: object) -> bool:
+        return action_name in self._registry
+
+    def __len__(self) -> int:
+        return len(self._registry)
+
+    # ── Aliasing ──────────────────────────────────────────────────────────────
+
+    def alias(self, alias_name: str, action_name: str):
+        """
+        Bind a second name to an already-registered action.
+
+        Both names resolve to the *same instance*, so an action that carries
+        state stays consistent whichever name a workflow uses.
+
+            registry.register(OLCollectBooksAction())
+            registry.alias("ol_collect_books", "collect_items")
+
+        Raises:
+            ValueError: if the target is not registered, or if the alias name is
+                already taken by a different action (silently shadowing one
+                action with another is never intended).
+        """
+        target = self._registry.get(action_name)
+        if target is None:
+            raise ValueError(
+                f"Cannot alias '{alias_name}' → '{action_name}': "
+                f"'{action_name}' is not registered. Register it first."
+            )
+        existing = self._registry.get(alias_name)
+        if existing is not None and existing is not target:
+            raise ValueError(
+                f"Cannot alias '{alias_name}' → '{action_name}': "
+                f"'{alias_name}' is already registered to "
+                f"{type(existing).__name__}."
+            )
+        self._registry[alias_name] = target
+        logger.debug(f"Aliased action: {alias_name} → {action_name}")
+        return self  # fluent, like register()
+
 
 def build_default_registry(
     screenshots_dir: Path = Path("artifacts/screenshots"),

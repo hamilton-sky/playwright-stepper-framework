@@ -104,6 +104,13 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
           fi
 
+      # Browser-free and sub-second: catches a workflow naming an action that
+      # does not exist before any of the slow steps below run.
+      - name: Validate all workflows
+        run: python stepper/main.py validate
+        env:
+          PYTHONPATH: stepper
+
       - name: Run smoke workflow (OpenLibrary)
         if: steps.creds.outputs.available == 'true'
         run: >

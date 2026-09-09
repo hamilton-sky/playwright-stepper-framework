@@ -11,9 +11,13 @@ import asyncio
 import argparse
 import json
 import logging
+import os
 import sys
 import time
+from contextlib import contextmanager
+from dataclasses import dataclass, replace
 from pathlib import Path
+from typing import Any
 
 # Add src/ and repo root to path so all modules resolve regardless of cwd
 _root_path   = str(Path(__file__).parent)
@@ -23,13 +27,13 @@ for _p in (_parent_path, _root_path, _src_path):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from playwright.async_api import async_playwright
-
 from bootstrap.settings  import load_env, load_settings_safe
 from bootstrap.infra     import build_resolver, launch_browser, register_all_sites
 from bootstrap.reporting import build_reporters, serve_allure
 
+from engine.browser.anti_detection import AntiDetection
 from engine.actions.factory      import build_default_registry
+from engine.planner.validator    import PlanValidator
 from engine.actions.strategies   import RunWorkflowAction
 from engine.runner.step_runner   import StepRunner, LoggingObserver
 
@@ -48,17 +52,11 @@ def _extract_site(workflow_path: str | None) -> str:
     return "shared"
 
 
-def _site_storage_state(workflow_path: str | None, stepper_root: Path) -> Path | None:
-    """Return storage state path for sites that need session persistence.
+#: Sites that persist a logged-in session across runs. Others log in fresh.
+_SITES_WITH_PERSISTENCE = {"openlibrary"}
 
-    Only OpenLibrary requires saved sessions (logged-in state across runs).
-    Other sites (SauceDemo, phpTravels) log in fresh each run — no persistence needed.
-    """
-    _SITES_WITH_PERSISTENCE = {"openlibrary"}
-    site = _extract_site(workflow_path)
-    if site in _SITES_WITH_PERSISTENCE:
-        return stepper_root / "sites" / site / "artifacts" / "storage_state.json"
-    return None
+#: Actions whose success means there is a session worth saving.
+_LOGIN_ACTIONS = {"ol_ensure_login", "sd_login", "ensure_login"}
 
 
 def _build_ci_summary(results, workflow_path, resolver, duration_s: float) -> dict:
@@ -97,6 +95,397 @@ def _build_ci_summary(results, workflow_path, resolver, duration_s: float) -> di
     }
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# RUN CONFIGURATION
+# ──────────────────────────────────────────────────────────────────────────────
+
+@dataclass(frozen=True)
+class RunConfig:
+    """
+    Everything one run needs to know, as a single value object.
+
+    Replaces the twelve keyword arguments that used to thread through run(), and
+    owns the derivations (site name, artifact paths, run label) that were
+    previously recomputed inline at four separate points.
+    """
+
+    workflow_path: str | None = None
+    task: str | None = None
+    headless: bool = True
+    allure_serve: bool = False
+    record_video: bool = False
+    variables: dict | None = None
+    max_heal_attempts: int = 0
+    shadow: bool = False
+    ci: bool = False
+    ci_output: str | None = None
+
+    def __post_init__(self) -> None:
+        if not self.workflow_path and not self.task:
+            raise ValueError("Provide --workflow or --task")
+
+    @property
+    def site(self) -> str:
+        """Site directory name, derived from the workflow path ('shared' for --task)."""
+        return _extract_site(self.workflow_path)
+
+    @property
+    def run_label(self) -> str:
+        return Path(self.workflow_path).stem if self.workflow_path else "task"
+
+    @property
+    def suite_name(self) -> str:
+        return self.workflow_path or self.task or "automation"
+
+    @property
+    def base_dir(self) -> Path:
+        """Directory that relative run_workflow paths resolve against."""
+        return Path(self.workflow_path).parent if self.workflow_path else Path.cwd()
+
+    def artifact_path(self, filename: str) -> Path:
+        """Path inside this run's own site artifacts directory."""
+        return _stepper_root / "sites" / self.site / "artifacts" / filename
+
+    @property
+    def storage_state_path(self) -> Path | None:
+        """
+        Where this site's logged-in session is persisted, or None.
+
+        Only OpenLibrary needs saved sessions; SauceDemo and phpTravels log in
+        fresh each run.
+        """
+        return (
+            self.artifact_path("storage_state.json")
+            if self.site in _SITES_WITH_PERSISTENCE
+            else None
+        )
+
+
+@dataclass
+class PreparedRun:
+    """
+    A planned, validated run — everything assembled that does not need a browser.
+
+    Building this is cheap and side-effect-free apart from creating the report
+    directories, so a caller can validate a workflow without paying for a
+    browser launch.
+    """
+
+    cfg: RunConfig
+    steps: list
+    settings: Any
+    resolver: Any
+    reporter: Any
+    test_reporter: Any
+    registry: Any
+    screenshots_dir: Path
+    subflow_action: RunWorkflowAction
+
+
+@dataclass
+class Pipeline:
+    """A prepared run bound to a live page — ready to execute, not yet executed."""
+
+    prepared: PreparedRun
+    runner: StepRunner
+    context: Any
+    page: Any
+
+    @property
+    def cfg(self) -> RunConfig:
+        return self.prepared.cfg
+
+    @property
+    def steps(self) -> list:
+        return self.prepared.steps
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# ASSEMBLY — each step of what used to be run()'s opening 100 lines
+# ──────────────────────────────────────────────────────────────────────────────
+
+def plan_steps(cfg: RunConfig) -> list:
+    """Turn a workflow file or a natural-language task into StepConfigs."""
+    if cfg.workflow_path:
+        from engine.planner.planner import JsonFilePlanner
+        planner = JsonFilePlanner(cfg.workflow_path, variables=cfg.variables)
+    else:
+        from engine.planner.planner import ClaudePlanner
+        planner = ClaudePlanner()
+
+    steps = planner.plan(cfg.task or "")
+    logger.info(f"Planned {len(steps)} steps")
+    return steps
+
+
+def build_settings(cfg: RunConfig):
+    """Load settings and point storage state at this run's own site."""
+    return load_settings_safe()._replace(storage_state_path=cfg.storage_state_path)
+
+
+def wrap_for_shadow(cfg: RunConfig, resolver):
+    """Wrap a resolver so every strategy also runs in the background, logging drift."""
+    from engine.resolvers.shadow_runner import ShadowRunner, DriftLog
+    from engine.resolvers.element_resolver import DefaultResolverFactory
+
+    drift_path = cfg.artifact_path("drift_log.json")
+    logger.info("👁  Shadow mode enabled — drift log → %s", drift_path)
+    return ShadowRunner(resolver, DefaultResolverFactory().build_cascade(), DriftLog(drift_path))
+
+
+def resolve_screenshots_dir(cfg: RunConfig, test_reporter) -> Path:
+    """
+    Where auto-screenshots land: the per-test report dir, else the site's own
+    artifacts folder.
+
+    The fallback used to be hardcoded to openlibrary, so a SauceDemo run without
+    a test reporter wrote its screenshots into another site's directory.
+    """
+    if test_reporter and test_reporter.manager.current_test_dir:
+        return test_reporter.manager.get_screenshots_dir()
+    return cfg.artifact_path("screenshots")
+
+
+def build_action_registry(cfg: RunConfig, settings, screenshots_dir: Path):
+    """Engine actions plus every site's glue actions."""
+    from poms.shared.driver import PlaywrightBrowserLauncher
+
+    launcher = PlaywrightBrowserLauncher(
+        headless=cfg.headless,
+        storage_state_path=(
+            Path(str(settings.storage_state_path)) if settings.storage_state_path else None
+        ),
+    )
+    registry = build_default_registry(
+        screenshots_dir=screenshots_dir,
+        browser_launcher=launcher,
+    )
+    register_all_sites(registry, _stepper_root, screenshots_dir=screenshots_dir)
+    return registry
+
+
+def build_healer(cfg: RunConfig, registry):
+    """An AiHealer when healing was asked for and a provider key exists, else None."""
+    if cfg.max_heal_attempts <= 0:
+        return None
+
+    if not any(os.getenv(k) for k in ("ANTHROPIC_API_KEY", "GROQ_API_KEY", "GEMINI_API_KEY")):
+        logger.warning("⚕ --heal requested but no LLM API key found — healing disabled")
+        return None
+
+    from engine.ai.service import AIService
+    from engine.healer.ai_healer import AiHealer
+    from engine.planner.schema_extractor import ActionSchemaExtractor
+
+    logger.info(f"⚕ Self-healing enabled (max {cfg.max_heal_attempts} attempt(s) per step)")
+    return AiHealer(
+        action_schema=ActionSchemaExtractor.extract(registry),
+        ai_service=AIService(),
+    )
+
+
+def build_validated_registry(cfg: RunConfig, settings, screenshots_dir: Path, steps):
+    """
+    Build the complete action registry and check the plan against it.
+
+    Shared by prepare_run and validate_plan so a workflow that passes `validate`
+    cannot be rejected at run time by a differently-built registry.
+    """
+    registry = build_action_registry(cfg, settings, screenshots_dir)
+
+    # Registered unbound: run_workflow needs the runner, which needs a page.
+    # Binding is deferred so the plan can be validated before a browser exists.
+    subflow_action = RunWorkflowAction(base_dir=cfg.base_dir)
+    registry.register(subflow_action)
+
+    PlanValidator.validate(steps, registry)
+    return registry, subflow_action
+
+
+def validate_plan(cfg: RunConfig, settings=None) -> list:
+    """
+    Plan and validate with no browser, no reporters and no directories created.
+
+    Pass `settings` when validating many workflows in a row — loading them is
+    what emits the provider-key warnings, and once is enough.
+
+    Raises PlanValidationError when the plan is bad; returns the steps when good.
+    """
+    steps = plan_steps(cfg)
+    build_validated_registry(
+        cfg,
+        settings if settings is not None else build_settings(cfg),
+        cfg.artifact_path("screenshots"),
+        steps,
+    )
+    return steps
+
+
+def prepare_run(cfg: RunConfig, resolver=None) -> PreparedRun:
+    """
+    Plan and validate a run without launching a browser.
+
+    Everything here is browser-free, so an invalid workflow is rejected before
+    any expensive resource is opened — and a caller that only wants to check a
+    plan can stop after this call.
+    """
+    steps    = plan_steps(cfg)
+    settings = build_settings(cfg)
+
+    if resolver is None:
+        resolver = build_resolver(settings.use_visual_ai)
+    if cfg.shadow:
+        resolver = wrap_for_shadow(cfg, resolver)
+
+    reporter, test_reporter = build_reporters(
+        cfg.run_label, settings.browser, cfg.headless, _stepper_root
+    )
+
+    screenshots_dir = resolve_screenshots_dir(cfg, test_reporter)
+    screenshots_dir.mkdir(parents=True, exist_ok=True)
+
+    registry, subflow_action = build_validated_registry(
+        cfg, settings, screenshots_dir, steps
+    )
+
+    return PreparedRun(
+        cfg=cfg, steps=steps, settings=settings, resolver=resolver,
+        reporter=reporter, test_reporter=test_reporter, registry=registry,
+        screenshots_dir=screenshots_dir, subflow_action=subflow_action,
+    )
+
+
+async def open_page(cfg: RunConfig, browser, settings, test_reporter):
+    """Create the browser context and page, with session, video and stealth applied."""
+    context_kwargs: dict = {"viewport": {"width": 1280, "height": 800}}
+    context_kwargs.update(AntiDetection.context_kwargs())
+
+    if settings.storage_state_path and Path(str(settings.storage_state_path)).exists():
+        context_kwargs["storage_state"] = str(settings.storage_state_path)
+        logger.info(f"Loaded session from {settings.storage_state_path}")
+
+    if cfg.record_video and test_reporter and test_reporter.manager.current_test_dir:
+        videos_dir = test_reporter.manager.current_test_dir / "videos"
+        videos_dir.mkdir(parents=True, exist_ok=True)
+        context_kwargs["record_video_dir"]  = str(videos_dir)
+        context_kwargs["record_video_size"] = {"width": 1280, "height": 800}
+        logger.info(f"Recording video → {videos_dir}")
+
+    context = await browser.new_context(**context_kwargs)
+    page    = await context.new_page()
+    await AntiDetection.apply_page_patches(page)
+    return context, page
+
+
+async def build_pipeline(prepared: PreparedRun, browser, observers=None) -> Pipeline:
+    """
+    Bind a prepared run to a live page.
+
+    Split out of run() so callers that are not the CLI — a test, a server, a UI —
+    can hold the runner and page and drive them directly. `observers` are added
+    alongside the default LoggingObserver, which is how a UI streams step events.
+    """
+    cfg = prepared.cfg
+    context, page = await open_page(cfg, browser, prepared.settings, prepared.test_reporter)
+
+    heal_cache = None
+    if cfg.workflow_path:
+        from engine.healer.healing_cache import HealCache
+        heal_cache = HealCache(cfg.artifact_path("heal_cache.json"))
+
+    runner = StepRunner(
+        page=page,
+        action_factory=prepared.registry,
+        resolver=prepared.resolver,
+        reporter=prepared.reporter,
+        screenshots_dir=prepared.screenshots_dir,
+        healer=build_healer(cfg, prepared.registry),
+        max_heal_attempts=cfg.max_heal_attempts,
+        cache=heal_cache,
+    )
+    runner.add_observer(LoggingObserver())
+    for observer in observers or ():
+        runner.add_observer(observer)
+
+    prepared.subflow_action.bind(runner.run)
+
+    return Pipeline(prepared=prepared, runner=runner, context=context, page=page)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# EXECUTION
+# ──────────────────────────────────────────────────────────────────────────────
+
+@contextmanager
+def _tee_logs_to_run_file(test_reporter):
+    """Mirror DEBUG-level logging into the per-test run.log for the duration."""
+    handler = None
+    if test_reporter and test_reporter.manager.current_test_dir:
+        log_path = test_reporter.manager.current_test_dir / "logs" / "run.log"
+        handler = logging.FileHandler(log_path, encoding="utf-8")
+        handler.setLevel(logging.DEBUG)   # file gets DEBUG; console stays INFO
+        handler.setFormatter(logging.Formatter(
+            "%(asctime)s | %(levelname)s | %(name)s | %(message)s", datefmt="%H:%M:%S"
+        ))
+        logging.getLogger().addHandler(handler)
+    try:
+        yield
+    finally:
+        # Previously only removed on the happy path, so a failing run leaked the
+        # handler and every later run wrote into the first run's log file.
+        if handler:
+            logging.getLogger().removeHandler(handler)
+            handler.close()
+
+
+def _write_ci_summary(cfg: RunConfig, results, resolver, duration_s: float) -> None:
+    summary = _build_ci_summary(results, cfg.workflow_path, resolver, duration_s)
+    print(json.dumps(summary, indent=2))
+    if cfg.ci_output:
+        # Create the parent dir first: on a failing run nothing else has
+        # written to reports/ yet, and a FileNotFoundError here would
+        # discard the very summary that explains the failure.
+        out_path = Path(cfg.ci_output)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+        logger.info(f"CI summary written to {cfg.ci_output}")
+
+
+async def _save_session_if_logged_in(cfg: RunConfig, settings, context, results) -> None:
+    if not settings.storage_state_path:
+        return
+    if not any(r.step.action in _LOGIN_ACTIONS for r in results):
+        logger.debug("Skipping storage_state write — no login action ran")
+        return
+    Path(str(settings.storage_state_path)).parent.mkdir(parents=True, exist_ok=True)
+    await context.storage_state(path=str(settings.storage_state_path))
+    logger.info(f"Session saved to {settings.storage_state_path}")
+
+
+async def execute_pipeline(pipeline: Pipeline) -> list:
+    """Run the planned steps and write out everything the run produced."""
+    cfg      = pipeline.cfg
+    prepared = pipeline.prepared
+
+    prepared.reporter.start_suite(cfg.suite_name)
+
+    started = time.monotonic()
+    results, _ = await pipeline.runner.run(pipeline.steps)
+    duration_s = time.monotonic() - started
+
+    prepared.reporter.finish_suite()
+
+    if cfg.ci:
+        _write_ci_summary(cfg, results, prepared.resolver, duration_s)
+
+    drift_log = getattr(prepared.resolver, "_drift_log", None)
+    if cfg.shadow and drift_log is not None:
+        drift_log.flush()
+
+    await _save_session_if_logged_in(cfg, prepared.settings, pipeline.context, results)
+    return results
+
+
 async def run(
     workflow_path: str | None = None,
     task: str | None = None,
@@ -105,177 +494,59 @@ async def run(
     record_video: bool = False,
     variables: dict | None = None,
     resolver=None,
-    _browser=None,
     max_heal_attempts: int = 0,
     shadow: bool = False,
     ci: bool = False,
     ci_output: str | None = None,
+    observers=None,
 ):
-    # ── 1. Planner ───────────────────────────────────────────────────────────
-    if workflow_path:
-        from engine.planner.planner import JsonFilePlanner
-        planner = JsonFilePlanner(workflow_path, variables=variables)
-    elif task:
-        from engine.planner.planner import ClaudePlanner
-        planner = ClaudePlanner()
-    else:
-        raise ValueError("Provide --workflow or --task")
+    """
+    Plan, assemble and execute one run — the whole pipeline end to end.
 
-    steps = planner.plan(task or "")
-    logger.info(f"Planned {len(steps)} steps")
+    Launches its own browser and closes it. Callers needing finer control — a
+    shared browser, step-event streaming, validation without a browser — use the
+    pieces directly:
 
-    # ── 2. Infrastructure ─────────────────────────────────────────────────────
-    s = load_settings_safe()
-    # Each site owns its own storage state; derive path from workflow location
-    s = s._replace(storage_state_path=_site_storage_state(workflow_path, _stepper_root))
-    if resolver is None:
-        resolver = build_resolver(s.use_visual_ai)
+        steps    = validate_plan(cfg)               # no browser at all
+        prepared = prepare_run(cfg)
+        pipeline = await build_pipeline(prepared, browser, observers=[my_observer])
+        results  = await execute_pipeline(pipeline)
+    """
+    cfg = RunConfig(
+        workflow_path=workflow_path,
+        task=task,
+        headless=headless,
+        allure_serve=allure_serve,
+        record_video=record_video,
+        variables=variables,
+        max_heal_attempts=max_heal_attempts,
+        shadow=shadow,
+        ci=ci,
+        ci_output=ci_output,
+    )
 
-    if shadow:
-        from engine.resolvers.shadow_runner import ShadowRunner, DriftLog
-        from engine.resolvers.element_resolver import DefaultResolverFactory
-        drift_path = _stepper_root / "sites" / _extract_site(workflow_path) / "artifacts" / "drift_log.json"
-        resolver = ShadowRunner(resolver, DefaultResolverFactory().build_cascade(), DriftLog(drift_path))
-        logger.info("👁  Shadow mode enabled — drift log → %s", drift_path)
+    # Plan and validate before anything expensive is opened.
+    prepared = prepare_run(cfg, resolver=resolver)
 
-    # ── 3. Reporters ──────────────────────────────────────────────────────────
-    run_label = Path(workflow_path).stem if workflow_path else "task"
-    reporter, test_reporter = build_reporters(run_label, s.browser, headless, _stepper_root)
-
-    # ── 4. Run ───────────────────────────────────────────────────────────────
-    _owns_browser = _browser is None
-    _pw_instance  = None
-
-    if _owns_browser:
-        _pw_instance = await async_playwright().start()
-        browser = await launch_browser(_pw_instance, s.browser, headless, s.slow_mo)
-    else:
-        browser = _browser
+    async_playwright = AntiDetection.get_playwright()
+    pw_instance = await async_playwright().start()
+    browser = await launch_browser(pw_instance, prepared.settings.browser,
+                                   cfg.headless, prepared.settings.slow_mo)
 
     try:
-        suite_name = workflow_path or task or "automation"
-        reporter.start_suite(suite_name)
-
-        log_handler = None
-        if test_reporter and test_reporter.manager.current_test_dir:
-            log_path = test_reporter.manager.current_test_dir / "logs" / "run.log"
-            log_handler = logging.FileHandler(log_path, encoding="utf-8")
-            log_handler.setLevel(logging.DEBUG)   # file gets DEBUG; console stays INFO
-            log_handler.setFormatter(logging.Formatter(
-                "%(asctime)s | %(levelname)s | %(name)s | %(message)s", datefmt="%H:%M:%S"
-            ))
-            logging.getLogger().addHandler(log_handler)
-            screenshots_dir = test_reporter.manager.get_screenshots_dir()
-        else:
-            screenshots_dir = _stepper_root / "sites" / "openlibrary" / "artifacts" / "screenshots"
-
-        screenshots_dir.mkdir(parents=True, exist_ok=True)
-
-        from poms.shared.driver import PlaywrightBrowserLauncher
-        browser_launcher = PlaywrightBrowserLauncher(
-            headless=headless,
-            storage_state_path=Path(str(s.storage_state_path)) if s.storage_state_path else None,
-        )
-        action_registry = build_default_registry(
-            screenshots_dir=screenshots_dir,
-            browser_launcher=browser_launcher,
-        )
-        register_all_sites(action_registry, _stepper_root, screenshots_dir=screenshots_dir)
-
-        context_kwargs: dict = {"viewport": {"width": 1280, "height": 800}}
-        if s.storage_state_path and Path(str(s.storage_state_path)).exists():
-            context_kwargs["storage_state"] = str(s.storage_state_path)
-            logger.info(f"Loaded session from {s.storage_state_path}")
-        if record_video and test_reporter and test_reporter.manager.current_test_dir:
-            videos_dir = test_reporter.manager.current_test_dir / "videos"
-            videos_dir.mkdir(parents=True, exist_ok=True)
-            context_kwargs["record_video_dir"]  = str(videos_dir)
-            context_kwargs["record_video_size"] = {"width": 1280, "height": 800}
-            logger.info(f"Recording video → {videos_dir}")
-
-        context = await browser.new_context(**context_kwargs)
-        page    = await context.new_page()
-        await page.add_init_script(
-            "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
-        )
-
-        heal_cache = None
-        if workflow_path:
-            from engine.healer.healing_cache import HealCache
-            cache_path = _stepper_root / "sites" / _extract_site(workflow_path) / "artifacts" / "heal_cache.json"
-            heal_cache = HealCache(cache_path)
-
-        healer = None
-        if max_heal_attempts > 0:
-            import os
-            if os.getenv("ANTHROPIC_API_KEY") or os.getenv("GROQ_API_KEY") or os.getenv("GEMINI_API_KEY"):
-                from engine.ai.service import AIService
-                from engine.healer.ai_healer import AiHealer
-                from engine.planner.schema_extractor import ActionSchemaExtractor
-                schema = ActionSchemaExtractor.extract(action_registry)
-                healer = AiHealer(action_schema=schema, ai_service=AIService())
-                logger.info(f"⚕ Self-healing enabled (max {max_heal_attempts} attempt(s) per step)")
-            else:
-                logger.warning("⚕ --heal requested but no LLM API key found — healing disabled")
-
-        runner = StepRunner(
-            page=page,
-            action_factory=action_registry,
-            resolver=resolver,
-            reporter=reporter,
-            screenshots_dir=screenshots_dir,
-            healer=healer,
-            max_heal_attempts=max_heal_attempts,
-            cache=heal_cache,
-        )
-        runner.add_observer(LoggingObserver())
-
-        base_dir = Path(workflow_path).parent if workflow_path else Path.cwd()
-        action_registry.register(RunWorkflowAction(run_steps_callable=runner.run, base_dir=base_dir))
-
-        _run_start = time.monotonic()
-        results, _ = await runner.run(steps)
-        _run_duration = time.monotonic() - _run_start
-
-        reporter.finish_suite()
-
-        if ci:
-            summary = _build_ci_summary(results, workflow_path, resolver, _run_duration)
-            print(json.dumps(summary, indent=2))
-            if ci_output:
-                # Create the parent dir first: on a failing run nothing else has
-                # written to reports/ yet, and a FileNotFoundError here would
-                # discard the very summary that explains the failure.
-                out_path = Path(ci_output)
-                out_path.parent.mkdir(parents=True, exist_ok=True)
-                out_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
-                logger.info(f"CI summary written to {ci_output}")
-
-        drift_log = getattr(resolver, "_drift_log", None)
-        if shadow and drift_log is not None:
-            drift_log.flush()
-
-        if log_handler:
-            logging.getLogger().removeHandler(log_handler)
-            log_handler.close()
-
-        _LOGIN_ACTIONS = {"ol_ensure_login", "sd_login", "ensure_login"}
-        if s.storage_state_path and any(r.step.action in _LOGIN_ACTIONS for r in results):
-            Path(str(s.storage_state_path)).parent.mkdir(parents=True, exist_ok=True)
-            await context.storage_state(path=str(s.storage_state_path))
-            logger.info(f"Session saved to {s.storage_state_path}")
-        elif s.storage_state_path:
-            logger.debug("Skipping storage_state write — no login action ran")
-
-        await context.close()
-
+        with _tee_logs_to_run_file(prepared.test_reporter):
+            pipeline = await build_pipeline(prepared, browser, observers=observers)
+            try:
+                results = await execute_pipeline(pipeline)
+            finally:
+                # Closing the context flushes any recorded video, so it has to
+                # happen even when the run raised.
+                await pipeline.context.close()
     finally:
-        if _owns_browser:
-            await browser.close()
-            if _pw_instance:
-                await _pw_instance.stop()
+        await browser.close()
+        await pw_instance.stop()
 
-    if allure_serve:
+    if cfg.allure_serve:
         serve_allure(_stepper_root)
 
     return results
@@ -359,97 +630,40 @@ def apply_heals(workflow_path: Path, auto_yes: bool) -> None:
     print(f"{len(patches)} heal(s) applied to {workflow_path}. Commit to make permanent.")
 
 
-async def _run_data_rows(rows: list[dict], cli_vars: dict, args) -> None:
-    """Open one playwright instance and browser; run each data row in a fresh context."""
-    s        = load_settings_safe()
-    resolver = build_resolver(s.use_visual_ai)
+async def run_data_rows(cfg: RunConfig, rows: list[dict], cli_vars: dict) -> None:
+    """
+    Run one workflow once per data row, reusing a single browser.
 
+    Each row gets its own context and its own report directory; the browser and
+    the resolver are built once for the whole set.
+    """
+    settings = build_settings(cfg)
+    resolver = build_resolver(settings.use_visual_ai)
+
+    async_playwright = AntiDetection.get_playwright()
     async with async_playwright() as pw:
-        browser = await launch_browser(pw, s.browser, not args.show, s.slow_mo)
-        for i, row in enumerate(rows, 1):
-            merged = {**row, **cli_vars}
-            logger.info(f"[data-driven] row {i}/{len(rows)}: {merged}")
-            await run(
-                workflow_path=args.workflow,
-                task=args.task,
-                headless=not args.show,
-                allure_serve=False,
-                record_video=args.video,
-                variables=merged,
-                resolver=resolver,
-                _browser=browser,
-                shadow=args.shadow,
-            )
-        await browser.close()
-
-
-def main():
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
-        datefmt="%H:%M:%S",
-    )
-    load_env()
-
-    parser = argparse.ArgumentParser(description="Stepper — AI Browser Automation")
-    parser.add_argument("--workflow",      help="Path to workflow JSON file")
-    parser.add_argument("--task",          help="Natural language task description")
-    parser.add_argument("--show",          action="store_true", help="Show browser window")
-    parser.add_argument("--allure-serve",  action="store_true", help="Open Allure report in browser after run")
-    parser.add_argument("--video",         action="store_true", help="Record video to test-*/videos/")
-    parser.add_argument("--heal",          type=int, default=0, metavar="N",
-                        help="Max self-healing attempts per failed step (default 0 = disabled)")
-    parser.add_argument("--vars",          help='JSON string of variable overrides, e.g. \'{"query":"Foundation"}\'')
-    parser.add_argument("--data",          help="Path to a JSON file containing an array of variable objects")
-    parser.add_argument("--apply-heals",   metavar="WORKFLOW_JSON",
-                        help="Apply heal_suggestions.json fixes to the given workflow file")
-    parser.add_argument("--yes",           action="store_true",
-                        help="Auto-confirm --apply-heals without interactive prompt")
-    parser.add_argument("--shadow",        action="store_true",
-                        help="Enable shadow mode — run all resolver strategies in background and log drift")
-    parser.add_argument("--ci",            action="store_true",
-                        help="Output structured JSON run summary to stdout (for CI/CD pipelines)")
-    parser.add_argument("--ci-output",     metavar="FILE",
-                        help="Write CI JSON summary to FILE in addition to stdout")
-    args = parser.parse_args()
-
-    if args.apply_heals:
-        if args.workflow or args.task or args.data:
-            parser.error("--apply-heals is mutually exclusive with --workflow, --task, and --data")
-        apply_heals(Path(args.apply_heals), args.yes)
-        return
-
-    cli_vars: dict = {}
-    if args.vars:
+        browser = await launch_browser(pw, settings.browser, cfg.headless, settings.slow_mo)
         try:
-            cli_vars = json.loads(args.vars)
-        except json.JSONDecodeError as e:
-            parser.error(f"--vars is not valid JSON: {e}")
+            for i, row in enumerate(rows, 1):
+                merged = {**row, **cli_vars}
+                logger.info(f"[data-driven] row {i}/{len(rows)}: {merged}")
 
-    if args.data:
-        data_path = Path(args.data)
-        if not data_path.exists():
-            parser.error(f"--data file not found: {data_path}")
-        rows: list[dict] = json.loads(data_path.read_text(encoding="utf-8"))
-        if not isinstance(rows, list):
-            parser.error("--data file must contain a JSON array of objects")
-        asyncio.run(_run_data_rows(rows, cli_vars, args))
-        if args.allure_serve:
-            serve_allure(_stepper_root)
-        return
+                row_cfg  = replace(cfg, variables=merged, allure_serve=False)
+                prepared = prepare_run(row_cfg, resolver=resolver)
+                with _tee_logs_to_run_file(prepared.test_reporter):
+                    pipeline = await build_pipeline(prepared, browser)
+                    try:
+                        await execute_pipeline(pipeline)
+                    finally:
+                        await pipeline.context.close()
+        finally:
+            await browser.close()
 
-    asyncio.run(run(
-        workflow_path=args.workflow,
-        task=args.task,
-        headless=not args.show,
-        allure_serve=args.allure_serve,
-        record_video=args.video,
-        variables=cli_vars or None,
-        max_heal_attempts=args.heal,
-        shadow=args.shadow,
-        ci=args.ci,
-        ci_output=args.ci_output,
-    ))
+
+def main() -> None:
+    """Entry point — the CLI itself lives in cli.py, this module is the pipeline."""
+    import cli
+    raise SystemExit(cli.run_cli(sys.modules[__name__]))
 
 
 if __name__ == "__main__":

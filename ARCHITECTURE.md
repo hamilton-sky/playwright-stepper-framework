@@ -64,7 +64,8 @@ poms/                          POM layer — no dependency on stepper/
 │   └── pages/                 One class per page; selectors live here and nowhere else
 
 stepper/
-├── main.py                    CLI entry — builds the registry, runner and reporters
+├── main.py                    CLI entry — RunConfig, prepare_run (plan + validate,
+│                              no browser), build_pipeline, execute
 ├── bootstrap/                 .env loading, infra and reporter wiring
 ├── engine/
 │   ├── interfaces.py          ActionStrategy, ResolverStrategy, ReporterStrategy,
@@ -77,7 +78,7 @@ stepper/
 │   │                          ai_pick_resolver.py, shadow_runner.py
 │   ├── healer/                dom_snapshot.py, ai_healer.py, healing_cache.py,
 │   │                          visual_bridge.py, annotator.py
-│   ├── runner/                step_runner.py, when_eval.py, api.py
+│   ├── runner/                step_runner.py, when_eval.py
 │   ├── planner/               JSON + AI planners, schema extraction, validation
 │   ├── reporter/              Console, JSON, Allure, Composite
 │   ├── pages/                 PageModule ABC + GlueAction base

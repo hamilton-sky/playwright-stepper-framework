@@ -70,10 +70,17 @@ calls `register(registry)` on every PageModule in that site; `main.py` calls tha
 at startup.
 
 `action_name` must match the `"action"` key in workflow JSON, and must start with
-`f"{site}_"`. The one exception in the tree is `OLSearchPage`, which additionally
-aliases `ol_collect_books` to the same instance by assigning into `registry._registry`
-directly — a private-dict poke that exists because `ActionRegistry` has no alias API.
-Don't copy the pattern; add an alias method if you need a second one.
+`f"{site}_"`. The one exception in the tree is `OLSearchPage`, whose action is
+registered as `collect_items` and additionally aliased to `ol_collect_books`:
+
+```python
+registry.register(action)
+registry.alias("ol_collect_books", action.action_name)
+```
+
+`alias()` binds a second name to the *same instance*, and refuses to point at an
+unregistered action or to shadow a different one. Prefer a single name; reach for
+an alias only to keep an existing workflow working after a rename.
 
 ### Settings loading
 

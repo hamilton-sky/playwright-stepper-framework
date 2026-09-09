@@ -1,9 +1,10 @@
 ## Site-Specific Actions
 
 Every action below is registered by the site's `register.py` at startup.
-Verify against the code with:
+Verify against the running registry with:
 
 ```bash
+python stepper/main.py actions --site <site>    # descriptions from docstrings
 grep -rn "action_name" stepper/sites/<site>/pages/
 ```
 
@@ -56,5 +57,5 @@ workflows use `ol_collect_books`.
 Run any workflow from the repo root:
 
 ```bash
-python stepper/main.py --workflow stepper/sites/<site>/workflows/<file>.json
+python stepper/main.py run <workflow-name>
 ```
