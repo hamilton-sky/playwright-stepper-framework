@@ -2,7 +2,7 @@
 engine/browser/anti_detection.py — Deterministic anti-detection service.
 
 Applies browser-level defences at context and page creation time.
-All methods are stateless and called from api.py (StepperSession.__aenter__).
+All methods are stateless and called from main.run() while building the session.
 
 Phases covered:
   1  JS signal patching    — navigator.webdriver removed via add_init_script
@@ -36,11 +36,13 @@ _DEFAULT_UA = (
 class AntiDetection:
     """
     Stateless service — all methods are static.
-    Call order in StepperSession.__aenter__:
+    Call order when building a browser session (see main.run):
 
       1. async_playwright = AntiDetection.get_playwright()
       2. context_kwargs.update(AntiDetection.context_kwargs())
       3. await AntiDetection.apply_page_patches(page)
+
+    detect_captcha is separate — StepRunner calls it per step.
     """
 
     @staticmethod

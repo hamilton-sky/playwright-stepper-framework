@@ -20,7 +20,7 @@ playwright-stepper-framework/
 │   ├── engine/                       # Core framework modules
 │   │   ├── actions/                  # ActionRegistry + strategies
 │   │   ├── resolvers/                # Element resolution cascade
-│   │   ├── runner/                   # StepRunner, when_eval, API
+│   │   ├── runner/                   # StepRunner, when_eval
 │   │   ├── planner/                  # Claude AI planner / JSON planner
 │   │   ├── reporter/                 # Reporters + test report manager
 │   │   └── pages/                    # PageModule ABC + POM registry

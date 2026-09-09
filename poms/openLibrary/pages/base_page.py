@@ -29,7 +29,7 @@ class BasePage(SharedBasePage):
 
       driver-only  (resolver=None)
         All interactions use PlaywrightDriver CSS selectors directly.
-        Used by: api.py direct calls, standalone scripts.
+        Used by: examples/plain_pom, standalone scripts.
 
       resolver-enhanced  (resolver=ElementResolver instance)
         Interactive element finding goes through the full 10-stage cascade.

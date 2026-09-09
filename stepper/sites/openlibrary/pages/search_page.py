@@ -76,5 +76,5 @@ class OLSearchPage(PageModule):
         action = cls.OLCollectBooksAction()
         registry.register(action)
         # Also register under the ol_ alias used by ol_search_and_add.json
-        registry._registry["ol_collect_books"] = action
+        registry.alias("ol_collect_books", action.action_name)
         logger.debug("Registered OLSearchPage action: collect_items / ol_collect_books")

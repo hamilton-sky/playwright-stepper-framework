@@ -143,7 +143,7 @@ def load_settings(
 def validate_ai_config(settings: Settings) -> None:
     """
     Warn at startup if AI features are enabled but the required keys are missing.
-    Called by main.py and api.py after load_settings() so problems surface early
+    Called by main.py after load_settings() so problems surface early
     rather than silently failing mid-run inside the resolver cascade.
 
     Keys checked:

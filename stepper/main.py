@@ -23,13 +23,13 @@ for _p in (_parent_path, _root_path, _src_path):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from playwright.async_api import async_playwright
-
 from bootstrap.settings  import load_env, load_settings_safe
 from bootstrap.infra     import build_resolver, launch_browser, register_all_sites
 from bootstrap.reporting import build_reporters, serve_allure
 
+from engine.browser.anti_detection import AntiDetection
 from engine.actions.factory      import build_default_registry
+from engine.planner.validator    import PlanValidator
 from engine.actions.strategies   import RunWorkflowAction
 from engine.runner.step_runner   import StepRunner, LoggingObserver
 
@@ -147,6 +147,7 @@ async def run(
     _pw_instance  = None
 
     if _owns_browser:
+        async_playwright = AntiDetection.get_playwright()
         _pw_instance = await async_playwright().start()
         browser = await launch_browser(_pw_instance, s.browser, headless, s.slow_mo)
     else:
@@ -183,6 +184,7 @@ async def run(
         register_all_sites(action_registry, _stepper_root, screenshots_dir=screenshots_dir)
 
         context_kwargs: dict = {"viewport": {"width": 1280, "height": 800}}
+        context_kwargs.update(AntiDetection.context_kwargs())
         if s.storage_state_path and Path(str(s.storage_state_path)).exists():
             context_kwargs["storage_state"] = str(s.storage_state_path)
             logger.info(f"Loaded session from {s.storage_state_path}")
@@ -195,9 +197,7 @@ async def run(
 
         context = await browser.new_context(**context_kwargs)
         page    = await context.new_page()
-        await page.add_init_script(
-            "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
-        )
+        await AntiDetection.apply_page_patches(page)
 
         heal_cache = None
         if workflow_path:
@@ -232,6 +232,12 @@ async def run(
 
         base_dir = Path(workflow_path).parent if workflow_path else Path.cwd()
         action_registry.register(RunWorkflowAction(run_steps_callable=runner.run, base_dir=base_dir))
+
+        # The registry is only complete here — run_workflow binds to the runner —
+        # so this is the first point a plan can be checked in full. Matters most
+        # for --task, where an LLM can name an action that does not exist: this
+        # reports every bad step up front instead of failing at step 7.
+        PlanValidator.validate(steps, action_registry)
 
         _run_start = time.monotonic()
         results, _ = await runner.run(steps)
@@ -364,6 +370,7 @@ async def _run_data_rows(rows: list[dict], cli_vars: dict, args) -> None:
     s        = load_settings_safe()
     resolver = build_resolver(s.use_visual_ai)
 
+    async_playwright = AntiDetection.get_playwright()
     async with async_playwright() as pw:
         browser = await launch_browser(pw, s.browser, not args.show, s.slow_mo)
         for i, row in enumerate(rows, 1):
