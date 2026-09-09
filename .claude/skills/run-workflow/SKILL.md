@@ -10,21 +10,26 @@ Run a workflow through the stepper engine.
 
 If no argument is provided, list available workflows:
 ```bash
-find stepper/sites -name "*.json" -path "*/workflows/*"
+python stepper/main.py list [--site <site>]
 ```
 Show the list and ask the user to pick one.
 
 ## Parse $ARGUMENTS
 
-- If given a full path → use as-is
-- If given a name (e.g. `ol_smoke_test`) → search for `stepper/sites/*/workflows/*<name>*.json`
-- `--show` → add `--show` flag to watch the browser (omit for headless, which is the default)
-- `--site <site>` → narrow the search to `stepper/sites/<site>/workflows/`
+- A name or a full path both work — the CLI resolves a bare name across all
+  sites and reports close matches when it cannot
+- `--show` → watch the browser (omit for headless, which is the default)
+- `--site <site>` → only affects `list`, not `run`
 
 ## Run the workflow
 
 ```bash
-python stepper/main.py --workflow <resolved-path> [--show]
+python stepper/main.py run <name-or-path> [--show]
+```
+
+To check a workflow without launching a browser first:
+```bash
+python stepper/main.py validate <name-or-path>
 ```
 
 Use a generous timeout (300000ms) — workflows can be slow.

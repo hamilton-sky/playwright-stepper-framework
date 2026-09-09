@@ -15,7 +15,7 @@ import os
 import sys
 import time
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -284,6 +284,43 @@ def build_healer(cfg: RunConfig, registry):
     )
 
 
+def build_validated_registry(cfg: RunConfig, settings, screenshots_dir: Path, steps):
+    """
+    Build the complete action registry and check the plan against it.
+
+    Shared by prepare_run and validate_plan so a workflow that passes `validate`
+    cannot be rejected at run time by a differently-built registry.
+    """
+    registry = build_action_registry(cfg, settings, screenshots_dir)
+
+    # Registered unbound: run_workflow needs the runner, which needs a page.
+    # Binding is deferred so the plan can be validated before a browser exists.
+    subflow_action = RunWorkflowAction(base_dir=cfg.base_dir)
+    registry.register(subflow_action)
+
+    PlanValidator.validate(steps, registry)
+    return registry, subflow_action
+
+
+def validate_plan(cfg: RunConfig, settings=None) -> list:
+    """
+    Plan and validate with no browser, no reporters and no directories created.
+
+    Pass `settings` when validating many workflows in a row — loading them is
+    what emits the provider-key warnings, and once is enough.
+
+    Raises PlanValidationError when the plan is bad; returns the steps when good.
+    """
+    steps = plan_steps(cfg)
+    build_validated_registry(
+        cfg,
+        settings if settings is not None else build_settings(cfg),
+        cfg.artifact_path("screenshots"),
+        steps,
+    )
+    return steps
+
+
 def prepare_run(cfg: RunConfig, resolver=None) -> PreparedRun:
     """
     Plan and validate a run without launching a browser.
@@ -307,14 +344,9 @@ def prepare_run(cfg: RunConfig, resolver=None) -> PreparedRun:
     screenshots_dir = resolve_screenshots_dir(cfg, test_reporter)
     screenshots_dir.mkdir(parents=True, exist_ok=True)
 
-    registry = build_action_registry(cfg, settings, screenshots_dir)
-
-    # Registered unbound: run_workflow needs the runner, which needs a page.
-    # Binding is deferred to build_pipeline so the plan can be validated now.
-    subflow_action = RunWorkflowAction(base_dir=cfg.base_dir)
-    registry.register(subflow_action)
-
-    PlanValidator.validate(steps, registry)
+    registry, subflow_action = build_validated_registry(
+        cfg, settings, screenshots_dir, steps
+    )
 
     return PreparedRun(
         cfg=cfg, steps=steps, settings=settings, resolver=resolver,
@@ -462,7 +494,6 @@ async def run(
     record_video: bool = False,
     variables: dict | None = None,
     resolver=None,
-    _browser=None,
     max_heal_attempts: int = 0,
     shadow: bool = False,
     ci: bool = False,
@@ -472,10 +503,12 @@ async def run(
     """
     Plan, assemble and execute one run — the whole pipeline end to end.
 
-    Kept as the single entry point for the CLI and for callers that just want a
-    workflow run. Callers needing finer control use the pieces directly:
+    Launches its own browser and closes it. Callers needing finer control — a
+    shared browser, step-event streaming, validation without a browser — use the
+    pieces directly:
 
-        prepared = prepare_run(cfg)                 # validate, no browser
+        steps    = validate_plan(cfg)               # no browser at all
+        prepared = prepare_run(cfg)
         pipeline = await build_pipeline(prepared, browser, observers=[my_observer])
         results  = await execute_pipeline(pipeline)
     """
@@ -495,16 +528,10 @@ async def run(
     # Plan and validate before anything expensive is opened.
     prepared = prepare_run(cfg, resolver=resolver)
 
-    owns_browser = _browser is None
-    pw_instance  = None
-
-    if owns_browser:
-        async_playwright = AntiDetection.get_playwright()
-        pw_instance = await async_playwright().start()
-        browser = await launch_browser(pw_instance, prepared.settings.browser,
-                                       cfg.headless, prepared.settings.slow_mo)
-    else:
-        browser = _browser
+    async_playwright = AntiDetection.get_playwright()
+    pw_instance = await async_playwright().start()
+    browser = await launch_browser(pw_instance, prepared.settings.browser,
+                                   cfg.headless, prepared.settings.slow_mo)
 
     try:
         with _tee_logs_to_run_file(prepared.test_reporter):
@@ -516,10 +543,8 @@ async def run(
                 # happen even when the run raised.
                 await pipeline.context.close()
     finally:
-        if owns_browser:
-            await browser.close()
-            if pw_instance:
-                await pw_instance.stop()
+        await browser.close()
+        await pw_instance.stop()
 
     if cfg.allure_serve:
         serve_allure(_stepper_root)
@@ -605,98 +630,40 @@ def apply_heals(workflow_path: Path, auto_yes: bool) -> None:
     print(f"{len(patches)} heal(s) applied to {workflow_path}. Commit to make permanent.")
 
 
-async def _run_data_rows(rows: list[dict], cli_vars: dict, args) -> None:
-    """Open one playwright instance and browser; run each data row in a fresh context."""
-    s        = load_settings_safe()
-    resolver = build_resolver(s.use_visual_ai)
+async def run_data_rows(cfg: RunConfig, rows: list[dict], cli_vars: dict) -> None:
+    """
+    Run one workflow once per data row, reusing a single browser.
+
+    Each row gets its own context and its own report directory; the browser and
+    the resolver are built once for the whole set.
+    """
+    settings = build_settings(cfg)
+    resolver = build_resolver(settings.use_visual_ai)
 
     async_playwright = AntiDetection.get_playwright()
     async with async_playwright() as pw:
-        browser = await launch_browser(pw, s.browser, not args.show, s.slow_mo)
-        for i, row in enumerate(rows, 1):
-            merged = {**row, **cli_vars}
-            logger.info(f"[data-driven] row {i}/{len(rows)}: {merged}")
-            await run(
-                workflow_path=args.workflow,
-                task=args.task,
-                headless=not args.show,
-                allure_serve=False,
-                record_video=args.video,
-                variables=merged,
-                resolver=resolver,
-                _browser=browser,
-                shadow=args.shadow,
-            )
-        await browser.close()
-
-
-def main():
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
-        datefmt="%H:%M:%S",
-    )
-    load_env()
-
-    parser = argparse.ArgumentParser(description="Stepper — AI Browser Automation")
-    parser.add_argument("--workflow",      help="Path to workflow JSON file")
-    parser.add_argument("--task",          help="Natural language task description")
-    parser.add_argument("--show",          action="store_true", help="Show browser window")
-    parser.add_argument("--allure-serve",  action="store_true", help="Open Allure report in browser after run")
-    parser.add_argument("--video",         action="store_true", help="Record video to test-*/videos/")
-    parser.add_argument("--heal",          type=int, default=0, metavar="N",
-                        help="Max self-healing attempts per failed step (default 0 = disabled)")
-    parser.add_argument("--vars",          help='JSON string of variable overrides, e.g. \'{"query":"Foundation"}\'')
-    parser.add_argument("--data",          help="Path to a JSON file containing an array of variable objects")
-    parser.add_argument("--apply-heals",   metavar="WORKFLOW_JSON",
-                        help="Apply heal_suggestions.json fixes to the given workflow file")
-    parser.add_argument("--yes",           action="store_true",
-                        help="Auto-confirm --apply-heals without interactive prompt")
-    parser.add_argument("--shadow",        action="store_true",
-                        help="Enable shadow mode — run all resolver strategies in background and log drift")
-    parser.add_argument("--ci",            action="store_true",
-                        help="Output structured JSON run summary to stdout (for CI/CD pipelines)")
-    parser.add_argument("--ci-output",     metavar="FILE",
-                        help="Write CI JSON summary to FILE in addition to stdout")
-    args = parser.parse_args()
-
-    if args.apply_heals:
-        if args.workflow or args.task or args.data:
-            parser.error("--apply-heals is mutually exclusive with --workflow, --task, and --data")
-        apply_heals(Path(args.apply_heals), args.yes)
-        return
-
-    cli_vars: dict = {}
-    if args.vars:
+        browser = await launch_browser(pw, settings.browser, cfg.headless, settings.slow_mo)
         try:
-            cli_vars = json.loads(args.vars)
-        except json.JSONDecodeError as e:
-            parser.error(f"--vars is not valid JSON: {e}")
+            for i, row in enumerate(rows, 1):
+                merged = {**row, **cli_vars}
+                logger.info(f"[data-driven] row {i}/{len(rows)}: {merged}")
 
-    if args.data:
-        data_path = Path(args.data)
-        if not data_path.exists():
-            parser.error(f"--data file not found: {data_path}")
-        rows: list[dict] = json.loads(data_path.read_text(encoding="utf-8"))
-        if not isinstance(rows, list):
-            parser.error("--data file must contain a JSON array of objects")
-        asyncio.run(_run_data_rows(rows, cli_vars, args))
-        if args.allure_serve:
-            serve_allure(_stepper_root)
-        return
+                row_cfg  = replace(cfg, variables=merged, allure_serve=False)
+                prepared = prepare_run(row_cfg, resolver=resolver)
+                with _tee_logs_to_run_file(prepared.test_reporter):
+                    pipeline = await build_pipeline(prepared, browser)
+                    try:
+                        await execute_pipeline(pipeline)
+                    finally:
+                        await pipeline.context.close()
+        finally:
+            await browser.close()
 
-    asyncio.run(run(
-        workflow_path=args.workflow,
-        task=args.task,
-        headless=not args.show,
-        allure_serve=args.allure_serve,
-        record_video=args.video,
-        variables=cli_vars or None,
-        max_heal_attempts=args.heal,
-        shadow=args.shadow,
-        ci=args.ci,
-        ci_output=args.ci_output,
-    ))
+
+def main() -> None:
+    """Entry point — the CLI itself lives in cli.py, this module is the pipeline."""
+    import cli
+    raise SystemExit(cli.run_cli(sys.modules[__name__]))
 
 
 if __name__ == "__main__":

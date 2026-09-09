@@ -40,12 +40,32 @@ cp stepper/.env.example .env
 # 3. Verify the install — no browser, no network, no credentials
 PYTHONPATH=stepper pytest stepper/tests/unit/
 
-# 4. Run a workflow
-python stepper/main.py --workflow stepper/sites/saucedemo/workflows/sd_happy_path.json
+# 4. See what there is to run
+python stepper/main.py list
+
+# 5. Run a workflow — by name, not by path
+python stepper/main.py run sd_happy_path
 ```
 
-Useful flags: `--show` (headed browser), `--video`, `--allure-serve`, `--ci`,
-`--vars '{"query":"Dune"}'`, `--data <testdata.json>`.
+### Commands
+
+| Command | What it does |
+|---|---|
+| `run WORKFLOW` | Run a workflow, or `--task` to plan one from natural language |
+| `list` | Every workflow on disk, grouped by site, with step counts |
+| `actions` | Every registered action and what it does |
+| `validate` | Check workflows without launching a browser — exits 1 if any is invalid |
+| `heal apply WORKFLOW` | Review and apply the healer's selector fixes |
+
+`python stepper/main.py <command> --help` explains one command's options.
+
+Useful `run` flags: `--show` (headed browser), `--video`, `--allure-serve`, `--ci`,
+`--vars '{"query":"Dune"}'`, `--data <testdata.json>`, `--heal N`.
+
+Workflows are referred to by name — `sd_happy_path` resolves across all sites, and
+full paths still work anywhere a name is accepted. The older flag-only form
+(`--workflow <path>`) also still works, with a one-line note pointing at the new
+spelling.
 
 ---
 
@@ -135,7 +155,7 @@ Opt a step out with `"heal": false`. Verify a heal landed with `"heal_assert"`.
 Apply cached heal suggestions back into the workflow JSON after a run:
 
 ```bash
-python stepper/main.py --apply-heals stepper/sites/saucedemo/workflows/sd_full_heal_flow.json
+python stepper/main.py heal apply sd_full_heal_flow
 ```
 
 It finds the most recent `heal_suggestions.json` under `reports/`, shows a per-step
@@ -204,7 +224,7 @@ A pure `"{{key}}"` reference preserves its type (int, bool); mixed strings like
 `"page_{{n}}"` are string-substituted. Override any variable without touching the JSON:
 
 ```bash
-python stepper/main.py --workflow stepper/sites/openlibrary/workflows/ol_regression_roundtrip.json \
+python stepper/main.py run ol_regression_roundtrip \
   --vars '{"query":"Asimov","max_year":1960,"limit":2}'
 ```
 
@@ -247,10 +267,11 @@ Site-specific actions (`ol_*`, `sd_*`, `pt_*`) are catalogued in
 
 ## Workflows
 
-Sixteen ready-to-run workflows. Run any of them from the repo root:
+Sixteen ready-to-run workflows — `python stepper/main.py list` prints this table
+live from disk. Run any of them from the repo root:
 
 ```bash
-python stepper/main.py --workflow stepper/sites/<site>/workflows/<file>.json
+python stepper/main.py run <workflow-name>
 ```
 
 **OpenLibrary** — `stepper/sites/openlibrary/workflows/`

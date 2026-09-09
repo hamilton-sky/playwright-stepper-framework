@@ -85,7 +85,7 @@ Execute exactly what the conversation prompt specifies:
 
 Run the verify command from the conversation prompt. Example:
 ```bash
-python stepper/main.py --workflow stepper/sites/openlibrary/workflows/search_and_add.json
+python stepper/main.py run search_and_add
 ```
 
 If verification fails, fix the issues before proceeding. If the fix requires out-of-scope changes, STOP and report:
