@@ -33,8 +33,10 @@ class PTHotelSearchPage(PageModule):
 
     class PTSearchHotelsAction(GlueAction):
         """
-        Open the phpTravels home page, select the Hotels tab, fill the search
-        form, and submit. Leaves the browser on the hotel results page.
+        Search phpTravels for hotels, leaving the browser on the results page.
+
+        Opens the home page, selects the Hotels tab, fills the search form and
+        submits it.
 
         Required extra keys: destination, checkin, checkout.
         Optional extra keys: adults (default "2").

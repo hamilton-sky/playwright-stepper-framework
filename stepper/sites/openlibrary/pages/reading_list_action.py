@@ -125,8 +125,9 @@ class OLReadingListPage(PageModule):
 
     class OLAssertCountAction(GlueAction):
         """
-        Navigate to the reading list, count books across both shelves,
-        assert the count matches expected.
+        Assert the reading list holds the expected number of books.
+
+        Navigates to the reading list and counts across both shelves.
 
         Supports:
           extra.delta          → count_before + delta
