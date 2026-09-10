@@ -44,6 +44,19 @@ class BasePage:
             return asyncio.sleep(self._behaviour.jitter(base_ms))
         return asyncio.sleep(base_ms / 1000)
 
+    async def _hover(self, element) -> None:
+        """
+        Hover before clicking when a behaviour is injected; a no-op otherwise.
+
+        The counterpart to _sleep. Both exist so POMs never touch
+        self._behaviour directly — driver-only mode passes behaviour=None, and
+        an unguarded call there raises AttributeError inside whatever
+        try/except the caller happens to have, turning a code bug into a silent
+        "strategy failed".
+        """
+        if self._behaviour:
+            await self._behaviour.hover_before_click(element)
+
     @property
     def url(self) -> str:
         raise NotImplementedError

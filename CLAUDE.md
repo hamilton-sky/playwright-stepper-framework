@@ -23,7 +23,7 @@ playwright-stepper-framework/
 │   │   ├── runner/                   # StepRunner, when_eval
 │   │   ├── planner/                  # Claude AI planner / JSON planner
 │   │   ├── reporter/                 # Reporters + test report manager
-│   │   └── pages/                    # PageModule ABC + POM registry
+│   │   └── pages/                    # PageModule ABC + GlueAction base
 │   └── sites/                        # Glue layer — wires POMs into Stepper actions
 │       ├── openlibrary/pages/
 │       ├── saucedemo/pages/

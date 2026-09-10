@@ -13,9 +13,35 @@ SOLID:
 """
 
 from __future__ import annotations
+import inspect
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Optional, Any, ClassVar, TYPE_CHECKING
+
+
+def _require_class_attrs(cls, *names: str) -> None:
+    """
+    Fail at class-definition time when a concrete subclass forgot a constant.
+
+    These constants used to be declared as `@property @abstractmethod`, which
+    reads as "subclasses must provide this" but tells a type checker that the
+    attribute is a property — so every subclass assigning a plain string was
+    flagged twice, 128 errors in all, drowning the real findings. Declaring them
+    as ClassVar types them correctly; this hook keeps the enforcement, and moves
+    it earlier: a missing constant now raises on import rather than on the first
+    instantiation.
+
+    Abstract subclasses (GlueAction, and any other intermediate base) are
+    skipped — they legitimately leave the constant to their own subclasses.
+    """
+    if inspect.isabstract(cls):
+        return
+    for name in names:
+        if not getattr(cls, name, None):
+            raise TypeError(
+                f"{cls.__module__}.{cls.__qualname__} must define "
+                f"{name!r} — it is required by {cls.__mro__[1].__name__}."
+            )
 
 # ──────────────────────────────────────────────────────────
 # CONFIDENCE GATE THRESHOLDS
@@ -180,15 +206,15 @@ class ResolverStrategy(ABC):
     The cascade in ElementResolver tries them in priority order.
     """
 
-    @property
-    @abstractmethod
-    def priority(self) -> int:
-        """Lower = tried first."""
+    #: Lower = tried first.
+    priority: ClassVar[int]
 
-    @property
-    @abstractmethod
-    def name(self) -> str:
-        """Human-readable name for logging."""
+    #: Human-readable name for logging.
+    name: ClassVar[str]
+
+    def __init_subclass__(cls, **kwargs) -> None:
+        super().__init_subclass__(**kwargs)
+        _require_class_attrs(cls, "priority", "name")
 
     @abstractmethod
     async def collect(self, page, cfg: dict) -> list:
@@ -218,12 +244,14 @@ class ActionStrategy(ABC):
                         ParallelAction will refuse to run it.
     """
 
-    read_only: bool = False  # subclasses override to True when safe to parallelize
+    read_only: ClassVar[bool] = False  # True when safe to parallelize
 
-    @property
-    @abstractmethod
-    def action_name(self) -> str:
-        """Must match the 'action' field in step JSON."""
+    #: Must match the "action" field in step JSON.
+    action_name: ClassVar[str]
+
+    def __init_subclass__(cls, **kwargs) -> None:
+        super().__init_subclass__(**kwargs)
+        _require_class_attrs(cls, "action_name")
 
     async def execute(self, page, step: StepConfig, resolver,
                       context: "ExecutionContext | None" = None,
