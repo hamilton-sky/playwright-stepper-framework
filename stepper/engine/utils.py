@@ -20,6 +20,17 @@ def dict_to_step_config(d: dict) -> StepConfig:
     Otherwise every key that isn't a known top-level field is collected into
     extra (backward-compat for flat JSON steps).
     """
+    if not isinstance(d, dict):
+        raise ValueError("Each step must be an object")
+    for key in ("extra", "element"):
+        if key in d and not isinstance(d[key], dict):
+            raise ValueError(f"{key} must be an object")
+    for key in ("continue_on_failure", "skip_screenshot", "heal"):
+        if key in d and type(d[key]) is not bool:
+            raise ValueError(f"{key} must be a boolean")
+    for key in ("retry", "retry_delay_ms"):
+        if key in d and (type(d[key]) is not int or d[key] < 0):
+            raise ValueError(f"{key} must be a non-negative integer")
     extra_dict = d.get("extra", {}) if isinstance(d.get("extra"), dict) else {}
     if "extra" in d:
         extra_data = extra_dict

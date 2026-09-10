@@ -38,7 +38,8 @@ Lives in `stepper/engine/resolvers/`. Orchestrated by `element_resolver.py`.
   ────────────────────────────────────────────────────────────────
   Provider chain (cheapest first):  Groq → Gemini → Claude
   confidence ≥ 0.70 → act
-  all providers fail → fall back to top semantic result
+  all providers fail → unresolved in strict mode (default)
+  strict=False explicitly restores legacy top-candidate fallback
 
   Confidence constants:
   CONFIDENCE_AUTO   0.80   auto-act, no warning

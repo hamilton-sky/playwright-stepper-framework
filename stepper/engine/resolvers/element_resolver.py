@@ -60,7 +60,7 @@ class ElementResolver:
     # Keys that indicate a concrete element selector is provided
     _SELECTOR_KEYS = frozenset({"text", "role", "placeholder", "id", "css", "xpath", "label"})
 
-    def __init__(self, strategies: list, ai_client=None, *, use_visual_ai: bool = False):
+    def __init__(self, strategies: list, ai_client=None, *, use_visual_ai: bool = False, strict: bool = True):
         # Sort by priority — lowest first
         self._strategies    = sorted(strategies, key=lambda s: s.priority)
         self._ai            = ai_client
@@ -69,6 +69,7 @@ class ElementResolver:
         self._desc_fallback = DescriptionFallbackResolver(semantic=self._semantic)
         self._keyword_fuzzy = KeywordFuzzyResolver()
         self._use_visual_ai = use_visual_ai
+        self._strict = strict
         self._ai_pick_resolver = AIPickResolver()   # Groq → Gemini → Claude
         self._context_description: str = ""        # set by StepRunner before each action
 
@@ -122,7 +123,7 @@ class ElementResolver:
             result = await self._semantic_filter(
                 candidates, step_description, strategy.name
             )
-            if result.found:
+            if result.found or (self._strict and result.method.endswith(("+ai-unavailable", "+ai-uncertain"))):
                 return result
 
         # All deterministic strategies failed → fall through to zero-selector path
@@ -184,6 +185,8 @@ class ElementResolver:
         if len(shortlist) == 1:
             loc, desc, score = shortlist[0]
             confidence = round(score * 0.9, 3)
+            if self._strict and score < SEMANTIC_THRESHOLD:
+                return ResolveResult(found=False, method="accessibility-semantic+uncertain")
             logger.info(
                 f"✓ [accessibility-semantic] '{desc[:50]}' "
                 f"similarity={score:.0%} → confidence={confidence:.0%}"
@@ -210,7 +213,9 @@ class ElementResolver:
     ) -> ResolveResult:
 
         if not step_description:
-            # No description — just take first candidate
+            if self._strict:
+                return ResolveResult(found=False, method=f"{method}+ambiguous")
+            # Explicit legacy mode — take first candidate
             return ResolveResult(
                 found=True, locator=candidates[0],
                 confidence=0.70, method=f"{method}+first"
@@ -244,7 +249,7 @@ class ElementResolver:
         """
         Disambiguate multiple candidates via AIPickResolver.
         Provider chain: Groq (free) → Gemini (cheap) → Claude (powerful).
-        Falls back to top semantic match if all providers fail.
+        Strict mode rejects ambiguity if all providers fail.
         """
         options = "\n".join([
             f"{i+1}. \"{desc}\" (similarity: {score:.2f})"
@@ -267,7 +272,9 @@ class ElementResolver:
                 confidence=conf, method=f"{method}+semantic+ai"
             )
 
-        # All AI backends failed — fall back to top semantic match
+        if self._strict:
+            return ResolveResult(found=False, method=f"{method}+ai-unavailable")
+        # Explicit legacy mode — fall back to top semantic match
         logger.warning("[ai_pick] all backends failed — using top semantic match")
         loc, _, score = shortlist[0]
         return ResolveResult(found=True, locator=loc, confidence=score,

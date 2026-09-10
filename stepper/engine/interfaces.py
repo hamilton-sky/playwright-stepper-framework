@@ -244,6 +244,11 @@ class ActionStrategy(ABC):
                         ParallelAction will refuse to run it.
     """
 
+    # Optional validation contract. Paths address StepConfig or extra fields.
+    parameter_types: ClassVar[dict[str, type | tuple[type, ...]]] = {}
+    required_parameters: ClassVar[tuple[tuple[str, ...], ...]] = ()
+    nested_steps: ClassVar[tuple[str, ...]] = ()
+
     read_only: ClassVar[bool] = False  # True when safe to parallelize
 
     #: Must match the "action" field in step JSON.
