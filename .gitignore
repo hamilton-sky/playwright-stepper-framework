@@ -2,6 +2,10 @@ __pycache__/
 *.pyc
 *.pyo
 *.egg-info/
+# Build artifacts — `pip install -e .` and `pip wheel` produce these now that
+# the engine packages are actually packaged.
+build/
+dist/
 .env
 .env.local
 .pytest_cache/

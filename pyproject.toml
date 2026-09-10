@@ -8,8 +8,16 @@ version = "0.1.0"
 requires-python = ">=3.10"
 
 [tool.setuptools.packages.find]
-where = ["."]
-include = ["poms*"]
+# Two roots: `poms` sits at the repo root, the engine packages under `stepper/`.
+# Before this, only `poms*` was listed, so `pip install .` produced a wheel with
+# the page objects and none of the engine that drives them.
+where = [".", "stepper"]
+include = ["poms*", "engine*", "bootstrap*", "sites*"]
+
+[tool.setuptools.package-data]
+# Workflows and site config are data, not code — without this a wheel ships the
+# actions but not a single workflow to run with them.
+"*" = ["workflows/*.json", "config/*.yaml", "data/*.json"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

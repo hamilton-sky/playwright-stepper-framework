@@ -30,10 +30,13 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      # Installs the engine packages themselves. Without it the suite only
+      # works because conftest patches sys.path.
+      - name: Install the package
+        run: pip install -e .
+
       - name: Run unit tests
         run: pytest stepper/tests/unit/ -v --junitxml=reports/junit-unit.xml
-        env:
-          PYTHONPATH: stepper
 
       - name: Upload unit test results
         if: always()
@@ -52,7 +55,6 @@ jobs:
     # which is how OPENLIBRARY_USERNAME / OPENLIBRARY_PASSWORD came to be missing
     # from every one of them — the OpenLibrary steps could never authenticate.
     env:
-      PYTHONPATH: stepper
       OPENLIBRARY_USERNAME: ${{ secrets.OPENLIBRARY_USERNAME }}
       OPENLIBRARY_PASSWORD: ${{ secrets.OPENLIBRARY_PASSWORD }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -76,6 +78,11 @@ jobs:
 
       - name: Install dependencies
         run: pip install -r requirements.txt
+
+      # Installs the engine packages themselves. Without it the suite only
+      # works because conftest patches sys.path.
+      - name: Install the package
+        run: pip install -e .
 
       - name: Install Playwright browsers
         run: playwright install chromium --with-deps
@@ -108,8 +115,6 @@ jobs:
       # does not exist before any of the slow steps below run.
       - name: Validate all workflows
         run: python stepper/main.py validate
-        env:
-          PYTHONPATH: stepper
 
       - name: Run smoke workflow (OpenLibrary)
         if: steps.creds.outputs.available == 'true'

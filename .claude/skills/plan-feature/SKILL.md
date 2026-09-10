@@ -92,7 +92,7 @@ Flow (JSON)  →  Glue (stepper/sites/…)  →  POM (poms/…)
 **Details:**
 [Specific implementation instructions — Locator fields, method signatures, action names]
 
-**Verify:** `PYTHONPATH=stepper pytest stepper/tests/unit/` or `python stepper/main.py run <workflow-name> --show`
+**Verify:** `pytest stepper/tests/unit/` or `python stepper/main.py run <workflow-name> --show`
 
 ### Phase 2: [Phase Title] (estimated effort)
 ...
