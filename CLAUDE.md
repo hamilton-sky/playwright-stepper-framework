@@ -64,10 +64,10 @@ Read the relevant rule file **before** making changes in that area:
 
 ```bash
 # Unit suite — no browser, no network, no credentials. Start here.
-PYTHONPATH=stepper pytest stepper/tests/unit/
+pytest stepper/tests/unit/
 
 # Stepper integration tests (real browser)
-PYTHONPATH=stepper pytest stepper/tests/ --ignore=stepper/tests/unit
+pytest stepper/tests/ --ignore=stepper/tests/unit
 
 # Plain-POM example suite (real browser + OpenLibrary credentials)
 cd examples/plain_pom && pytest tests/

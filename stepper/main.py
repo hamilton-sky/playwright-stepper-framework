@@ -19,11 +19,14 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
-# Add src/ and repo root to path so all modules resolve regardless of cwd
+# Let `python stepper/main.py` work straight from a checkout, before anyone has
+# run `pip install -e .`. Python puts stepper/ on the path for us as the script
+# directory; the repo root is what `poms` needs. Both are redundant once the
+# package is installed, and harmless when it is.
+# (A third entry pointed at stepper/src/, which has never existed.)
 _root_path   = str(Path(__file__).parent)
-_src_path    = str(Path(__file__).parent / "src")
 _parent_path = str(Path(__file__).parent.parent)
-for _p in (_parent_path, _root_path, _src_path):
+for _p in (_parent_path, _root_path):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 

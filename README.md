@@ -38,7 +38,7 @@ cp stepper/.env.example .env
 #    GROQ_API_KEY / GEMINI_API_KEY / ANTHROPIC_API_KEY if you want AI resolution.
 
 # 3. Verify the install — no browser, no network, no credentials
-PYTHONPATH=stepper pytest stepper/tests/unit/
+pytest stepper/tests/unit/
 
 # 4. See what there is to run
 python stepper/main.py list
@@ -340,10 +340,10 @@ The trade-off it demonstrates:
 
 ```bash
 # Unit — fast, mocked, no browser or credentials. 79 tests.
-PYTHONPATH=stepper pytest stepper/tests/unit/
+pytest stepper/tests/unit/
 
 # Stepper integration — real browser
-PYTHONPATH=stepper pytest stepper/tests/ --ignore=stepper/tests/unit
+pytest stepper/tests/ --ignore=stepper/tests/unit
 
 # Plain-POM example — real browser + OpenLibrary credentials
 cd examples/plain_pom && pytest tests/

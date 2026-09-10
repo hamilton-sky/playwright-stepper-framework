@@ -6,6 +6,11 @@ import pytest
 import pytest_asyncio
 from playwright.async_api import async_playwright
 
+# `engine`, `poms`, `bootstrap` and `sites` resolve through the installed
+# package (`pip install -e .`). These two entries are still needed for the loose
+# `main` and `cli` modules, which are deliberately not installed — `main` is far
+# too generic a name to claim in site-packages. They also let the suite run
+# straight from a checkout with nothing installed.
 _stepper_dir = Path(__file__).resolve().parent.parent
 _repo_root   = _stepper_dir.parent
 for _p in (_repo_root, _stepper_dir):

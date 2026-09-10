@@ -16,7 +16,7 @@ Run tests for the stepper framework.
 
 ### Default (no args, "all" or "unit") — fast, no browser, no network:
 ```bash
-PYTHONPATH=stepper pytest stepper/tests/unit/ -v
+pytest stepper/tests/unit/ -v
 ```
 
 ### Plain-POM example suite (real browser + OpenLibrary credentials):
@@ -26,17 +26,17 @@ cd examples/plain_pom && pytest tests/ -v
 
 ### Stepper integration tests (real browser):
 ```bash
-PYTHONPATH=stepper pytest stepper/tests/ --ignore=stepper/tests/unit -v
+pytest stepper/tests/ --ignore=stepper/tests/unit -v
 ```
 
 ### Specific test file:
 ```bash
-PYTHONPATH=stepper pytest <file-path> -v
+pytest <file-path> -v
 ```
 
 ### Filter by keyword/mark:
 ```bash
-PYTHONPATH=stepper pytest stepper/tests/unit/ -k "<mark>" -v
+pytest stepper/tests/unit/ -k "<mark>" -v
 ```
 
 Start with the unit suite: it needs no browser and no credentials, so it is the
