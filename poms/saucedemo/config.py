@@ -12,13 +12,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-import os
 
-try:
-    import yaml
-except Exception:  # pragma: no cover
-    yaml = None
-
+from poms.shared.config import load_config_data, resolve_path
 
 _THIS_DIR = Path(__file__).resolve().parent   # poms/saucedemo/
 
@@ -56,38 +51,17 @@ ENV_MAP: dict[str, str] = {
 }
 
 
-def _parse_bool(value: str) -> bool:
-    return value.strip().lower() in {"1", "true", "yes", "y"}
-
-
 def load_settings(config_path: str | Path | None = None) -> Settings:
-    if config_path is None:
-        config_path = _THIS_DIR / "config" / "config.yaml"
-
-    data = dict(DEFAULTS)
-
-    path = Path(config_path)
-    if path.exists():
-        if yaml is None:
-            raise RuntimeError("PyYAML is required to read config.yaml")
-        file_data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-        if not isinstance(file_data, dict):
-            raise ValueError("config.yaml must contain a top-level mapping")
-        data.update(file_data)
-
-    for env_key, field in ENV_MAP.items():
-        if env_key in os.environ:
-            raw = os.environ[env_key]
-            if field == "headless":
-                data[field] = _parse_bool(raw)
-            elif field == "slow_mo_ms":
-                data[field] = int(raw)
-            else:
-                data[field] = raw
+    data = load_config_data(
+        DEFAULTS,
+        ENV_MAP,
+        config_path=config_path if config_path is not None else _THIS_DIR / "config" / "config.yaml",
+        bool_fields={"headless"},
+        int_fields={"slow_mo_ms"},
+    )
 
     def _abs(p: str | Path) -> Path:
-        resolved = Path(p)
-        return resolved if resolved.is_absolute() else _THIS_DIR / resolved
+        return resolve_path(p, _THIS_DIR)
 
     return Settings(
         base_url=str(data["base_url"]).rstrip("/"),

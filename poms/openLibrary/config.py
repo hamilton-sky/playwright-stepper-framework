@@ -3,13 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import json
-import os
+import os          # still used by validate_ai_config below
 
-try:
-    import yaml
-except Exception:  # pragma: no cover
-    yaml = None
-
+from poms.shared.config import load_config_data, resolve_path
 from poms.shared.interfaces import Delays
 
 
@@ -64,10 +60,6 @@ ENV_MAP = {
 }
 
 
-def _parse_bool(value: str) -> bool:
-    return value.strip().lower() in {"1", "true", "yes", "y"}
-
-
 # Find openlibrary config file location (in parent openlibrary module)
 _SHARED_POMS_DIR = Path(__file__).resolve().parent
 _OPENLIBRARY_DIR = _SHARED_POMS_DIR.parent
@@ -77,28 +69,14 @@ _PROJECT_ROOT    = _OPENLIBRARY_DIR.parent
 def load_settings(
     config_path: str | Path | None = None,
 ) -> Settings:
-    if config_path is None:
-        config_path = _OPENLIBRARY_DIR / "config" / "config.yaml"
-    data = dict(DEFAULTS)
-
-    path = Path(config_path)
-    if path.exists():
-        if yaml is None:
-            raise RuntimeError("PyYAML is required to read config.yaml")
-        file_data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-        if not isinstance(file_data, dict):
-            raise ValueError("config.yaml must contain a top-level mapping")
-        data.update(file_data)
-
-    for env_key, field in ENV_MAP.items():
-        if env_key in os.environ:
-            raw = os.environ[env_key]
-            if field in {"headless", "use_visual_ai"}:
-                data[field] = _parse_bool(raw)
-            elif field in {"slow_mo_ms"}:
-                data[field] = int(raw)
-            else:
-                data[field] = raw
+    data = load_config_data(
+        DEFAULTS,
+        ENV_MAP,
+        config_path=config_path if config_path is not None
+        else _OPENLIBRARY_DIR / "config" / "config.yaml",
+        bool_fields={"headless", "use_visual_ai"},
+        int_fields={"slow_mo_ms"},
+    )
 
     # Load delays configuration
     delays_config = data.get("delays", {})
@@ -117,8 +95,7 @@ def load_settings(
 
     def _abs(p: str | Path) -> Path:
         """Resolve relative paths against the project root, not CWD."""
-        resolved = Path(p)
-        return resolved if resolved.is_absolute() else _PROJECT_ROOT / resolved
+        return resolve_path(p, _PROJECT_ROOT)
 
     return Settings(
         base_url=str(data["base_url"]),
