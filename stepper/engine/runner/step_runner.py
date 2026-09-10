@@ -37,6 +37,7 @@ from engine.healer.dom_snapshot import DOMSnapshotCascade
 from engine.healer.annotator import HealAnnotator
 from engine.healer.visual_bridge import VisualBridge
 from engine.healer.healing_cache import HealCache
+from poms.shared.diagnostics import log_swallowed
 
 logger = logging.getLogger(__name__)
 
@@ -153,7 +154,7 @@ class StepRunner:
                 )
                 logger.info(f"[StepRunner] heal suggestions → {suggestions_path}")
             except Exception as _e:
-                logger.debug(f"[StepRunner] could not write heal_suggestions.json: {_e}")
+                log_swallowed("StepRunner.run[heal_suggestions write]", _e, logger)
 
         return results, ctx
 
@@ -201,7 +202,7 @@ class StepRunner:
                 await self._page.screenshot(path=str(shot_path), full_page=False)
                 result.screenshot = str(shot_path)
             except Exception as _e:
-                logger.debug(f"Auto-screenshot failed for step {idx+1}: {_e}")
+                log_swallowed(f"StepRunner._run_step[auto-screenshot, step {idx+1}]", _e, logger)
 
         return result, step_suggestions, ctx
 

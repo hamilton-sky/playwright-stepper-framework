@@ -48,6 +48,8 @@ _STOPWORDS = frozenset({
     "page", "button", "link", "field", "form",
 })
 
+from poms.shared.diagnostics import log_swallowed
+
 logger = logging.getLogger(__name__)
 
 
@@ -70,8 +72,8 @@ class TextResolver(ResolverStrategy):
             exact = cfg.get("exact", True)
             loc = page.get_by_text(text, exact=exact)
             return await loc.all()
-        except Exception as e:
-            logger.debug(f"[TextResolver] {e}")
+        except Exception as exc:
+            log_swallowed("TextResolver.collect", exc, logger)
             return []
 
 
@@ -90,8 +92,8 @@ class RoleResolver(ResolverStrategy):
             kwargs = {"name": name, "exact": exact} if name else {}
             loc = page.get_by_role(role, **kwargs)
             return await loc.all()
-        except Exception as e:
-            logger.debug(f"[RoleResolver] {e}")
+        except Exception as exc:
+            log_swallowed("RoleResolver.collect", exc, logger)
             return []
 
 
@@ -107,8 +109,8 @@ class PlaceholderResolver(ResolverStrategy):
         try:
             loc = page.get_by_placeholder(ph)
             return await loc.all()
-        except Exception as e:
-            logger.debug(f"[PlaceholderResolver] {e}")
+        except Exception as exc:
+            log_swallowed("PlaceholderResolver.collect", exc, logger)
             return []
 
 
@@ -124,8 +126,8 @@ class IdResolver(ResolverStrategy):
         try:
             loc = page.locator(f"#{element_id}")
             return await loc.all()
-        except Exception as e:
-            logger.debug(f"[IdResolver] {e}")
+        except Exception as exc:
+            log_swallowed("IdResolver.collect", exc, logger)
             return []
 
 
@@ -141,8 +143,8 @@ class CssResolver(ResolverStrategy):
         try:
             loc = page.locator(css)
             return await loc.all()
-        except Exception as e:
-            logger.debug(f"[CssResolver] {e}")
+        except Exception as exc:
+            log_swallowed("CssResolver.collect", exc, logger)
             return []
 
 
@@ -158,8 +160,8 @@ class XPathResolver(ResolverStrategy):
         try:
             loc = page.locator(f"xpath={xpath}")
             return await loc.all()
-        except Exception as e:
-            logger.debug(f"[XPathResolver] {e}")
+        except Exception as exc:
+            log_swallowed("XPathResolver.collect", exc, logger)
             return []
 
 
@@ -175,8 +177,8 @@ class LabelResolver(ResolverStrategy):
         try:
             loc = page.get_by_label(label)
             return await loc.all()
-        except Exception as e:
-            logger.debug(f"[LabelResolver] {e}")
+        except Exception as exc:
+            log_swallowed("LabelResolver.collect", exc, logger)
             return []
 
 
@@ -218,10 +220,10 @@ class KeywordFuzzyResolver:
                         if inner and inner not in seen_inner:
                             seen_inner.add(inner)
                             candidates.append(item)
-                    except Exception:
-                        pass
-            except Exception:
-                pass
+                    except Exception as exc:
+                        log_swallowed("gather_candidates[read item text]", exc, logger)
+            except Exception as exc:
+                log_swallowed(f"gather_candidates[{keyword!r}]", exc, logger)
 
         return candidates
 
@@ -444,8 +446,8 @@ class DescriptionFallbackResolver:
                 count = await loc.count()
                 if count >= 1:
                     return loc.first
-            except Exception:
-                pass
+            except Exception as exc:
+                log_swallowed(f"locate_by_role[exact={exact}]", exc, logger)
 
         # Fallback: form inputs often have no role but do have a label
         try:
@@ -453,8 +455,8 @@ class DescriptionFallbackResolver:
             count = await loc.count()
             if count >= 1:
                 return loc.first
-        except Exception:
-            pass
+        except Exception as exc:
+            log_swallowed("locate_by_role[label fallback]", exc, logger)
 
         return None
 
