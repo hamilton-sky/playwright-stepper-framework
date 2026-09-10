@@ -47,6 +47,13 @@ stepper/report.json
 
 # Site-specific artifacts and reports (generated at runtime)
 poms/artifacts/
+
+# Engine-level artifacts. Visual baselines are the reference a comparison is
+# judged against, so they belong in git; the amplified diff image written on a
+# failure, screenshots and perf output are transient.
+stepper/artifacts/baselines/*.diff.png
+stepper/artifacts/screenshots/
+stepper/artifacts/performance.json
 stepper/reports/
 
 storage_state.json
