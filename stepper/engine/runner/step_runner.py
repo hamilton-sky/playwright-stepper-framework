@@ -43,6 +43,10 @@ logger = logging.getLogger(__name__)
 
 async def _run_heal_assert(page, spec: dict) -> bool:
     """Return True if all assertions in spec pass, False otherwise."""
+    if not isinstance(spec, dict) or not spec or set(spec) - {
+        "url_contains", "url_not_contains", "element_visible", "element_text_contains"
+    }:
+        return False
     try:
         if "url_contains" in spec:
             if spec["url_contains"] not in page.url:
@@ -267,7 +271,7 @@ class StepRunner:
                     for obs in self._observers:
                         replacement_runner.add_observer(obs)
                     rep_results, ctx = await replacement_runner.run(replacement_steps, ctx)
-                    if all(r.status != "failed" for r in rep_results):
+                    if await self._recovery_verified(step, rep_results, len(replacement_steps)):
                         healed_confidence = rep_results[0].confidence if rep_results else 0.0
                         result = dataclasses.replace(
                             result, status="healed", error="",
@@ -296,8 +300,8 @@ class StepRunner:
                     inject_result = await self._try_inject_pre_step("scroll_to", step, ctx)
                     if inject_result is not None:
                         orig_result, ctx = inject_result
-                        if orig_result.status != "failed":
-                            result = dataclasses.replace(result, status="healed", error="")
+                        if await self._recovery_verified(step, [orig_result], 1):
+                            result = dataclasses.replace(result, status="healed", error="", heal_attempts=heal_attempt)
                             self._notify_log(
                                 f"⚕ Step {idx+1} healed via scroll_to injection", "warning"
                             )
@@ -312,8 +316,8 @@ class StepRunner:
                     inject_result = await self._try_inject_pre_step("wait", step, ctx)
                     if inject_result is not None:
                         orig_result, ctx = inject_result
-                        if orig_result.status != "failed":
-                            result = dataclasses.replace(result, status="healed", error="")
+                        if await self._recovery_verified(step, [orig_result], 1):
+                            result = dataclasses.replace(result, status="healed", error="", heal_attempts=heal_attempt)
                             self._notify_log(
                                 f"⚕ Step {idx+1} healed via wait injection", "warning"
                             )
@@ -349,17 +353,7 @@ class StepRunner:
 
                 rep_results, ctx = await replacement_runner.run(replacement_steps, ctx)
 
-                if all(r.status != "failed" for r in rep_results):
-                    # Optional post-heal assertion
-                    if step.heal_assert and not await _run_heal_assert(
-                        self._page, step.heal_assert
-                    ):
-                        self._notify_log(
-                            f"⚕ Heal attempt {heal_attempt} ran but assertion failed — retrying",
-                            "warning",
-                        )
-                        continue
-
+                if await self._recovery_verified(step, rep_results, len(replacement_steps)):
                     healed_cfg = replacement_steps[0].element if replacement_steps else {}
                     healed_confidence = rep_results[0].confidence if rep_results else 0.0
                     annotated_path = None
@@ -399,7 +393,23 @@ class StepRunner:
             except Exception as heal_exc:
                 logger.warning(f"[StepRunner] heal attempt {heal_attempt} failed: {heal_exc}")
 
+        if result.status != "healed":
+            result = dataclasses.replace(
+                result, status="failed", heal_attempts=heal_attempt,
+                error=result.error or "Healing did not complete the intended action",
+            )
         return result, new_suggestions, ctx
+
+    async def _recovery_verified(self, step, results, expected_count: int) -> bool:
+        """Every replacement must complete, and every recovery checks the postcondition."""
+        if not results or len(results) != expected_count:
+            return False
+        if any(r.status not in {"passed", "healed"} for r in results):
+            return False
+        verified = step.heal_assert is None or await _run_heal_assert(self._page, step.heal_assert)
+        if not verified:
+            self._notify_log("Recovery executed but heal_assert failed", "warning")
+        return verified
 
     async def _try_inject_pre_step(
         self, pre_action: str, step: StepConfig, ctx: ExecutionContext

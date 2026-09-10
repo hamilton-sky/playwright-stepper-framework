@@ -20,7 +20,7 @@ globs:
                                         Always injects page=page, resolver=resolver.
 
   Flow    stepper/sites/*/workflows/    Controls order, conditions, variables.
-          *.json                        No selectors. No imperative logic.
+          *.json                        Domain workflows use named site actions.
 ```
 
 **Dependency direction: Flow → Glue → POM. Never reversed.**
@@ -50,7 +50,7 @@ globs:
 |---|---|
 | POM imports from `stepper/sites/` | Reverses dependency direction |
 | Glue calls `page.locator()` directly with CSS strings | Bypasses resolver cascade |
-| Flow JSON contains CSS selectors | Mixes selector concerns into flow |
+| Domain flow duplicates POM selectors | Use named site actions; low-level engine/healing demos may accept selectors |
 | Glue constructs POM without `resolver=resolver` | Disables the entire cascade |
 | Glue overrides `execute()` instead of `_execute()` | Skips pre/post hooks and context defaulting |
 | POM contains `for book in books:` multi-page loop | Flow logic in wrong layer |

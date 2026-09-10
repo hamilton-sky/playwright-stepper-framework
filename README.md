@@ -4,8 +4,8 @@ A JSON-driven browser automation engine built on Playwright + Python.
 
 Workflows are declarative: a JSON file names *what* to do, the engine decides *how* to run
 it — retries, conditional branching, context passing, parallelism and reporting — and a
-three-layer architecture keeps every CSS selector in the page-object layer, out of both the
-engine and the JSON.
+three-layer architecture keeps site-specific selectors in reusable page objects. Domain
+workflows call named site actions; low-level engine workflows can specify element selectors.
 
 When a selector breaks, the resolver cascade and the self-healing pipeline try to find the
 element anyway, escalating from free local strategies to paid AI only when they have to.
@@ -75,7 +75,7 @@ spelling.
   Layer         Location                      Responsibility
   ────────────  ────────────────────────────  ──────────────────────────────────────────
   Flow (JSON)   stepper/sites/*/workflows/    Order, conditions, variables.
-                                              No selectors. No imperative logic.
+                                              Domain flows use named site actions.
 
   Glue          stepper/sites/*/pages/        Wraps a POM into a named Stepper action.
                                               One action, one job.
@@ -88,8 +88,10 @@ spelling.
 
 **Dependency direction is one-way: Flow → Glue → POM. Never reversed.**
 
-Every element identifier lives in a `Locator` value object inside a POM's `Locators` inner
-class. Workflow JSON contains action names and parameters only — never a CSS selector.
+Site-specific element identifiers live in `Locator` values inside a POM's `Locators` inner
+class. Domain workflows use action names and parameters. Low-level engine actions (`click`,
+`fill`, assertions and DOM conditions) also accept selectors in JSON; the healing demos
+intentionally use that interface to simulate broken selectors.
 
 Full diagrams: [ARCHITECTURE.md](ARCHITECTURE.md).
 Layer rules: [.claude/rules/three-layer-contract.md](.claude/rules/three-layer-contract.md).
@@ -112,7 +114,7 @@ flowchart TD
     Q2 -->|no| P3["<b>Phase 3 — AI pick</b> · paid<br/>Groq → Gemini → Claude"]
     P3 --> Q3{"confidence ≥ 0.70?"}
     Q3 -->|yes| ACT
-    Q3 -->|no| FB["fall back to top semantic result"]
+    Q3 -->|no| FB["unresolved — fail the action"]
 
     style P1 fill:#e6f4ea,stroke:#34a853,color:#111
     style P2 fill:#fef7e0,stroke:#fbbc04,color:#111
@@ -123,6 +125,12 @@ flowchart TD
 Priority order mirrors Playwright's own locator guidance: `role` survives redesigns,
 `xpath` encodes the whole DOM shape and breaks first. Details and the confidence
 constants: [.claude/rules/resolver-cascade.md](.claude/rules/resolver-cascade.md).
+
+Strict resolution is the default: ambiguous matches without a description, uncertain AI
+answers, and provider outages do not silently pick the first candidate. A unique description
+fallback must meet the semantic threshold. Python callers can explicitly request the legacy
+first/top-candidate behavior with `ElementResolver(..., strict=False)`; regression suites
+should keep the default.
 
 The cascade is optional. A POM built with `resolver=None` falls back to its `Locator`'s
 CSS candidates and works with no AI, no keys and no network — see
@@ -150,7 +158,14 @@ flowchart TD
     style A3 fill:#fce8e6,stroke:#ea4335,color:#111
 ```
 
-Opt a step out with `"heal": false`. Verify a heal landed with `"heal_assert"`.
+Opt a step out with `"heal": false`. Verify the intended outcome with `"heal_assert"`.
+Every recovery path — cache, generated replacements, scroll and wait — checks the original
+postcondition when provided. Empty, skipped, warned, failed or incomplete replacement runs
+cannot count as healed. Without `heal_assert`, completed actions alone do not prove a
+business outcome; add a postcondition for consequential steps.
+
+Missing or low-confidence targets in interaction actions now fail the step instead of
+silently skipping it. `continue_on_failure` remains an explicit way to proceed after failure.
 
 Apply cached heal suggestions back into the workflow JSON after a run:
 
@@ -339,18 +354,32 @@ The trade-off it demonstrates:
 ## Testing
 
 ```bash
-# Unit — fast, mocked, no browser or credentials. 79 tests.
+# Unit — fast, mocked, no browser or credentials.
 PYTHONPATH=stepper pytest stepper/tests/unit/
 
-# Stepper integration — real browser
-PYTHONPATH=stepper pytest stepper/tests/ --ignore=stepper/tests/unit
+# Local browser contracts — no external site, credentials, model downloads or AI
+PYTHONPATH=stepper pytest stepper/tests/local/
+
+# External-site integration — requires OpenLibrary credentials
+PYTHONPATH=stepper pytest stepper/tests/ --ignore=stepper/tests/unit --ignore=stepper/tests/local
 
 # Plain-POM example — real browser + OpenLibrary credentials
 cd examples/plain_pom && pytest tests/
 ```
 
-CI runs the unit suite as a fast gate, then smoke workflows and integration tests against
-a real browser. See [.github/workflows/ci.yml](.github/workflows/ci.yml).
+CI runs unit tests, then an unconditional **Local Browser Contracts** job against local HTML.
+Those browser tests control the healer proposal and AI fallback while exercising real DOM
+interactions and recovery postconditions. **External Site Checks** separately runs SauceDemo
+smoke and credential-dependent OpenLibrary checks; missing credentials are reported as skips.
+A green external job alone does not imply OpenLibrary coverage.
+See [.github/workflows/ci.yml](.github/workflows/ci.yml).
+
+Validation checks registered actions, descriptions, control-field types, conditions,
+postcondition shapes, and action-owned parameter contracts. It recursively validates inline
+`steps` / `login_steps` and rejects write actions inside `parallel`. Custom actions can declare
+`parameter_types`, `required_parameters` (groups of alternatives), and `nested_steps` on their
+class. Unresolved runtime template values are deferred to execution; custom action parameters
+without a declared contract are not type-checked.
 
 ---
 
@@ -380,7 +409,7 @@ allure serve reports/allure-results
 | **SRP** | `StepRunner` runs steps, `ElementResolver` finds elements, `BookSearchPage` knows one page |
 | **OCP** | New site = new folder + register. New action = subclass + register. No edits to existing code |
 | **DIP** | `StepRunner` depends on the `ActionFactory` interface, never on a concrete action |
-| **POM** | Every selector lives in a `Locators` inner class — never duplicated in JSON or glue |
+| **POM** | Domain selectors live in a `Locators` inner class; low-level engine demos may use JSON selectors |
 | **Data-driven** | Logic is JSON, parameters are variables, env overrides config |
 
 Patterns used and where: [.claude/rules/design-patterns.md](.claude/rules/design-patterns.md).

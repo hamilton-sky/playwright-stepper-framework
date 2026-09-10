@@ -45,6 +45,8 @@ class NavigateAction(ActionStrategy):
     Handles both absolute URLs and relative paths.
     """
     action_name = "navigate"
+    parameter_types = {"url": str}
+    required_parameters = (("url", "input_value"),)
 
     async def _execute(self, page, step: StepConfig, resolver,
                        context: ExecutionContext, behaviour=None) -> StepResult:
@@ -67,6 +69,7 @@ class ClickAction(ActionStrategy):
     Applies the confidence gate before acting.
     """
     action_name = "click"
+    parameter_types = {"extra.force": bool, "extra.js_click": bool}
 
     async def _execute(self, page, step: StepConfig, resolver,
                        context: ExecutionContext, behaviour=None) -> StepResult:
@@ -76,11 +79,11 @@ class ClickAction(ActionStrategy):
         result = await resolver.resolve(page, step.element, step.description)
 
         if not result.found:
-            return StepResult(step=step, status="skipped",
+            return StepResult(step=step, status="failed",
                               error=f"Element not found → {result.method}")
 
         if result.confidence < CONFIDENCE_WARN:
-            return StepResult(step=step, status="warned",
+            return StepResult(step=step, status="failed",
                               confidence=result.confidence,
                               error=f"Low confidence {result.confidence:.0%} → skipped")
 
@@ -113,6 +116,7 @@ class FillAction(ActionStrategy):
     Presses Enter after filling to submit if no wait_for is specified.
     """
     action_name = "fill"
+    parameter_types = {"input_value": str, "extra.press_enter": bool}
 
     async def _execute(self, page, step: StepConfig, resolver,
                        context: ExecutionContext, behaviour=None) -> StepResult:
@@ -122,8 +126,8 @@ class FillAction(ActionStrategy):
 
         result = await resolver.resolve(page, step.element, step.description)
 
-        if not result.found:
-            return StepResult(step=step, status="skipped",
+        if not result.found or result.confidence < CONFIDENCE_WARN:
+            return StepResult(step=step, status="failed",
                               error=f"Element not found → {result.method}")
 
         await result.locator.scroll_into_view_if_needed()
@@ -150,8 +154,8 @@ class HoverAction(ActionStrategy):
                        context: ExecutionContext, behaviour=None) -> StepResult:
         result = await resolver.resolve(page, step.element, step.description)
 
-        if not result.found:
-            return StepResult(step=step, status="skipped",
+        if not result.found or result.confidence < CONFIDENCE_WARN:
+            return StepResult(step=step, status="failed",
                               error=f"Element not found → {result.method}")
 
         await result.locator.first.hover(timeout=5_000)
@@ -182,13 +186,14 @@ class SelectAction(ActionStrategy):
         "extra": { "label": "Newest first" } }
     """
     action_name = "select"
+    parameter_types = {"extra.label": str, "extra.index": int}
 
     async def _execute(self, page, step: StepConfig, resolver,
                        context: ExecutionContext, behaviour=None) -> StepResult:
         result = await resolver.resolve(page, step.element, step.description)
 
-        if not result.found:
-            return StepResult(step=step, status="skipped",
+        if not result.found or result.confidence < CONFIDENCE_WARN:
+            return StepResult(step=step, status="failed",
                               error=f"Element not found → {result.method}")
 
         label = step.extra.get("label")
@@ -256,11 +261,11 @@ class ScrollToAction(ActionStrategy):
     async def _execute(self, page, step: StepConfig, resolver,
                        context: ExecutionContext, behaviour=None) -> StepResult:
         if not step.element:
-            return StepResult(step=step, status="skipped",
+            return StepResult(step=step, status="failed",
                               error="scroll_to: no element specified")
         result = await resolver.resolve(page, step.element, step.description)
-        if not result.found:
-            return StepResult(step=step, status="skipped",
+        if not result.found or result.confidence < CONFIDENCE_WARN:
+            return StepResult(step=step, status="failed",
                               error=f"scroll_to: element not found → {step.element}")
         await result.locator.first.scroll_into_view_if_needed()
         logger.info(f"✓ scroll_to via {result.method}")
@@ -273,6 +278,7 @@ class AssertCountAction(ActionStrategy):
     Exam requirement: assert_reading_list_count.
     """
     action_name = "assert_count"
+    parameter_types = {"extra.expected": int, "extra.delta": int, "extra.selectors": list}
     read_only   = True
 
     async def _execute(self, page, step: StepConfig, resolver,
@@ -317,6 +323,7 @@ class StoreCountAction(ActionStrategy):
     Useful for "count before + delta" assertions.
     """
     action_name = "store_count"
+    parameter_types = {"extra.selectors": list, "extra.context_key": str}
     read_only   = True
 
     async def _execute(self, page, step: StepConfig, resolver,
@@ -351,6 +358,8 @@ class ForEachItemAction(SubStepRunnerMixin, ActionStrategy):
     Metadata (dict items): {{item.<key>}} for any key in the item dict
     """
     action_name = "for_each_item"
+    required_parameters = (("extra.steps",),)
+    nested_steps = ("steps",)
 
     def __init__(self, action_factory, screenshots_dir: Path = Path("artifacts/screenshots")):
         self._factory = action_factory
@@ -413,6 +422,8 @@ class EnsureLoginAction(SubStepRunnerMixin, ActionStrategy):
       logged_in_selector: str   # selector to confirm logged-in state (optional)
     """
     action_name = "ensure_login"
+    required_parameters = (("extra.login_steps",),)
+    nested_steps = ("login_steps",)
 
     def __init__(self, action_factory):
         self._factory = action_factory
@@ -499,6 +510,7 @@ class MeasurePerformanceAction(ActionStrategy):
     Exam bonus requirement.
     """
     action_name = "measure_performance"
+    parameter_types = {"extra.threshold_ms": (int, float)}
     read_only   = True
 
     def __init__(self):
@@ -578,6 +590,8 @@ class VisualCompareAction(ActionStrategy):
         }
     """
     action_name = "visual_compare"
+    parameter_types = {"extra.snapshot_name": str, "extra.threshold": (int, float)}
+    required_parameters = (("extra.snapshot_name",),)
     read_only   = True
 
     def __init__(self):
@@ -726,6 +740,8 @@ class ExtractDataAction(ActionStrategy):
     Stores result in context["extracted_data"] = [list of values]
     """
     action_name = "extract_data"
+    parameter_types = {"extra.selector": str, "extra.attrs": list, "extra.limit": int, "extra.allow_empty": bool}
+    required_parameters = (("extra.selector",),)
     read_only   = True
 
     async def _execute(self, page, step: StepConfig, resolver,
@@ -840,6 +856,8 @@ class PaginateAction(ActionStrategy):
     Stores result in context["paginated_data"] = [accumulated values]
     """
     action_name = "paginate"
+    parameter_types = {"extra.extract_config": dict, "extra.max_pages": int, "extra.max_items": int}
+    required_parameters = (("extra.extract_config",), ("extra.next_button_selector", "extra.next_url_pattern"))
 
     def __init__(self, action_factory):
         self._factory = action_factory
@@ -957,6 +975,8 @@ class RunWorkflowAction(ActionStrategy):
       base_dir: str    # optional base dir for relative paths
     """
     action_name = "run_workflow"
+    parameter_types = {"extra.path": str, "extra.workflow": str, "extra.vars": dict}
+    required_parameters = (("extra.path", "extra.workflow"),)
 
     def __init__(self, run_steps_callable=None, base_dir: Path | None = None):
         self._run_steps = run_steps_callable
@@ -1067,6 +1087,9 @@ class ParallelAction(ActionStrategy):
     ALL sub-steps pass. First failure is reported as the parallel step error.
     """
     action_name = "parallel"
+    parameter_types = {"extra.mode": str}
+    required_parameters = (("extra.steps",),)
+    nested_steps = ("steps",)
     read_only   = True   # parallel itself is read-only (enforces it on children)
 
     def __init__(self, action_factory, browser_launcher=None):
@@ -1170,6 +1193,8 @@ class LoadTestDataAction(ActionStrategy):
       path: str   # path to a JSON file containing a list of dicts
     """
     action_name = "load_test_data"
+    parameter_types = {"extra.path": str}
+    required_parameters = (("extra.path",),)
 
     async def _execute(self, page, step: StepConfig, resolver,
                        context: ExecutionContext, behaviour=None) -> StepResult:
@@ -1208,12 +1233,13 @@ class LoadTestDataAction(ActionStrategy):
 class AssertTextAction(ActionStrategy):
     """Assert that an element's text matches (or contains) an expected value."""
     action_name = "assert_text"
+    parameter_types = {"extra.expected": str, "extra.contains": bool}
     read_only   = True
 
     async def _execute(self, page, step: StepConfig, resolver,
                        context: ExecutionContext, behaviour=None) -> StepResult:
         result = await resolver.resolve(page, step.element, step.description)
-        if not result.found:
+        if not result.found or result.confidence < CONFIDENCE_WARN:
             return StepResult(step=step, status="failed",
                               error=f"assert_text: element not found → {step.element}")
 
@@ -1240,6 +1266,7 @@ class AssertTextAction(ActionStrategy):
 class AssertVisibleAction(ActionStrategy):
     """Assert that an element is visible (or hidden if extra.hidden=true)."""
     action_name = "assert_visible"
+    parameter_types = {"extra.hidden": bool}
     read_only   = True
 
     async def _execute(self, page, step: StepConfig, resolver,
@@ -1247,7 +1274,7 @@ class AssertVisibleAction(ActionStrategy):
         hidden = bool(step.extra.get("hidden", False))
         result = await resolver.resolve(page, step.element, step.description)
 
-        if not result.found:
+        if not result.found or result.confidence < CONFIDENCE_WARN:
             if hidden:
                 logger.info(f"✓ assert_visible(hidden): element absent, treated as hidden")
                 return StepResult(step=step, status="passed")
@@ -1272,6 +1299,8 @@ class AssertVisibleAction(ActionStrategy):
 class StoreAction(ActionStrategy):
     """Store an element's text (or attribute) in context under extra.key."""
     action_name = "store"
+    parameter_types = {"extra.key": str}
+    required_parameters = (("extra.key",),)
     read_only   = True
 
     async def _execute(self, page, step: StepConfig, resolver,
@@ -1282,7 +1311,7 @@ class StoreAction(ActionStrategy):
                               error="store: missing extra.key")
 
         result = await resolver.resolve(page, step.element, step.description)
-        if not result.found:
+        if not result.found or result.confidence < CONFIDENCE_WARN:
             return StepResult(step=step, status="failed",
                               error=f"store: element not found → {step.element}")
 
@@ -1297,6 +1326,8 @@ class StoreAction(ActionStrategy):
 class KeyboardPressAction(ActionStrategy):
     """Press a keyboard key, optionally focused on a resolved element."""
     action_name = "keyboard_press"
+    parameter_types = {"extra.key": str}
+    required_parameters = (("extra.key", "input_value"),)
 
     async def _execute(self, page, step: StepConfig, resolver,
                        context: ExecutionContext, behaviour=None) -> StepResult:
@@ -1307,8 +1338,8 @@ class KeyboardPressAction(ActionStrategy):
 
         if step.element:
             result = await resolver.resolve(page, step.element, step.description)
-            if not result.found:
-                return StepResult(step=step, status="skipped",
+            if not result.found or result.confidence < CONFIDENCE_WARN:
+                return StepResult(step=step, status="failed",
                                   error=f"keyboard_press: element not found → {step.element}")
             await result.locator.first.press(key)
             logger.info(f"✓ keyboard_press: '{key}' on {result.method}")

@@ -167,7 +167,7 @@ def validate_ai_config(settings: Settings) -> None:
     if not any([has_groq, has_gemini, has_anthropic]):
         log.warning(
             "No AI provider keys found (GROQ_API_KEY / GEMINI_API_KEY / ANTHROPIC_API_KEY). "
-            "AIPickResolver will be skipped — ambiguous elements fall back to top semantic match."
+            "AIPickResolver will be skipped — strict resolution rejects unresolved ambiguity."
         )
     else:
         active = [k for k, v in [("Groq", has_groq), ("Gemini", has_gemini), ("Claude", has_anthropic)] if v]
