@@ -219,8 +219,8 @@ def plan_steps(cfg: RunConfig) -> list:
 
 
 def build_settings(cfg: RunConfig):
-    """Load settings and point storage state at this run's own site."""
-    return load_settings_safe()._replace(storage_state_path=cfg.storage_state_path)
+    """Load this run's own site's settings, and point storage state at it."""
+    return load_settings_safe(cfg.site)._replace(storage_state_path=cfg.storage_state_path)
 
 
 def wrap_for_shadow(cfg: RunConfig, resolver):
