@@ -27,8 +27,10 @@ class OLDetailPage(PageModule):
 
     class OLAddToShelfAction(GlueAction):
         """
-        Iterate over context.collected_items, open each book page,
-        click the shelf button, take a screenshot.
+        Add every collected book to the want-to-read shelf.
+
+        Iterates over context.collected_items, opening each book page, clicking
+        the shelf button and taking a screenshot.
 
         JSON usage:
           { "action": "ol_add_to_shelf" }

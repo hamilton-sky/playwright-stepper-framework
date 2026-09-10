@@ -28,8 +28,9 @@ class PTHotelResultsPage(PageModule):
 
     class PTSelectHotelAction(GlueAction):
         """
-        On the hotel results page: click a hotel by name (if provided) or
-        click the first available hotel. Leaves the browser on the detail page.
+        Open one hotel from the results page, by name or the first available.
+
+        Leaves the browser on the hotel detail page.
 
         Optional extra keys:
           hotel_name — exact name to match; omit to pick the first result.
