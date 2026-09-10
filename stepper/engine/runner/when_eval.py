@@ -40,6 +40,7 @@ from __future__ import annotations
 import logging
 
 from engine.interfaces import ExecutionContext
+from poms.shared.diagnostics import log_swallowed
 
 logger = logging.getLogger(__name__)
 
@@ -118,7 +119,10 @@ async def evaluate_when(condition: dict, context: ExecutionContext, page) -> boo
         try:
             count  = await page.locator(selector).count()
             result = count > 0
-        except Exception:
+        except Exception as exc:
+            # Fails closed: the step is skipped. That makes a code defect here
+            # look exactly like a condition that was legitimately false.
+            log_swallowed(f"when.element_exists[{selector!r}]", exc, logger)
             result = False
         logger.debug(f"when.element_exists({selector!r}) → {result}")
         return result

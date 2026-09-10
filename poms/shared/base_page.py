@@ -23,6 +23,7 @@ import asyncio
 import logging
 
 from poms.shared.constants import CONFIDENCE_AUTO, CONFIDENCE_WARN
+from poms.shared.diagnostics import log_swallowed
 from poms.shared.locator import Locator
 
 logger = logging.getLogger(__name__)
@@ -126,7 +127,11 @@ class BasePage:
                 elif action == "click":
                     await self._driver.click(css)
                     return True
-            except Exception:
+            except Exception as exc:
+                # A miss here is ordinary — the next candidate gets a turn. But
+                # this loop is driver-only mode's whole interaction path, so a
+                # code defect swallowed here is invisible by construction.
+                log_swallowed(f"BasePage._interact[{action}, css={css!r}]", exc, logger)
                 continue
         return False
 
@@ -173,7 +178,8 @@ class BasePage:
             try:
                 await self._driver.fill(css, value)
                 return True
-            except Exception:
+            except Exception as exc:
+                log_swallowed("BasePage._resolve_and_fill[driver]", exc, logger)
                 return False
         return False
 
@@ -209,7 +215,8 @@ class BasePage:
             try:
                 await self._driver.click(css)
                 return True
-            except Exception:
+            except Exception as exc:
+                log_swallowed("BasePage._resolve_and_click[driver]", exc, logger)
                 return False
         return False
 
@@ -259,6 +266,6 @@ class BasePage:
             el = await self._driver.query_selector(selector)
             if el:
                 return (await el.inner_text()).strip()
-        except Exception:
-            pass
+        except Exception as exc:
+            log_swallowed(f"BasePage._get_text_or_none[{selector!r}]", exc, logger)
         return None
