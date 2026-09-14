@@ -88,12 +88,15 @@ def fixed_scores(monkeypatch):
                     return value
             return 0.0
 
+        # Inject a stub rather than clearing the cache. Setting _semantic to None
+        # would make _get_semantic() construct a real SemanticResolver, whose
+        # __init__ loads an embedding model — and with the weights no longer
+        # vendored, that means a ~90MB download from the hub in the middle of a
+        # unit suite that is supposed to need no network at all.
         monkeypatch.setattr(
-            "stepper.engine.resolvers.strategies.SemanticResolver.score", score
+            DOMSnapshotCascade, "_semantic",
+            SimpleNamespace(score=lambda q, t: score(None, q, t)),
         )
-        # The cascade caches one SemanticResolver on the class; drop it so the
-        # patched score is the one used.
-        monkeypatch.setattr(DOMSnapshotCascade, "_semantic", None)
         # Neutralise the cross-encoder: it is a separate model and a separate
         # concern, and it would otherwise reorder what the test just fixed.
         monkeypatch.setattr(

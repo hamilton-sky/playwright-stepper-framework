@@ -36,3 +36,36 @@ def mock_page():
         loc.all = AsyncMock(return_value=[])
         getattr(page, method).return_value = loc
     return page
+
+
+@pytest.fixture(autouse=True)
+def no_embedding_model_loads(monkeypatch):
+    """
+    Fail loudly if a unit test constructs a real SemanticResolver.
+
+    Its __init__ loads an embedding model. That used to be free: an 87MB copy
+    was committed to the repo, so it came off local disk. The weights are a
+    download cache now, so the same constructor reaches for the hub — turning a
+    3-second offline suite into a ~90MB download, or a failure on a machine with
+    no network.
+
+    Nothing in the unit suite legitimately needs the real thing; tests that care
+    about scoring inject a stub. The guard is here rather than in each test file
+    because the expensive call is three frames down from anything a test writes
+    directly — DOMSnapshotCascade._get_semantic() and ElementResolver.__init__
+    both build one without being asked.
+
+    Integration tests do not use this conftest and load the model normally.
+    """
+    def _refuse(self, *a, **kw):
+        raise AssertionError(
+            "A unit test constructed a real SemanticResolver, which loads an "
+            "embedding model and would download ~90MB.\n"
+            "Inject a stub instead, e.g.:\n"
+            "    monkeypatch.setattr(DOMSnapshotCascade, '_semantic', "
+            "SimpleNamespace(score=lambda q, t: 0.9))"
+        )
+
+    monkeypatch.setattr(
+        "stepper.engine.resolvers.strategies.SemanticResolver.__init__", _refuse
+    )
