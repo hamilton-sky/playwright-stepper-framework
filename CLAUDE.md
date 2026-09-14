@@ -55,6 +55,7 @@ Read the relevant rule file **before** making changes in that area:
 | Site-specific action reference tables | [.claude/rules/site-actions.md](.claude/rules/site-actions.md) |
 | Three-layer contract + dependency direction | [.claude/rules/three-layer-contract.md](.claude/rules/three-layer-contract.md) |
 | Design patterns used throughout the framework | [.claude/rules/design-patterns.md](.claude/rules/design-patterns.md) |
+| Adding a new site end-to-end | [docs/adding-your-app.md](docs/adding-your-app.md) |
 | Playwright failure modes the POMs guard against | [docs/playwright-pitfalls.md](docs/playwright-pitfalls.md) |
 | Full architecture diagrams | [ARCHITECTURE.md](ARCHITECTURE.md) |
 
@@ -93,6 +94,9 @@ note pointing at the new spelling.
 ---
 
 ## Adding a New Site (quick reference)
+
+Full walkthrough with working code for all six files:
+**[docs/adding-your-app.md](docs/adding-your-app.md)**.
 
 1. `poms/<site>/pages/base_page.py` — inherit `SharedBasePage`
 2. Add POM files — every interactive locator a `Locator` object (see [pom-layer rules](.claude/rules/pom-layer.md))

@@ -52,6 +52,10 @@ python stepper/main.py list
 python stepper/main.py run sd_happy_path
 ```
 
+The three sites here are demos. To drive your own app, see
+**[docs/adding-your-app.md](docs/adding-your-app.md)** — six files, no edits to
+anything that already exists.
+
 ### Commands
 
 | Command | What it does |
@@ -396,6 +400,7 @@ Patterns used and where: [.claude/rules/design-patterns.md](.claude/rules/design
 
 | Topic | Where |
 |---|---|
+| **Pointing Stepper at your own app** | **[docs/adding-your-app.md](docs/adding-your-app.md)** |
 | Architecture diagrams and data flow | [ARCHITECTURE.md](ARCHITECTURE.md) |
 | Engine responsibility map | [stepper/engine/ARCHITECTURE.md](stepper/engine/ARCHITECTURE.md) |
 | Working in this repo (for Claude Code) | [CLAUDE.md](CLAUDE.md) |
