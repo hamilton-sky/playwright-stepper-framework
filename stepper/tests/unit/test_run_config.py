@@ -14,6 +14,7 @@ from types import SimpleNamespace
 import pytest
 
 from stepper import main
+from stepper.engine.actions.factory import build_default_registry
 from stepper.main import RunConfig, resolve_screenshots_dir
 
 
@@ -149,14 +150,89 @@ def test_screenshot_fallback_when_the_reporter_has_no_test_dir():
 
 # ── Healer construction ───────────────────────────────────────────────────────
 
+#: build_healer runs ActionSchemaExtractor over this, so it needs a real one.
+#: Built once — construction is pure and the tests below never mutate it.
+_SCHEMA_REGISTRY = build_default_registry()
+
+
 def test_no_healer_when_healing_was_not_requested():
     cfg = RunConfig(task="anything", max_heal_attempts=0)
     assert main.build_healer(cfg, registry=object()) is None
 
 
-def test_no_healer_without_a_provider_key(monkeypatch):
+def test_a_healer_is_built_without_a_provider_key(monkeypatch):
+    """
+    Healing used to be switched off entirely when no LLM key was present.
+
+    That disabled the free rung along with the paid ones. DOMSnapshotCascade's
+    embed_direct path resolves an element from the page's own attributes and
+    returns a healed cfg before AiHealer touches a provider — zero tokens, no
+    network — and it is the rung the README, the architecture and
+    sd_heal_test.json all point at. Requiring a paid key to reach a path that
+    makes no API call is the wrong gate.
+
+    Without a key the expensive rungs fail per-step instead: AIService raises
+    once every provider is unconfigured, the heal loop catches it, and that one
+    heal is reported failed. The step ends up exactly where it was with healing
+    off, and anything the embeddings can resolve is now healed for nothing.
+    """
+    from stepper.engine.healer.ai_healer import AiHealer
+
     for key in ("ANTHROPIC_API_KEY", "GROQ_API_KEY", "GEMINI_API_KEY"):
         monkeypatch.delenv(key, raising=False)
     cfg = RunConfig(task="anything", max_heal_attempts=2)
 
-    assert main.build_healer(cfg, registry=object()) is None
+    assert isinstance(main.build_healer(cfg, registry=_SCHEMA_REGISTRY), AiHealer)
+
+
+def test_the_keyless_healer_still_heals_the_zero_token_path(monkeypatch):
+    """
+    The claim the gate removal rests on, exercised rather than argued: a healer
+    built with no provider configured still applies an embed_direct payload, and
+    does so without calling out.
+    """
+    import asyncio
+
+    from stepper.engine.healer.interfaces import DomPayload
+    from stepper.engine.interfaces import StepConfig
+
+    for key in ("ANTHROPIC_API_KEY", "GROQ_API_KEY", "GEMINI_API_KEY"):
+        monkeypatch.delenv(key, raising=False)
+
+    healer = main.build_healer(
+        RunConfig(task="anything", max_heal_attempts=2), registry=_SCHEMA_REGISTRY
+    )
+    assert healer is not None
+
+    step = StepConfig(action="fill", description="fill the username field",
+                      element={"css": ".broken"}, input_value="standard_user")
+    dom = DomPayload("embed_direct", "", {"placeholder": "Username"}, 0)
+
+    healed = asyncio.run(healer.heal(step, "not found", dom))
+
+    assert healed[0].element == {"placeholder": "Username"}
+
+
+def test_a_keyless_healer_reports_a_failed_heal_when_it_needs_the_ai(monkeypatch):
+    """
+    The other half: a payload the embeddings could not resolve has to raise, so
+    the heal loop records a failed heal rather than silently returning nothing.
+    """
+    import asyncio
+
+    from stepper.engine.healer.interfaces import DomPayload
+    from stepper.engine.interfaces import StepConfig
+
+    for key in ("ANTHROPIC_API_KEY", "GROQ_API_KEY", "GEMINI_API_KEY"):
+        monkeypatch.delenv(key, raising=False)
+
+    healer = main.build_healer(
+        RunConfig(task="anything", max_heal_attempts=2), registry=_SCHEMA_REGISTRY
+    )
+    assert healer is not None
+
+    step = StepConfig(action="fill", element={"css": ".broken"})
+    dom = DomPayload("aria", '{"tag": "body"}', None, 240)
+
+    with pytest.raises(RuntimeError, match="all providers failed"):
+        asyncio.run(healer.heal(step, "not found", dom))
