@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import pytest
 
-from bootstrap.settings import RunSettings, load_settings_safe, site_config_module
+from stepper.bootstrap.settings import RunSettings, load_settings_safe, site_config_module
 from poms.shared.config import load_config_data, parse_bool, resolve_path
 
 
@@ -99,7 +99,7 @@ def test_the_fallback_slow_mo_is_zero_not_three_hundred():
 
 
 def test_a_broken_config_module_falls_back_and_says_so(monkeypatch, caplog):
-    import bootstrap.settings as settings_module
+    import stepper.bootstrap.settings as settings_module
 
     monkeypatch.setattr(settings_module, "site_config_module",
                         lambda site: "poms.does.not.exist")

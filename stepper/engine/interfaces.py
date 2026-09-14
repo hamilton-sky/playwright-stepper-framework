@@ -49,7 +49,7 @@ def _require_class_attrs(cls, *names: str) -> None:
 # (shared with the POM resolver helpers — single source of truth).
 # Engine-only thresholds are declared here.
 # ──────────────────────────────────────────────────────────
-from engine.browser.human_behaviour import HumanBehaviour
+from stepper.engine.browser.human_behaviour import HumanBehaviour
 from poms.shared.constants import CONFIDENCE_AUTO, CONFIDENCE_WARN  # re-exported
 
 CONFIDENCE_SEMANTIC:    float = 0.80   # semantic resolver min score to count as match

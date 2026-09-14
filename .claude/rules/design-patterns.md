@@ -58,7 +58,7 @@ Site actions subclass `GlueAction`, not `ActionStrategy` directly. `GlueAction` 
 `_build_pom` (enforces resolver + behaviour injection) and `_driver` (wraps the page).
 
 ```python
-from engine.pages.glue_action import GlueAction
+from stepper.engine.pages.glue_action import GlueAction
 
 class MyGlueAction(GlueAction):
     action_name = "my_site_action"

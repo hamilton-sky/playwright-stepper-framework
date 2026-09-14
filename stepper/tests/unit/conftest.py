@@ -5,16 +5,15 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-# `engine`, `poms`, `bootstrap` and `sites` resolve through the installed
-# package (`pip install -e .`). These two entries are still needed for the loose
-# `main` and `cli` modules, which are deliberately not installed — `main` is far
-# too generic a name to claim in site-packages. They also let the suite run
-# straight from a checkout with nothing installed.
+# `stepper` and `poms` resolve through the installed package
+# (`pip install -e .`). This one entry lets the suite also run straight from a
+# checkout with nothing installed. The second entry that used to sit here
+# pointed at stepper/, so that `engine`, `main` and `cli` resolved as top-level
+# modules; everything is under `stepper.*` now, so it is gone.
 _stepper_dir = Path(__file__).resolve().parent.parent.parent   # stepper/
 _repo_root   = _stepper_dir.parent
-for _p in (_repo_root, _stepper_dir):
-    if str(_p) not in sys.path:
-        sys.path.insert(0, str(_p))
+if str(_repo_root) not in sys.path:
+    sys.path.insert(0, str(_repo_root))
 
 
 @pytest.fixture

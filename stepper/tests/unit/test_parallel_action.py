@@ -15,8 +15,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from engine.actions.strategies import ParallelAction
-from engine.interfaces import ActionFactory, ActionStrategy, ExecutionContext, StepConfig, StepResult
+from stepper.engine.actions.strategies import ParallelAction
+from stepper.engine.interfaces import ActionFactory, ActionStrategy, ExecutionContext, StepConfig, StepResult
 
 
 # ── Doubles ───────────────────────────────────────────────────────────────────

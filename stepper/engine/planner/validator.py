@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import difflib
 
-from engine.interfaces import StepConfig
+from stepper.engine.interfaces import StepConfig
 
 
 class PlanValidationError(Exception):

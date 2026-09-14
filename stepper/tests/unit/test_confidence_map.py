@@ -1,4 +1,4 @@
-from engine.resolvers.element_resolver import CONFIDENCE_MAP
+from stepper.engine.resolvers.element_resolver import CONFIDENCE_MAP
 
 _DETERMINISTIC = ["role", "label", "placeholder", "text", "id", "css", "xpath"]
 _SCORE_BASED   = ["semantic", "visual-ai"]

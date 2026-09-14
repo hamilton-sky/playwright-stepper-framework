@@ -102,7 +102,7 @@ def _detail_page(behaviour):
 @pytest.mark.parametrize("with_behaviour", [True, False], ids=["with_behaviour", "driver_only"])
 def test_shelf_dropdown_works_in_both_modes(with_behaviour):
     """Regression: driver-only mode returned False here while the other returned True."""
-    from engine.browser.human_behaviour import HumanBehaviour
+    from stepper.engine.browser.human_behaviour import HumanBehaviour
 
     page = _detail_page(HumanBehaviour() if with_behaviour else None)
 

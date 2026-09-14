@@ -17,7 +17,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from engine.interfaces import (
+from stepper.engine.interfaces import (
     ActionFactory,
     ActionStrategy,
     ExecutionContext,
@@ -25,7 +25,7 @@ from engine.interfaces import (
     StepObserver,
     StepResult,
 )
-from engine.runner.step_runner import StepRunner
+from stepper.engine.runner.step_runner import StepRunner
 
 
 # ── Doubles ───────────────────────────────────────────────────────────────────

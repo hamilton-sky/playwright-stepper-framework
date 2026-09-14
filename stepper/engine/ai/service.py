@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import logging
 
-from engine.ai.providers import ClaudeProvider, GeminiProvider, GroqProvider
+from stepper.engine.ai.providers import ClaudeProvider, GeminiProvider, GroqProvider
 
 logger = logging.getLogger(__name__)
 

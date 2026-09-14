@@ -2,7 +2,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from engine.resolvers.strategies import (
+from stepper.engine.resolvers.strategies import (
     TextResolver, RoleResolver, PlaceholderResolver,
     IdResolver, CssResolver, XPathResolver, LabelResolver,
 )

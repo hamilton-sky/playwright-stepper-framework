@@ -14,8 +14,8 @@ from types import SimpleNamespace
 
 import pytest
 
-import cli
-from cli import (
+from stepper import cli
+from stepper.cli import (
     CommandError,
     build_parser,
     describe_workflow,

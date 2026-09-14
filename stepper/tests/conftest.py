@@ -6,20 +6,19 @@ import pytest
 import pytest_asyncio
 from playwright.async_api import async_playwright
 
-# `engine`, `poms`, `bootstrap` and `sites` resolve through the installed
-# package (`pip install -e .`). These two entries are still needed for the loose
-# `main` and `cli` modules, which are deliberately not installed — `main` is far
-# too generic a name to claim in site-packages. They also let the suite run
-# straight from a checkout with nothing installed.
+# `stepper` and `poms` resolve through the installed package
+# (`pip install -e .`). This one entry lets the suite also run straight from a
+# checkout with nothing installed. The second entry that used to sit here
+# pointed at stepper/, so that `engine`, `main` and `cli` resolved as top-level
+# modules; everything is under `stepper.*` now, so it is gone.
 _stepper_dir = Path(__file__).resolve().parent.parent
 _repo_root   = _stepper_dir.parent
-for _p in (_repo_root, _stepper_dir):
-    if str(_p) not in sys.path:
-        sys.path.insert(0, str(_p))
+if str(_repo_root) not in sys.path:
+    sys.path.insert(0, str(_repo_root))
 
-from engine.resolvers.element_resolver import ElementResolver, DefaultResolverFactory
+from stepper.engine.resolvers.element_resolver import ElementResolver, DefaultResolverFactory
 from poms.openLibrary.config import load_settings, validate_ai_config
-from bootstrap.settings import load_env
+from stepper.bootstrap.settings import load_env
 
 load_env()   # load .env before any fixture reads os.environ
 

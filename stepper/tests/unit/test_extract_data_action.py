@@ -14,8 +14,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from engine.actions.strategies import ExtractDataAction
-from engine.interfaces import ExecutionContext, StepConfig
+from stepper.engine.actions.strategies import ExtractDataAction
+from stepper.engine.interfaces import ExecutionContext, StepConfig
 
 
 # ── Doubles ───────────────────────────────────────────────────────────────────

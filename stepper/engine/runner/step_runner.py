@@ -21,22 +21,22 @@ from typing import TYPE_CHECKING
 import copy
 import dataclasses
 
-from engine.interfaces import (
+from stepper.engine.interfaces import (
     StepConfig, StepResult, StepObserver,
     ActionFactory, ReporterStrategy, ExecutionContext
 )
-from engine.resolvers.element_resolver import ElementResolver
+from stepper.engine.resolvers.element_resolver import ElementResolver
 
 if TYPE_CHECKING:
-    from engine.resolvers.shadow_runner import ShadowRunner
-from engine.runner.when_eval import evaluate_when
-from engine.browser.anti_detection import AntiDetection
-from engine.browser.human_behaviour import HumanBehaviour
-from engine.healer.interfaces import HealerStrategy
-from engine.healer.dom_snapshot import DOMSnapshotCascade
-from engine.healer.annotator import HealAnnotator
-from engine.healer.visual_bridge import VisualBridge
-from engine.healer.healing_cache import HealCache
+    from stepper.engine.resolvers.shadow_runner import ShadowRunner
+from stepper.engine.runner.when_eval import evaluate_when
+from stepper.engine.browser.anti_detection import AntiDetection
+from stepper.engine.browser.human_behaviour import HumanBehaviour
+from stepper.engine.healer.interfaces import HealerStrategy
+from stepper.engine.healer.dom_snapshot import DOMSnapshotCascade
+from stepper.engine.healer.annotator import HealAnnotator
+from stepper.engine.healer.visual_bridge import VisualBridge
+from stepper.engine.healer.healing_cache import HealCache
 from poms.shared.diagnostics import log_swallowed
 
 logger = logging.getLogger(__name__)

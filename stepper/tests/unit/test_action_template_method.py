@@ -17,8 +17,8 @@ from __future__ import annotations
 
 import pytest
 
-from engine.interfaces import ActionStrategy, ExecutionContext, StepConfig, StepResult
-from engine.pages.glue_action import GlueAction
+from stepper.engine.interfaces import ActionStrategy, ExecutionContext, StepConfig, StepResult
+from stepper.engine.pages.glue_action import GlueAction
 
 
 class _Recorder:

@@ -1,4 +1,4 @@
-from engine.resolvers.shadow_runner import _make_key
+from stepper.engine.resolvers.shadow_runner import _make_key
 
 
 def test_determinism():

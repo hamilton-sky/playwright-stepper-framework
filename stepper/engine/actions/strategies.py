@@ -23,12 +23,12 @@ from pathlib import Path
 # JSON files so files always land inside stepper/ regardless of cwd.
 _stepper_root = Path(__file__).resolve().parent.parent.parent  # stepper/stepper/actions/ → stepper/
 
-from engine.interfaces import (
+from stepper.engine.interfaces import (
     ActionStrategy, StepConfig, StepResult, ExecutionContext,
     CONFIDENCE_AUTO, CONFIDENCE_WARN,
 )
-from engine.utils import dict_to_step_config as _dict_to_step_config
-from engine.actions.sub_step_mixin import SubStepRunnerMixin, _apply_substitutions
+from stepper.engine.utils import dict_to_step_config as _dict_to_step_config
+from stepper.engine.actions.sub_step_mixin import SubStepRunnerMixin, _apply_substitutions
 
 logger = logging.getLogger(__name__)
 
@@ -985,7 +985,7 @@ class RunWorkflowAction(ActionStrategy):
 
     async def _execute(self, page, step: StepConfig, resolver,
                        context: ExecutionContext, behaviour=None) -> StepResult:
-        from engine.planner.planner import _substitute
+        from stepper.engine.planner.planner import _substitute
 
         if self._run_steps is None:
             return StepResult(

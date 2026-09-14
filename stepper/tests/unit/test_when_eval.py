@@ -16,8 +16,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from engine.interfaces import ExecutionContext
-from engine.runner.when_eval import evaluate_when
+from stepper.engine.interfaces import ExecutionContext
+from stepper.engine.runner.when_eval import evaluate_when
 
 
 @pytest.fixture

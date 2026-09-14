@@ -7,12 +7,20 @@ name = "playwright-stepper-framework"
 version = "0.1.0"
 requires-python = ">=3.10"
 
+[project.scripts]
+stepper = "stepper.main:main"
+
 [tool.setuptools.packages.find]
-# Two roots: `poms` sits at the repo root, the engine packages under `stepper/`.
-# Before this, only `poms*` was listed, so `pip install .` produced a wheel with
-# the page objects and none of the engine that drives them.
-where = [".", "stepper"]
-include = ["poms*", "engine*", "bootstrap*", "sites*"]
+# One root. Everything the engine ships is under the `stepper` namespace; `poms`
+# stays top-level because it is a peer of the engine rather than a child of it
+# (see stepper/__init__.py).
+#
+# This used to be `where = [".", "stepper"]` with `engine*`, `bootstrap*` and
+# `sites*` in the include list, which installed three of the most collision-prone
+# names on PyPI straight into site-packages.
+where = ["."]
+include = ["poms*", "stepper*"]
+exclude = ["stepper.tests*"]
 
 [tool.setuptools.package-data]
 # Workflows and site config are data, not code — without this a wheel ships the

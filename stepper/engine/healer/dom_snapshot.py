@@ -27,9 +27,9 @@ import math
 import pathlib
 from typing import Any
 
-from engine.interfaces import StepConfig
-from engine.healer.interfaces import DomPayload
-from engine.resolvers.strategies import SemanticResolver
+from stepper.engine.interfaces import StepConfig
+from stepper.engine.healer.interfaces import DomPayload
+from stepper.engine.resolvers.strategies import SemanticResolver
 
 logger = logging.getLogger(__name__)
 

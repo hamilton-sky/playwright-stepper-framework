@@ -20,7 +20,7 @@ class SiteRegistrationError(RuntimeError):
 
 
 def build_resolver(use_visual_ai: bool):
-    from engine.resolvers.element_resolver import ElementResolver, DefaultResolverFactory
+    from stepper.engine.resolvers.element_resolver import ElementResolver, DefaultResolverFactory
     ai_client = None
     if use_visual_ai:
         import anthropic
@@ -59,7 +59,7 @@ def register_all_sites(registry, stepper_root: Path, screenshots_dir=None) -> No
     for reg_path in sorted((stepper_root / "sites").glob("*/register.py")):
         site = reg_path.parent.name
         try:
-            mod = importlib.import_module(f"sites.{site}.register")
+            mod = importlib.import_module(f"stepper.sites.{site}.register")
             mod.register(registry, screenshots_dir=screenshots_dir)
         except Exception as exc:
             # Full traceback at ERROR — the summary below only carries the message.

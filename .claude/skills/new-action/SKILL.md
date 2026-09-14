@@ -25,9 +25,9 @@ If arguments are missing, ask before proceeding.
 Create `stepper/sites/<site-name>/pages/<action_name>_action.py`:
 
 ```python
-from engine.browser.human_behaviour import HumanBehaviour
-from engine.interfaces import StepConfig, StepResult, ExecutionContext
-from engine.pages.glue_action import GlueAction
+from stepper.engine.browser.human_behaviour import HumanBehaviour
+from stepper.engine.interfaces import StepConfig, StepResult, ExecutionContext
+from stepper.engine.pages.glue_action import GlueAction
 
 
 class <ActionClass>(GlueAction):

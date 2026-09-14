@@ -17,8 +17,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from engine.interfaces import ResolveResult
-from engine.resolvers.element_resolver import CONFIDENCE_MAP
+from stepper.engine.interfaces import ResolveResult
+from stepper.engine.resolvers.element_resolver import CONFIDENCE_MAP
 
 logger = logging.getLogger(__name__)
 

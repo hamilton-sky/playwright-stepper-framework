@@ -20,25 +20,27 @@ from pathlib import Path
 from typing import Any
 
 # Let `python stepper/main.py` work straight from a checkout, before anyone has
-# run `pip install -e .`. Python puts stepper/ on the path for us as the script
-# directory; the repo root is what `poms` needs. Both are redundant once the
-# package is installed, and harmless when it is.
-# (A third entry pointed at stepper/src/, which has never existed.)
-_root_path   = str(Path(__file__).parent)
-_parent_path = str(Path(__file__).parent.parent)
-for _p in (_parent_path, _root_path):
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
+# run `pip install -e .`. Running it as a script puts stepper/ on the path, not
+# the repo root — and the repo root is where both `stepper` and `poms` live, so
+# it is the one entry that has to be added. Redundant once the package is
+# installed, harmless when it is.
+#
+# This used to insert stepper/ as well, so that `engine`, `bootstrap` and
+# `sites` resolved as top-level modules. They are `stepper.*` now and that
+# entry is gone with them.
+_repo_root = str(Path(__file__).resolve().parent.parent)
+if _repo_root not in sys.path:
+    sys.path.insert(0, _repo_root)
 
-from bootstrap.settings  import load_env, load_settings_safe
-from bootstrap.infra     import build_resolver, launch_browser, register_all_sites
-from bootstrap.reporting import build_reporters, serve_allure
+from stepper.bootstrap.settings  import load_env, load_settings_safe
+from stepper.bootstrap.infra     import build_resolver, launch_browser, register_all_sites
+from stepper.bootstrap.reporting import build_reporters, serve_allure
 
-from engine.browser.anti_detection import AntiDetection
-from engine.actions.factory      import build_default_registry
-from engine.planner.validator    import PlanValidator
-from engine.actions.strategies   import RunWorkflowAction
-from engine.runner.step_runner   import StepRunner, LoggingObserver
+from stepper.engine.browser.anti_detection import AntiDetection
+from stepper.engine.actions.factory      import build_default_registry
+from stepper.engine.planner.validator    import PlanValidator
+from stepper.engine.actions.strategies   import RunWorkflowAction
+from stepper.engine.runner.step_runner   import StepRunner, LoggingObserver
 
 logger = logging.getLogger(__name__)
 
@@ -210,10 +212,10 @@ class Pipeline:
 def plan_steps(cfg: RunConfig) -> list:
     """Turn a workflow file or a natural-language task into StepConfigs."""
     if cfg.workflow_path:
-        from engine.planner.planner import JsonFilePlanner
+        from stepper.engine.planner.planner import JsonFilePlanner
         planner = JsonFilePlanner(cfg.workflow_path, variables=cfg.variables)
     else:
-        from engine.planner.planner import ClaudePlanner
+        from stepper.engine.planner.planner import ClaudePlanner
         planner = ClaudePlanner()
 
     steps = planner.plan(cfg.task or "")
@@ -228,8 +230,8 @@ def build_settings(cfg: RunConfig):
 
 def wrap_for_shadow(cfg: RunConfig, resolver):
     """Wrap a resolver so every strategy also runs in the background, logging drift."""
-    from engine.resolvers.shadow_runner import ShadowRunner, DriftLog
-    from engine.resolvers.element_resolver import DefaultResolverFactory
+    from stepper.engine.resolvers.shadow_runner import ShadowRunner, DriftLog
+    from stepper.engine.resolvers.element_resolver import DefaultResolverFactory
 
     drift_path = cfg.artifact_path("drift_log.json")
     logger.info("👁  Shadow mode enabled — drift log → %s", drift_path)
@@ -276,9 +278,9 @@ def build_healer(cfg: RunConfig, registry):
         logger.warning("⚕ --heal requested but no LLM API key found — healing disabled")
         return None
 
-    from engine.ai.service import AIService
-    from engine.healer.ai_healer import AiHealer
-    from engine.planner.schema_extractor import ActionSchemaExtractor
+    from stepper.engine.ai.service import AIService
+    from stepper.engine.healer.ai_healer import AiHealer
+    from stepper.engine.planner.schema_extractor import ActionSchemaExtractor
 
     logger.info(f"⚕ Self-healing enabled (max {cfg.max_heal_attempts} attempt(s) per step)")
     return AiHealer(
@@ -393,7 +395,7 @@ async def build_pipeline(prepared: PreparedRun, browser, observers=None) -> Pipe
 
     heal_cache = None
     if cfg.workflow_path:
-        from engine.healer.healing_cache import HealCache
+        from stepper.engine.healer.healing_cache import HealCache
         heal_cache = HealCache(cfg.artifact_path("heal_cache.json"))
 
     runner = StepRunner(
@@ -665,7 +667,7 @@ async def run_data_rows(cfg: RunConfig, rows: list[dict], cli_vars: dict) -> Non
 
 def main() -> None:
     """Entry point — the CLI itself lives in cli.py, this module is the pipeline."""
-    import cli
+    from stepper import cli
     raise SystemExit(cli.run_cli(sys.modules[__name__]))
 
 

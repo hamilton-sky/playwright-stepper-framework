@@ -20,10 +20,10 @@ Stores booking_reference in context output when the confirmation is detected.
 from __future__ import annotations
 import logging
 
-from engine.browser.human_behaviour import HumanBehaviour
-from engine.interfaces import StepConfig, StepResult, ExecutionContext
-from engine.pages.base_page_module import PageModule
-from engine.pages.glue_action import GlueAction
+from stepper.engine.browser.human_behaviour import HumanBehaviour
+from stepper.engine.interfaces import StepConfig, StepResult, ExecutionContext
+from stepper.engine.pages.base_page_module import PageModule
+from stepper.engine.pages.glue_action import GlueAction
 
 logger = logging.getLogger(__name__)
 

@@ -37,7 +37,7 @@ from __future__ import annotations
 
 from typing import TypeVar
 
-from engine.interfaces import ActionStrategy
+from stepper.engine.interfaces import ActionStrategy
 
 T = TypeVar("T")
 
