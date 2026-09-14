@@ -70,9 +70,17 @@ stepper/
 ├── engine/
 │   ├── interfaces.py          ActionStrategy, ResolverStrategy, ReporterStrategy,
 │   │                          StepConfig, StepResult, ExecutionContext
-│   ├── actions/
+│   ├── actions/               The 23 engine actions, grouped by what they do
 │   │   ├── factory.py         ActionRegistry + build_default_registry()
-│   │   ├── strategies.py      The 23 engine actions
+│   │   ├── basic.py           navigate, click, fill, hover, select, wait,
+│   │   │                      scroll_to, keyboard_press, screenshot
+│   │   ├── assertions.py      assert_count/text/visible + store_count, store
+│   │   ├── data.py            extract_data, load_test_data
+│   │   ├── flow.py            for_each_item, ensure_login, paginate, parallel,
+│   │   │                      run_workflow — the ones that dispatch sub-steps
+│   │   ├── measurement.py     measure_performance, visual_compare
+│   │   ├── _common.py         helpers shared across the above
+│   │   ├── strategies.py      Re-export shim over all of them (import path kept)
 │   │   └── sub_step_mixin.py  Nested-step dispatch for for_each_item / ensure_login
 │   ├── resolvers/             The cascade — strategies.py, element_resolver.py,
 │   │                          ai_pick_resolver.py, shadow_runner.py

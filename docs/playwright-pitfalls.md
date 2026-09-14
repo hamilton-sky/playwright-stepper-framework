@@ -167,4 +167,4 @@ things make this catchable rather than a matter of vigilance:
 
 Playwright is async because every operation waits on the browser. `await` yields the
 thread during that wait instead of blocking it, which is what makes parallel actions
-(`stepper/engine/actions/strategies.py` → `ParallelAction`) worth having.
+(`stepper/engine/actions/flow.py` → `ParallelAction`) worth having.

@@ -106,23 +106,31 @@ def build_default_registry(
     Builds the default registry with all Phase 1 + Phase 2 actions.
 
     To add a new action:
-      1. Write your ActionStrategy subclass in strategies.py
+      1. Write your ActionStrategy subclass in the actions module it belongs to
+         — basic.py (page primitives), assertions.py (check or record state),
+         data.py (rows in and out), flow.py (dispatches sub-steps) or
+         measurement.py (judge the render against a threshold) — and re-export
+         it from strategies.py
       2. Add one .register() call here.
       Done. Zero other changes. (OCP)
 
     Note: collect_items is an OpenLibrary-specific action — it is registered
     by OLSearchPage.register() in main.py, not here.
     """
-    from stepper.engine.actions.strategies import (
+    from stepper.engine.actions.basic import (
         NavigateAction, ClickAction, FillAction, HoverAction, SelectAction,
-        ScreenshotAction, WaitAction, ScrollToAction,
+        ScreenshotAction, WaitAction, ScrollToAction, KeyboardPressAction,
+    )
+    from stepper.engine.actions.assertions import (
         AssertCountAction, StoreCountAction,
+        AssertTextAction, AssertVisibleAction, StoreAction,
+    )
+    from stepper.engine.actions.data import ExtractDataAction, LoadTestDataAction
+    from stepper.engine.actions.flow import (
+        ForEachItemAction, EnsureLoginAction, PaginateAction, ParallelAction,
+    )
+    from stepper.engine.actions.measurement import (
         MeasurePerformanceAction, VisualCompareAction,
-        ForEachItemAction,
-        ExtractDataAction, PaginateAction,
-        EnsureLoginAction, ParallelAction,
-        LoadTestDataAction,
-        AssertTextAction, AssertVisibleAction, StoreAction, KeyboardPressAction,
     )
 
     registry     = ActionRegistry()
