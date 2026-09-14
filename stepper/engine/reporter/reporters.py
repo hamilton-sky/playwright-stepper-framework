@@ -15,7 +15,7 @@ import logging
 from datetime import datetime
 from pathlib import Path
 
-from engine.interfaces import ReporterStrategy, StepResult
+from stepper.engine.interfaces import ReporterStrategy, StepResult
 
 logger = logging.getLogger(__name__)
 

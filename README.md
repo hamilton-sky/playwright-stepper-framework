@@ -31,6 +31,11 @@ flowchart LR
 pip install -r requirements.txt
 playwright install chromium
 
+#    Optional: pre-cache the ML models used by the semantic resolver and the
+#    healer. Both fall back to downloading on first use, so this is only needed
+#    to warm the cache ahead of time or to run offline.
+python stepper/download_models.py
+
 # 2. Configure — .env belongs at the repo root, where both the engine and
 #    the examples look for it first
 cp stepper/.env.example .env
@@ -46,6 +51,10 @@ python stepper/main.py list
 # 5. Run a workflow — by name, not by path
 python stepper/main.py run sd_happy_path
 ```
+
+The three sites here are demos. To drive your own app, see
+**[docs/adding-your-app.md](docs/adding-your-app.md)** — six files, no edits to
+anything that already exists.
 
 ### Commands
 
@@ -391,6 +400,7 @@ Patterns used and where: [.claude/rules/design-patterns.md](.claude/rules/design
 
 | Topic | Where |
 |---|---|
+| **Pointing Stepper at your own app** | **[docs/adding-your-app.md](docs/adding-your-app.md)** |
 | Architecture diagrams and data flow | [ARCHITECTURE.md](ARCHITECTURE.md) |
 | Engine responsibility map | [stepper/engine/ARCHITECTURE.md](stepper/engine/ARCHITECTURE.md) |
 | Working in this repo (for Claude Code) | [CLAUDE.md](CLAUDE.md) |

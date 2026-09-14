@@ -57,3 +57,13 @@ stepper/artifacts/performance.json
 stepper/reports/
 
 storage_state.json
+
+# ML model weights. `python stepper/download_models.py` fetches these, and both
+# loaders fall back to the hub id when the directory is absent, so nothing here
+# is needed to run — it is a cache.
+#
+# An 87MB all-MiniLM-L6-v2/model.safetensors was committed once. It made a
+# clone of this repo 85MB of git history for a file pip can fetch, and it is
+# still in the history of every commit up to the one that removed it; see
+# scripts/purge-model-history.sh.
+stepper/models/

@@ -138,10 +138,10 @@ def actions_by_site(stepper_root: Path) -> tuple[dict[str, list[str]], dict[str,
     """
     import importlib
 
-    from bootstrap.infra import register_all_sites
-    from engine.actions.factory import build_default_registry
-    from engine.actions.strategies import RunWorkflowAction
-    from engine.planner.schema_extractor import ActionSchemaExtractor
+    from stepper.bootstrap.infra import register_all_sites
+    from stepper.engine.actions.factory import build_default_registry
+    from stepper.engine.actions.strategies import RunWorkflowAction
+    from stepper.engine.planner.schema_extractor import ActionSchemaExtractor
 
     def _engine_registry():
         # run_workflow is registered at pipeline-build time rather than in
@@ -154,7 +154,7 @@ def actions_by_site(stepper_root: Path) -> tuple[dict[str, list[str]], dict[str,
     for register_path in sorted((stepper_root / "sites").glob("*/register.py")):
         site = register_path.parent.name
         registry = build_default_registry()
-        importlib.import_module(f"sites.{site}.register").register(
+        importlib.import_module(f"stepper.sites.{site}.register").register(
             registry, screenshots_dir=None
         )
         grouped[site] = sorted(set(registry.names()) - engine_names)
@@ -228,7 +228,7 @@ def cmd_actions(args, pipeline) -> int:
 
 
 def cmd_validate(args, pipeline) -> int:
-    from engine.planner.validator import PlanValidationError
+    from stepper.engine.planner.validator import PlanValidationError
 
     root = pipeline._stepper_root
     if args.workflows:

@@ -1,5 +1,5 @@
-from engine.resolvers.shadow_runner import _compute_drift, ShadowResult
-from engine.resolvers.element_resolver import CONFIDENCE_MAP
+from stepper.engine.resolvers.shadow_runner import _compute_drift, ShadowResult
+from stepper.engine.resolvers.element_resolver import CONFIDENCE_MAP
 
 
 def _sr(strategy, agrees, found=True):

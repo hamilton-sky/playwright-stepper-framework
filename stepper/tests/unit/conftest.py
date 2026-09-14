@@ -5,16 +5,15 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-# `engine`, `poms`, `bootstrap` and `sites` resolve through the installed
-# package (`pip install -e .`). These two entries are still needed for the loose
-# `main` and `cli` modules, which are deliberately not installed — `main` is far
-# too generic a name to claim in site-packages. They also let the suite run
-# straight from a checkout with nothing installed.
+# `stepper` and `poms` resolve through the installed package
+# (`pip install -e .`). This one entry lets the suite also run straight from a
+# checkout with nothing installed. The second entry that used to sit here
+# pointed at stepper/, so that `engine`, `main` and `cli` resolved as top-level
+# modules; everything is under `stepper.*` now, so it is gone.
 _stepper_dir = Path(__file__).resolve().parent.parent.parent   # stepper/
 _repo_root   = _stepper_dir.parent
-for _p in (_repo_root, _stepper_dir):
-    if str(_p) not in sys.path:
-        sys.path.insert(0, str(_p))
+if str(_repo_root) not in sys.path:
+    sys.path.insert(0, str(_repo_root))
 
 
 @pytest.fixture
@@ -37,3 +36,36 @@ def mock_page():
         loc.all = AsyncMock(return_value=[])
         getattr(page, method).return_value = loc
     return page
+
+
+@pytest.fixture(autouse=True)
+def no_embedding_model_loads(monkeypatch):
+    """
+    Fail loudly if a unit test constructs a real SemanticResolver.
+
+    Its __init__ loads an embedding model. That used to be free: an 87MB copy
+    was committed to the repo, so it came off local disk. The weights are a
+    download cache now, so the same constructor reaches for the hub — turning a
+    3-second offline suite into a ~90MB download, or a failure on a machine with
+    no network.
+
+    Nothing in the unit suite legitimately needs the real thing; tests that care
+    about scoring inject a stub. The guard is here rather than in each test file
+    because the expensive call is three frames down from anything a test writes
+    directly — DOMSnapshotCascade._get_semantic() and ElementResolver.__init__
+    both build one without being asked.
+
+    Integration tests do not use this conftest and load the model normally.
+    """
+    def _refuse(self, *a, **kw):
+        raise AssertionError(
+            "A unit test constructed a real SemanticResolver, which loads an "
+            "embedding model and would download ~90MB.\n"
+            "Inject a stub instead, e.g.:\n"
+            "    monkeypatch.setattr(DOMSnapshotCascade, '_semantic', "
+            "SimpleNamespace(score=lambda q, t: 0.9))"
+        )
+
+    monkeypatch.setattr(
+        "stepper.engine.resolvers.strategies.SemanticResolver.__init__", _refuse
+    )

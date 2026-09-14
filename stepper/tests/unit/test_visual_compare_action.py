@@ -19,8 +19,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from PIL import Image
 
-from engine.actions.strategies import VisualCompareAction
-from engine.interfaces import ExecutionContext, StepConfig
+from stepper.engine.actions.strategies import VisualCompareAction
+from stepper.engine.interfaces import ExecutionContext, StepConfig
 
 
 # ── Image helpers ─────────────────────────────────────────────────────────────
@@ -99,7 +99,10 @@ def test_constructing_the_action_creates_no_directories(tmp_path, monkeypatch):
     build_default_registry() constructs every action, so a mkdir in __init__ made
     read-only commands like `list` create directories just to print a table.
     """
-    import engine.actions.strategies as strategies
+    # _stepper_root is read by VisualCompareAction, which lives in
+    # actions/measurement.py. Patching the strategies re-export shim would bind
+    # a name the class never looks at.
+    import stepper.engine.actions.measurement as strategies
 
     monkeypatch.setattr(strategies, "_stepper_root", tmp_path)
     VisualCompareAction()

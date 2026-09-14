@@ -1,5 +1,5 @@
 import json
-from engine.healer.healing_cache import HealCache
+from stepper.engine.healer.healing_cache import HealCache
 
 
 def test_make_key_determinism(step_factory, tmp_path):

@@ -13,8 +13,8 @@ from types import SimpleNamespace
 
 import pytest
 
-import main
-from main import RunConfig, resolve_screenshots_dir
+from stepper import main
+from stepper.main import RunConfig, resolve_screenshots_dir
 
 
 # ── Construction ──────────────────────────────────────────────────────────────

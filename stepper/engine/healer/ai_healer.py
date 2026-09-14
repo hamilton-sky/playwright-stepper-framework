@@ -14,11 +14,11 @@ from __future__ import annotations
 import json
 import logging
 
-from engine.ai.service import AIService
-from engine.healer.interfaces import DomPayload, HealerStrategy, HealingError
-from engine.interfaces import StepConfig
-from engine.planner.schema_extractor import ActionSchemaExtractor
-from engine.utils import dict_to_step_config
+from stepper.engine.ai.service import AIService
+from stepper.engine.healer.interfaces import DomPayload, HealerStrategy, HealingError
+from stepper.engine.interfaces import StepConfig
+from stepper.engine.planner.schema_extractor import ActionSchemaExtractor
+from stepper.engine.utils import dict_to_step_config
 
 logger = logging.getLogger(__name__)
 

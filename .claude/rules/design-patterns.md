@@ -50,7 +50,14 @@ class MyAction(ActionStrategy):
         return StepResult(step=step, status="passed")
 ```
 
-Register it in `build_default_registry()` in `stepper/engine/actions/factory.py`.
+Put the class in the `stepper/engine/actions/` module that matches what it does —
+`basic.py` (page primitives), `assertions.py` (check or record state), `data.py`
+(rows in and out), `flow.py` (dispatches sub-steps), `measurement.py` (judge the
+render against a threshold) — re-export it from `strategies.py`, then register it
+in `build_default_registry()` in `stepper/engine/actions/factory.py`.
+
+`strategies.py` is a re-export shim, not a home for classes;
+`stepper/tests/unit/test_action_template_method.py` fails if one is defined there.
 
 ### GlueAction skeleton (site-specific glue actions)
 
@@ -58,7 +65,7 @@ Site actions subclass `GlueAction`, not `ActionStrategy` directly. `GlueAction` 
 `_build_pom` (enforces resolver + behaviour injection) and `_driver` (wraps the page).
 
 ```python
-from engine.pages.glue_action import GlueAction
+from stepper.engine.pages.glue_action import GlueAction
 
 class MyGlueAction(GlueAction):
     action_name = "my_site_action"

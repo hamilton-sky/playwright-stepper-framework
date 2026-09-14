@@ -20,10 +20,10 @@ _STEPPER_ROOT = Path(__file__).resolve().parent.parent.parent
 @pytest.fixture(scope="module")
 def schema():
     """Every registered action's description, sites included."""
-    from bootstrap.infra import register_all_sites
-    from engine.actions.factory import build_default_registry
-    from engine.actions.strategies import RunWorkflowAction
-    from engine.planner.schema_extractor import ActionSchemaExtractor
+    from stepper.bootstrap.infra import register_all_sites
+    from stepper.engine.actions.factory import build_default_registry
+    from stepper.engine.actions.strategies import RunWorkflowAction
+    from stepper.engine.planner.schema_extractor import ActionSchemaExtractor
 
     # run_workflow is bound at pipeline-build time but is a real action name.
     registry = build_default_registry().register(RunWorkflowAction())

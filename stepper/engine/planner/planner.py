@@ -13,8 +13,8 @@ from abc import ABC, abstractmethod
 
 from pathlib import Path
 
-from engine.interfaces import StepConfig
-from engine.utils import dict_to_step_config as _dict_to_step
+from stepper.engine.interfaces import StepConfig
+from stepper.engine.utils import dict_to_step_config as _dict_to_step
 
 logger = logging.getLogger(__name__)
 

@@ -12,14 +12,14 @@ from pathlib import Path
 
 import pytest
 
-# Ensure stepper/ and repo root are importable regardless of cwd
+# Ensure the repo root is importable regardless of cwd, so a checkout with
+# nothing installed still resolves `stepper` and `poms`.
 _stepper_dir = Path(__file__).resolve().parent.parent   # stepper/
 _repo_root   = _stepper_dir.parent                       # playwright-stepper-framework/
-for _p in (_repo_root, _stepper_dir):
-    if str(_p) not in sys.path:
-        sys.path.insert(0, str(_p))
+if str(_repo_root) not in sys.path:
+    sys.path.insert(0, str(_repo_root))
 
-from main import run  # noqa: E402  (stepper/main.py)
+from stepper.main import run  # noqa: E402  (stepper/main.py)
 
 WORKFLOWS_DIR = _stepper_dir / "sites" / "openlibrary" / "workflows"
 

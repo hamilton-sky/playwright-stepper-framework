@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from typing import Optional, Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from engine.interfaces import StepConfig
+    from stepper.engine.interfaces import StepConfig
 
 
 # ──────────────────────────────────────────────────────────

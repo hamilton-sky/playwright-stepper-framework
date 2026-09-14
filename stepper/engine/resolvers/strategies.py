@@ -28,10 +28,11 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import pathlib
 import re
 from typing import Optional
 
-from engine.interfaces import ResolverStrategy, CONFIDENCE_DESCRIPTION
+from stepper.engine.interfaces import ResolverStrategy, CONFIDENCE_DESCRIPTION
 
 # Words that carry no element-matching signal — excluded from keyword extraction
 _STOPWORDS = frozenset({
@@ -51,6 +52,12 @@ _STOPWORDS = frozenset({
 from poms.shared.diagnostics import log_swallowed
 
 logger = logging.getLogger(__name__)
+
+#: The bi-encoder the semantic phase embeds with. A local copy under
+#: stepper/models/ wins when present (`python stepper/download_models.py`);
+#: otherwise sentence-transformers fetches this id into its own cache.
+_MINILM_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+_MINILM_LOCAL = pathlib.Path(__file__).parents[2] / "models" / "all-MiniLM-L6-v2"
 
 
 # ──────────────────────────────────────────────────────────
@@ -254,12 +261,23 @@ class SemanticResolver(ResolverStrategy):
         try:
             from sentence_transformers import SentenceTransformer
             import numpy as np
-            import pathlib
-            _model_path = pathlib.Path(__file__).parents[2] / "models" / "all-MiniLM-L6-v2"
-            self._model = SentenceTransformer(str(_model_path))
+
+            # Prefer a local copy under stepper/models/ when one is there —
+            # `python stepper/download_models.py` puts it there, and an offline
+            # or air-gapped run needs it. Otherwise name the hub model and let
+            # sentence-transformers download it once into its own cache.
+            #
+            # This used to hardcode the local path with no fallback, which was
+            # survivable only because an 87MB copy of the model was committed
+            # to the repo. Without the fallback, removing that copy would have
+            # silently dropped every semantic comparison to Jaccard word
+            # overlap — the resolver would still "work", just far worse, and
+            # nothing would have said so above DEBUG.
+            model_ref = str(_MINILM_LOCAL) if _MINILM_LOCAL.exists() else _MINILM_MODEL
+            self._model = SentenceTransformer(model_ref)
             self._np = np
             self._use_embeddings = True
-            logger.info("[SemanticResolver] sentence-transformers loaded from %s", _model_path)
+            logger.info("[SemanticResolver] sentence-transformers loaded from %s", model_ref)
         except ImportError:
             logger.debug("[SemanticResolver] sentence-transformers not installed — using Jaccard fallback")
         except Exception as exc:

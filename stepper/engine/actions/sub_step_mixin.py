@@ -14,7 +14,7 @@ import copy
 import json
 import logging
 
-from engine.utils import dict_to_step_config as _dict_to_step_config
+from stepper.engine.utils import dict_to_step_config as _dict_to_step_config
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +84,7 @@ class SubStepRunnerMixin:
         Returns:
             List of StepResult for every sub-step that was attempted.
         """
-        from engine.runner.when_eval import evaluate_when
+        from stepper.engine.runner.when_eval import evaluate_when
 
         results = []
         for raw in steps_raw:
