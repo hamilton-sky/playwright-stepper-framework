@@ -28,6 +28,26 @@ def _safe_print(text: str) -> None:
         print(text.encode("ascii", errors="replace").decode("ascii"))
 
 
+def _status_details(result: StepResult) -> dict:
+    """
+    The one-line explanation Allure shows beside a step.
+
+    A skip carries its reason and never an error; a heal that succeeded has no
+    error left to show, so say that it healed rather than leaving it looking
+    like an ordinary pass.
+    """
+    if result.status == "skipped" and result.skip_reason:
+        return {"message": result.skip_reason}
+    if result.status == "healed":
+        healed = result.healed_element or {}
+        if healed.get("healed"):
+            return {"message": f"healed: element resolved to {healed['healed']}"}
+        return {"message": "healed"}
+    if result.error:
+        return {"message": result.error}
+    return {}
+
+
 class ConsoleReporter(ReporterStrategy):
     """Prints a simple pass/fail summary to stdout."""
 
@@ -126,6 +146,15 @@ class AllureReporter(ReporterStrategy):
         "failed":  "failed",
         "skipped": "skipped",
         "warned":  "broken",   # Allure uses "broken" for unexpected warnings
+        # A healed step failed, was repaired, and then succeeded — so it passed.
+        # Allure has no richer status for it, and "broken" would paint a whole
+        # suite as broken for doing exactly what the healer exists to do. The
+        # fact that it healed is not lost: _status_details() says so, and
+        # results.json carries the before/after cfg in healed_element.
+        #
+        # Without this entry "healed" fell through to "unknown" — the one status
+        # that tells a reader nothing — on every run made with --heal.
+        "healed":  "passed",
     }
 
     def __init__(self, output_dir: str = "allure-results"):
@@ -153,34 +182,32 @@ class AllureReporter(ReporterStrategy):
         steps_allure = []
         t = self._start_ms
         for r in self._results:
-            # ... inside for r in self._results: ...
-        
             step_entry: dict = {
-            "name":   r.step.description or r.step.action,
-            "status": self.STATUS_MAP.get(r.status, "unknown"),
-            "start":  t,
-            "stop":   t + step_duration,
-            "stage":  "finished",
-            "statusDetails": ({"message": r.skip_reason} if r.status == "skipped" and r.skip_reason
-                              else {"message": r.error} if r.error else {}),
+                "name":          r.step.description or r.step.action,
+                "status":        self.STATUS_MAP.get(r.status, "unknown"),
+                "start":         t,
+                "stop":          t + step_duration,
+                "stage":         "finished",
+                "statusDetails": _status_details(r),
             }
 
-        # Check for the list of screenshots instead of just the single string
+            # A multi-shot action (for_each_item) produces one screenshot per
+            # iteration; attaching only the first would drop the evidence for
+            # every iteration after it. `screenshot` is the single-shot case.
             if r.screenshots:
                 step_entry["attachments"] = [
-                {
-                    "name": f"screenshot_{i+1}",
-                    "source": Path(path).name,
-                    "type": "image/png",
-                }
-                for i, path in enumerate(r.screenshots)
-            ]
-        # Fallback for single screenshot if screenshots list is empty
+                    {
+                        "name":   f"screenshot_{i + 1}",
+                        "source": Path(path).name,
+                        "type":   "image/png",
+                    }
+                    for i, path in enumerate(r.screenshots)
+                ]
             elif r.screenshot:
                 step_entry["attachments"] = [{
-                "name":   "screenshot",
-                "source": Path(r.screenshot).name,
-                "type":   "image/png",
+                    "name":   "screenshot",
+                    "source": Path(r.screenshot).name,
+                    "type":   "image/png",
                 }]
 
             steps_allure.append(step_entry)
