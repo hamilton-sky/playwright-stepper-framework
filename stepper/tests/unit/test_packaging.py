@@ -188,6 +188,46 @@ def test_every_workflow_directory_is_covered(config):
     assert any(p.startswith("workflows/") for p in patterns)
 
 
+# ── Model weights are a cache, not source ────────────────────────────────────
+
+def test_no_model_weights_are_tracked():
+    """
+    An 87MB all-MiniLM-L6-v2/model.safetensors was committed once, which made
+    `git clone` cost 85MB of history for a file `stepper/download_models.py`
+    fetches on demand. Both loaders fall back to the hub id when the directory
+    is absent, so nothing under stepper/models/ needs to be in the repo.
+    """
+    import subprocess
+
+    tracked = subprocess.run(
+        ["git", "ls-files", "stepper/models"],
+        cwd=_REPO_ROOT, capture_output=True, text=True, check=False,
+    ).stdout.split()
+
+    assert not tracked, (
+        "Model weights are tracked again:\n  " + "\n  ".join(tracked)
+        + "\n\nThey are a download cache. `git rm -r --cached stepper/models`."
+    )
+
+
+def test_both_model_loaders_fall_back_to_the_hub():
+    """
+    Each loader must name a hub id when no local copy is on disk. Without it,
+    an absent stepper/models/ silently degrades the resolver to Jaccard word
+    overlap and the healer to no re-ranking — both still "work", much worse,
+    and neither says so above DEBUG.
+    """
+    from stepper.engine.resolvers import strategies as resolver_strategies
+    from stepper.engine.healer import dom_snapshot
+
+    assert resolver_strategies._MINILM_MODEL == "sentence-transformers/all-MiniLM-L6-v2"
+    assert dom_snapshot._CROSS_ENCODER_MODEL == "cross-encoder/ms-marco-MiniLM-L-6-v2"
+
+    # ...and the local path is consulted via .exists(), not assumed.
+    source = (_REPO_ROOT / "stepper/engine/resolvers/strategies.py").read_text(encoding="utf-8")
+    assert "_MINILM_LOCAL.exists()" in source
+
+
 # ── The path bootstrap ────────────────────────────────────────────────────────
 
 def test_main_does_not_reference_a_directory_that_does_not_exist():

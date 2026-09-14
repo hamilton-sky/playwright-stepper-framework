@@ -31,6 +31,11 @@ flowchart LR
 pip install -r requirements.txt
 playwright install chromium
 
+#    Optional: pre-cache the ML models used by the semantic resolver and the
+#    healer. Both fall back to downloading on first use, so this is only needed
+#    to warm the cache ahead of time or to run offline.
+python stepper/download_models.py
+
 # 2. Configure — .env belongs at the repo root, where both the engine and
 #    the examples look for it first
 cp stepper/.env.example .env
