@@ -140,6 +140,29 @@ jobs:
           --ci
           --ci-output reports/ci-sd-smoke.json
 
+      # sd_heal_test ships with three deliberately broken selectors. The README
+      # says "the healer has to work for those workflows to pass" — this is the
+      # step that makes that true rather than merely claimed.
+      #
+      # --no-heal-cache is the point of the step. heal_cache.json is committed
+      # and holds recorded answers for these exact three selectors, so without
+      # the flag this passes by replaying a fixture and measures nothing. With
+      # it, every heal goes through the cascade for real.
+      #
+      # No API key is set here, deliberately. The workflow is built for the
+      # embed_direct rung, which resolves the element from the page's own
+      # attributes at zero tokens. If this step ever fails for want of a
+      # provider, the free rung has stopped carrying it and the README's claim
+      # needs revisiting — that is exactly what this step is for.
+      - name: Run self-heal workflow (SauceDemo, no API key, no heal cache)
+        run: >
+          python stepper/main.py
+          --workflow stepper/sites/saucedemo/workflows/sd_heal_test.json
+          --heal 2
+          --no-heal-cache
+          --ci
+          --ci-output reports/ci-sd-heal.json
+
       # Every test under stepper/tests/ (excluding unit/) drives an OpenLibrary
       # workflow, so the whole step depends on the credentials.
       - name: Run stepper integration tests

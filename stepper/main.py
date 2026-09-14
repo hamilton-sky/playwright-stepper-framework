@@ -121,6 +121,7 @@ class RunConfig:
     record_video: bool = False
     variables: dict | None = None
     max_heal_attempts: int = 0
+    use_heal_cache: bool = True
     shadow: bool = False
     ci: bool = False
     ci_output: str | None = None
@@ -270,19 +271,41 @@ def build_action_registry(cfg: RunConfig, settings, screenshots_dir: Path):
 
 
 def build_healer(cfg: RunConfig, registry):
-    """An AiHealer when healing was asked for and a provider key exists, else None."""
-    if cfg.max_heal_attempts <= 0:
-        return None
+    """
+    An AiHealer whenever healing was asked for, else None.
 
-    if not any(os.getenv(k) for k in ("ANTHROPIC_API_KEY", "GROQ_API_KEY", "GEMINI_API_KEY")):
-        logger.warning("⚕ --heal requested but no LLM API key found — healing disabled")
+    Deliberately *not* gated on an API key. The cascade's cheapest rung —
+    DOMSnapshotCascade resolving the element uniquely above 0.85 — synthesises a
+    healed cfg from the element's own attributes and returns it before AiHealer
+    touches a provider. That rung is the whole point of the embed-first design
+    and it costs nothing, so requiring a paid key to reach it disabled the free
+    path along with the paid one.
+
+    Without a key the expensive rungs simply fail per-step: AIService raises
+    once every provider is unconfigured, StepRunner's heal loop catches it, and
+    that heal is reported as failed. The step is no worse off than it was with
+    healing switched off entirely, and any step the embeddings can resolve is
+    now healed for free.
+    """
+    if cfg.max_heal_attempts <= 0:
         return None
 
     from stepper.engine.ai.service import AIService
     from stepper.engine.healer.ai_healer import AiHealer
     from stepper.engine.planner.schema_extractor import ActionSchemaExtractor
 
-    logger.info(f"⚕ Self-healing enabled (max {cfg.max_heal_attempts} attempt(s) per step)")
+    has_provider = any(
+        os.getenv(k) for k in ("ANTHROPIC_API_KEY", "GROQ_API_KEY", "GEMINI_API_KEY")
+    )
+    if has_provider:
+        logger.info(f"⚕ Self-healing enabled (max {cfg.max_heal_attempts} attempt(s) per step)")
+    else:
+        logger.warning(
+            "⚕ Self-healing enabled without an LLM API key — only the embed-direct "
+            "rung can heal (0 tokens). Steps needing an AI pick will fail to heal. "
+            "Set GROQ_API_KEY / GEMINI_API_KEY / ANTHROPIC_API_KEY for the full cascade."
+        )
+
     return AiHealer(
         action_schema=ActionSchemaExtractor.extract(registry),
         ai_service=AIService(),
@@ -394,9 +417,11 @@ async def build_pipeline(prepared: PreparedRun, browser, observers=None) -> Pipe
     context, page = await open_page(cfg, browser, prepared.settings, prepared.test_reporter)
 
     heal_cache = None
-    if cfg.workflow_path:
+    if cfg.workflow_path and cfg.use_heal_cache:
         from stepper.engine.healer.healing_cache import HealCache
         heal_cache = HealCache(cfg.artifact_path("heal_cache.json"))
+    elif cfg.workflow_path:
+        logger.info("⚕ Heal cache disabled — every heal goes through the cascade")
 
     runner = StepRunner(
         page=page,
