@@ -50,8 +50,19 @@ def _parse_response(raw: str, n_candidates: int) -> tuple[int, float] | None:
     """
     try:
         data = _repair_json(raw)
-        # Support both "choice" (Stepper convention) and "selectedIndex" (BrightSky)
-        idx_1based = int(data.get("choice") or data.get("selectedIndex") or 1)
+        # Support both "choice" (Stepper convention) and "selectedIndex" (BrightSky).
+        #
+        # Tested with `is None` rather than `or`: 0 is falsy, so an `or` chain
+        # silently rewrote {"choice": 0} to 1 and returned the first candidate.
+        # The prompt asks for a 1-based index, so 0 is out of range and must be
+        # refused — but the guard below could never see it, because the rewrite
+        # happened first.
+        raw_choice = data.get("choice")
+        if raw_choice is None:
+            raw_choice = data.get("selectedIndex")
+        if raw_choice is None:
+            raw_choice = 1
+        idx_1based = int(raw_choice)
         conf = float(data.get("confidence", 0.7))
         idx = idx_1based - 1
         if idx < 0 or idx >= n_candidates:
