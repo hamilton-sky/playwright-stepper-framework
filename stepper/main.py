@@ -121,6 +121,7 @@ class RunConfig:
     record_video: bool = False
     variables: dict | None = None
     max_heal_attempts: int = 0
+    use_heal_cache: bool = True
     shadow: bool = False
     ci: bool = False
     ci_output: str | None = None
@@ -416,9 +417,11 @@ async def build_pipeline(prepared: PreparedRun, browser, observers=None) -> Pipe
     context, page = await open_page(cfg, browser, prepared.settings, prepared.test_reporter)
 
     heal_cache = None
-    if cfg.workflow_path:
+    if cfg.workflow_path and cfg.use_heal_cache:
         from stepper.engine.healer.healing_cache import HealCache
         heal_cache = HealCache(cfg.artifact_path("heal_cache.json"))
+    elif cfg.workflow_path:
+        logger.info("⚕ Heal cache disabled — every heal goes through the cascade")
 
     runner = StepRunner(
         page=page,
