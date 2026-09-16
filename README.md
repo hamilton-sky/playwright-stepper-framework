@@ -170,8 +170,15 @@ python stepper/main.py heal apply sd_full_heal_flow
 It finds the most recent `heal_suggestions.json` under `reports/`, shows a per-step
 before/after diff, and patches the JSON in place (`--yes` to skip confirmation).
 
-`sd_heal_test.json` and `sd_full_heal_flow.json` ship with deliberately broken selectors,
-so the healer has to work for those workflows to pass.
+`sd_heal_test.json` and `sd_full_heal_flow.json` ship with deliberately broken selectors.
+Run them with `--heal 2 --no-heal-cache` to watch the cascade recover each one — the
+embed-direct rung needs no API key.
+
+They are **not** yet part of CI, and the honest reason is worth knowing: an
+`assert_*` step resolves through the full cascade, fuzzy fallbacks included, so an
+assertion can pass by matching a *different* element than the one it names. Until
+assertions resolve strictly, a green heal workflow would not prove the heal worked.
+Until then this is a claim about what the healer does, not a guarantee CI enforces.
 
 ---
 
