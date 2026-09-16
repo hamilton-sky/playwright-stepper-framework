@@ -298,6 +298,7 @@ def cmd_run(args, pipeline) -> int:
         record_video=args.video,
         variables=cli_vars or None,
         max_heal_attempts=args.heal,
+        use_heal_cache=not getattr(args, "no_heal_cache", False),
         shadow=args.shadow,
         ci=args.ci,
         ci_output=args.ci_output,
@@ -388,7 +389,13 @@ def build_parser() -> argparse.ArgumentParser:
     healing = run_p.add_argument_group("Healing")
     healing.add_argument("--heal", type=int, default=0, metavar="N",
                          help="Max heal attempts per failed step (default 0, capped at 3). "
-                              "Needs GROQ_API_KEY, GEMINI_API_KEY or ANTHROPIC_API_KEY")
+                              "The embed-direct rung works with no API key; set "
+                              "GROQ_API_KEY, GEMINI_API_KEY or ANTHROPIC_API_KEY for "
+                              "the AI rungs too")
+    healing.add_argument("--no-heal-cache", action="store_true",
+                         help="Ignore heal_cache.json and resolve every heal through the "
+                              "cascade. Use it to measure what the cascade can actually do, "
+                              "rather than replaying answers it recorded earlier")
 
     output = run_p.add_argument_group("Output")
     output.add_argument("--ci", action="store_true",

@@ -1,6 +1,6 @@
 {
-  "name": "SauceDemo — self-heal test",
-  "description": "Deliberately broken selectors on fill/click steps. With --heal 2, the healer should recover each one using the embed cascade (no AI call needed if MiniLM scores ≥ 0.85).",
+  "name": "SauceDemo \u2014 self-heal test",
+  "description": "Deliberately broken selectors on fill/click steps. With --heal, the healer should recover each one through the embed cascade (no AI call needed if MiniLM scores >= 0.85). The final assert is what makes this a test rather than a demo: without it the run passes even when the login never happened.",
   "steps": [
     {
       "action": "navigate",
@@ -10,30 +10,46 @@
     {
       "action": "fill",
       "description": "Type username into the username field",
-      "element": {"css": ".broken-username-selector"},
+      "element": {
+        "css": ".broken-username-selector"
+      },
       "input_value": "standard_user",
       "heal": true
     },
     {
       "action": "fill",
       "description": "Type password into the password field",
-      "element": {"css": ".broken-password-selector"},
+      "element": {
+        "css": ".broken-password-selector"
+      },
       "input_value": "secret_sauce",
       "heal": true
     },
     {
       "action": "click",
       "description": "Click the Login button to submit credentials",
-      "element": {"css": ".broken-login-btn"},
+      "element": {
+        "css": ".broken-login-btn"
+      },
       "heal": true,
       "heal_assert": {
         "url_contains": "/inventory"
       }
     },
     {
+      "action": "assert_visible",
+      "description": "Inventory page rendered \u2014 the healed login actually worked",
+      "element": {
+        "css": ".app_logo"
+      },
+      "heal": false
+    },
+    {
       "action": "screenshot",
-      "description": "Capture inventory page — proves heal succeeded",
-      "extra": {"filename": "heal_test_result.png"}
+      "description": "Capture the inventory page for the report",
+      "extra": {
+        "filename": "heal_test_result.png"
+      }
     }
   ]
 }

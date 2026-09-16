@@ -18,7 +18,9 @@ playwright-stepper-framework/
 ├── stepper/                          # The Automation Engine
 │   ├── main.py                       # Entry point
 │   ├── engine/                       # Core framework modules
-│   │   ├── actions/                  # ActionRegistry + strategies
+│   │   ├── actions/                  # basic / assertions / data / flow /
+│   │   │                             #   measurement, + factory; strategies.py
+│   │   │                             #   re-exports them all
 │   │   ├── resolvers/                # Element resolution cascade
 │   │   ├── runner/                   # StepRunner, when_eval
 │   │   ├── planner/                  # Claude AI planner / JSON planner
@@ -36,7 +38,10 @@ playwright-stepper-framework/
 │       ├── flows.py
 │       └── tests/test_openlibrary_flows.py
 │
-├── docs/playwright-pitfalls.md       # Failure modes the POMs guard against
+├── docs/
+│   ├── adding-your-app.md            # Point Stepper at your own app — six files
+│   └── playwright-pitfalls.md        # Failure modes, incl. two still unguarded
+├── scripts/purge-model-history.sh    # Strip the old vendored model from git history
 ├── ARCHITECTURE.md                   # Full architecture diagrams
 └── CLAUDE.md                         # This file
 ```
@@ -86,6 +91,19 @@ python stepper/main.py run ol_smoke_test --show
 
 # Check every workflow without launching a browser (exits 1 if any is invalid)
 python stepper/main.py validate
+
+# Watch the healer work on deliberately broken selectors. No API key needed —
+# the embed-direct rung calls no provider. --no-heal-cache is what makes this a
+# measurement rather than a replay of the committed heal_cache.json.
+python stepper/main.py run sd_heal_test --heal 2 --no-heal-cache --show
+```
+
+All three entry points land in the same `main()`:
+
+```bash
+python stepper/main.py list     # as documented throughout
+python -m stepper list
+stepper list                    # console script, after `pip install -e .`
 ```
 
 The pre-subcommand form (`--workflow <path>`) still works and prints a one-line

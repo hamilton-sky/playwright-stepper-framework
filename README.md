@@ -69,7 +69,9 @@ anything that already exists.
 `python stepper/main.py <command> --help` explains one command's options.
 
 Useful `run` flags: `--show` (headed browser), `--video`, `--allure-serve`, `--ci`,
-`--vars '{"query":"Dune"}'`, `--data <testdata.json>`, `--heal N`.
+`--vars '{"query":"Dune"}'`, `--data <testdata.json>`, `--heal N`,
+`--no-heal-cache` (resolve every heal through the cascade instead of replaying
+`heal_cache.json` — what you want when measuring what the healer can actually do).
 
 Workflows are referred to by name — `sd_happy_path` resolves across all sites, and
 full paths still work anywhere a name is accepted. The older flag-only form
@@ -159,7 +161,15 @@ flowchart TD
     style A3 fill:#fce8e6,stroke:#ea4335,color:#111
 ```
 
-Opt a step out with `"heal": false`. Verify a heal landed with `"heal_assert"`.
+**The top rung needs no API key.** A unique match above 0.85 is healed from the
+element's own attributes — no provider is called, so `--heal` is useful on a stock
+install with an empty `.env`. Keys buy the lower rungs, not the feature. Without
+them the AI rungs fail per-step and the run reports those heals as failed;
+anything the embeddings resolve is still healed for nothing.
+
+Opt a step out with `"heal": false`. Verify a heal landed with `"heal_assert"` —
+and note that `heal_assert` is checked on the cached path as well as the cascade,
+so a stale `heal_cache.json` entry cannot report a heal it did not achieve.
 
 Apply cached heal suggestions back into the workflow JSON after a run:
 
@@ -170,8 +180,15 @@ python stepper/main.py heal apply sd_full_heal_flow
 It finds the most recent `heal_suggestions.json` under `reports/`, shows a per-step
 before/after diff, and patches the JSON in place (`--yes` to skip confirmation).
 
-`sd_heal_test.json` and `sd_full_heal_flow.json` ship with deliberately broken selectors,
-so the healer has to work for those workflows to pass.
+`sd_heal_test.json` and `sd_full_heal_flow.json` ship with deliberately broken selectors.
+Run them with `--heal 2 --no-heal-cache` to watch the cascade recover each one — the
+embed-direct rung needs no API key.
+
+They are **not** yet part of CI, and the honest reason is worth knowing: an
+`assert_*` step resolves through the full cascade, fuzzy fallbacks included, so an
+assertion can pass by matching a *different* element than the one it names. Until
+assertions resolve strictly, a green heal workflow would not prove the heal worked.
+Until then this is a claim about what the healer does, not a guarantee CI enforces.
 
 ---
 

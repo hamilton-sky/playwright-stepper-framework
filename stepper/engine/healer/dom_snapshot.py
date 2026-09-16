@@ -53,7 +53,19 @@ _ELEMENT_QUERY_JS = """() =>
     name:        el.getAttribute('name'),
     type:        el.getAttribute('type'),
     title:       el.getAttribute('title'),
-    value:       el.tagName === 'OPTION' ? el.textContent?.trim() : undefined
+    // A button-shaped <input> carries its whole visible label in `value`, and
+    // an <input> has no textContent, so without this the healer sees
+    // "input login-button submit" for a button that plainly reads "Login".
+    //
+    // Restricted to submit/button/reset on purpose: `value` on a text or
+    // password input is whatever the user typed, and this description is
+    // embedded and can be sent to an AI provider. Labels yes, secrets no.
+    value:       el.tagName === 'OPTION'
+                   ? el.textContent?.trim()
+                   : (el.tagName === 'INPUT' &&
+                      ['submit', 'button', 'reset'].includes((el.type || '').toLowerCase())
+                        ? el.value
+                        : undefined)
   }))
 """
 
@@ -260,6 +272,9 @@ class DOMSnapshotCascade:
             el.get("aria") or "",
             el.get("placeholder") or "",
             (el.get("text") or "").strip(),
+            # The label of a button-shaped <input>, and of an <option>. Captured
+            # above only where it is a label rather than user input.
+            (el.get("value") or "").strip(),
             el.get("title") or "",
             el.get("name") or "",
             el.get("type") or "",

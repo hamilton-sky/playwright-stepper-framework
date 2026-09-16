@@ -64,6 +64,30 @@ async def _run_heal_assert(page, spec: dict) -> bool:
         return False
 
 
+def _heal_succeeded(rep_results: list) -> bool:
+    """
+    True only when every replacement step actually ran and passed.
+
+    This used to be `all(r.status != "failed")`. "skipped" is not "failed", so a
+    replacement whose element was *still* not found counted as a successful
+    heal: the step was recorded as healed, the run reported 0 failed, and the
+    thing the heal existed to fix had not happened. A heal that resolves nothing
+    is a heal that did not work.
+
+    An empty result list is not success either — nothing ran, so nothing healed.
+    """
+    return bool(rep_results) and all(
+        r.status in ("passed", "healed") for r in rep_results
+    )
+
+
+async def _heal_assert_passed(page, step) -> bool:
+    """A step with no heal_assert passes vacuously; one with it must satisfy it."""
+    if not step.heal_assert:
+        return True
+    return await _run_heal_assert(page, step.heal_assert)
+
+
 class StepRunner:
     """
     Iterates over a list of StepConfig, dispatches each to the correct
@@ -268,7 +292,13 @@ class StepRunner:
                     for obs in self._observers:
                         replacement_runner.add_observer(obs)
                     rep_results, ctx = await replacement_runner.run(replacement_steps, ctx)
-                    if all(r.status != "failed" for r in rep_results):
+                    # heal_assert is checked here too. It used to be applied only
+                    # on the cascade path, so a cached cfg that no longer
+                    # resolved skipped the one guard written to catch exactly
+                    # that — and reported the step healed anyway.
+                    if _heal_succeeded(rep_results) and await _heal_assert_passed(
+                        self._page, step
+                    ):
                         healed_confidence = rep_results[0].confidence if rep_results else 0.0
                         result = dataclasses.replace(
                             result, status="healed", error="",
@@ -350,7 +380,7 @@ class StepRunner:
 
                 rep_results, ctx = await replacement_runner.run(replacement_steps, ctx)
 
-                if all(r.status != "failed" for r in rep_results):
+                if _heal_succeeded(rep_results):
                     # Optional post-heal assertion
                     if step.heal_assert and not await _run_heal_assert(
                         self._page, step.heal_assert
