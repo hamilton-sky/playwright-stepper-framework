@@ -1,11 +1,12 @@
 # Playwright Pitfalls the POM Layer Guards Against
 
-Five failure modes that shaped how the OpenLibrary POMs are written. Each one is a
-real bug pattern in Playwright automation; each section points at the code in this
-repo that defends against it.
+Seven failure modes that shaped how the POMs are written. Each one is a real bug
+pattern in Playwright automation; each section points at the code in this repo that
+defends against it.
 
-Two of the five — pagination and the missing `await` — fail *silently*: they pass on
-small datasets and go wrong on real ones. Those are the ones worth internalising.
+Four of the seven fail *silently* — they pass on small datasets, fast machines or
+recorded fixtures, and go wrong on real ones. Those are the ones worth internalising.
+The last two were found in this repo's own code, by CI runs that were green.
 
 | # | Failure mode | Category | How it shows up | Guarded in |
 |---|---|---|---|---|
@@ -14,6 +15,12 @@ small datasets and go wrong on real ones. Those are the ones worth internalising
 | 3 | Illegal characters in file path | Missing sanitisation | `OSError` on first screenshot | `examples/plain_pom/flows.py` |
 | 4 | Wrong shelf-button selector | Wrong CSS selector | `TimeoutError`, nothing shelved | `poms/openLibrary/pages/book_detail_page.py` |
 | 5 | Missing `await` | Async misuse | **Silent** wrong assertion | everywhere — see below |
+| 6 | Waiting on a load state, not the navigation | `await` on the wrong thing | **Silent**, timing-dependent | `poms/saucedemo/pages/login_page.py` |
+| 7 | An assertion that resolves fuzzily | Forgiving lookup in an unforgiving place | **Silent** false pass | not yet guarded — see below |
+
+Numbers 6 and 7 share a shape with 5 and are worth reading together: in each, the
+code does something reasonable-looking and the run goes green while the thing it was
+supposed to check never happened.
 
 ---
 
@@ -168,3 +175,103 @@ things make this catchable rather than a matter of vigilance:
 Playwright is async because every operation waits on the browser. `await` yields the
 thread during that wait instead of blocking it, which is what makes parallel actions
 (`stepper/engine/actions/flow.py` → `ParallelAction`) worth having.
+
+
+---
+
+## 6. `wait_for_load_state` does not wait for the navigation you just triggered
+
+```python
+await self._interact(self.Locators.SUBMIT, "click")
+await self._driver.wait_for_load_state("domcontentloaded")
+```
+
+This looks like "click, then wait for the new page". It is not.
+`wait_for_load_state` reports on the **current** document, and immediately after the
+click the current document is still the login page — already loaded — so it returns
+at once, before the new page commits.
+
+The caller then reads the old DOM. In this repo that produced:
+
+```
+sd_login: login failed — unknown error
+```
+
+for a login that was about to succeed. The empty error message is the tell: a real
+credential rejection puts a banner on the page, so "no logo *and* no error" means the
+page simply had not changed yet.
+
+It fails only when the navigation is slower than the check, so it passes locally and
+on most CI runs and then does not — the worst shape a failure can have. It survived
+here until a CI run on an unrelated change happened to be slow enough.
+
+**The guard** — `poms/saucedemo/pages/login_page.py`:
+
+```python
+async def _settle_after_submit(self, timeout: int = 10_000) -> None:
+    outcome = f"{self.Locators.APP_LOGO}, {self.Locators.ERROR_MSG}"
+    try:
+        await self._driver.wait_for_selector(outcome, timeout=timeout)
+    except Exception as exc:
+        log_swallowed("LoginPage._settle_after_submit", exc, logger)
+    await self._driver.wait_for_load_state("domcontentloaded")
+```
+
+Wait for a selector that only exists **after** the submit resolved, and accept either
+outcome — the inventory logo on success, the error banner on failure. Both branches
+become deterministic; waiting only for the success marker would stall the full
+timeout on every genuine bad-credentials run.
+
+`poms/phpTravels/pages/login_page.py` still has the original shape. OpenLibrary's
+does not — it polls `current_url` until it leaves `/account/login`, which is another
+correct way to express the same wait.
+
+---
+
+## 7. An assertion that resolves fuzzily is not an assertion
+
+This one is still live, and is recorded here because it is a design decision rather
+than a typo.
+
+`assert_visible` and `assert_text` find their element the same way every other action
+does:
+
+```python
+result = await resolver.resolve(page, step.element, step.description)
+```
+
+That is the full cascade — deterministic strategies, then the semantic filter, then
+`KeywordFuzzyResolver`, which matches against the step's **description** when the
+selector finds nothing:
+
+```
+Deterministic cascade failed — falling through to zero-selector path
+✓ [keyword-fuzzy] single match → confidence 85%
+```
+
+For an action that *does* something, that forgiveness is the entire point: you want
+the click to land even after a redesign. For an action that *checks* something, it
+removes the only thing the check was for. An assertion written
+
+```json
+{ "action": "assert_visible",
+  "description": "Inventory page rendered",
+  "element": { "css": ".app_logo" } }
+```
+
+passes on a page with no `.app_logo` at all, by matching some other element against
+the words "Inventory page rendered".
+
+That is how a heal-test workflow in this repo reported `0 failed` while the login it
+existed to verify had never happened — the assertion could not fail.
+
+**No guard yet.** Fixing it means an exact-match mode for the `assert_*` actions, so
+an assertion resolves deterministically and fails when its element is absent. That
+changes assertion semantics for every existing workflow — some that pass today would
+start failing, several of them rightly — so it is a deliberate decision rather than a
+patch.
+
+Until then: an `assert_*` step is a strong signal when it fails and a weak one when
+it passes. Prefer `assert_count` with an exact expectation, or check state through a
+POM method that reads the DOM directly (`locator_count`, `is_logged_in`), which do
+not go through the resolver.

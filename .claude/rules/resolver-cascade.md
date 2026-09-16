@@ -69,3 +69,31 @@ Ordering comes from the strategy classes' own `priority` attributes, listed in t
 table above — **not** from anything inside the cfg. A `"priority"` key in a cfg dict is
 read only by the legacy cfg-list helpers in `poms/shared/base_page.py`, which strip it
 before calling the resolver. Don't add one to new code.
+
+
+## The cascade runs for assertions too — and that is a trap
+
+`assert_visible` and `assert_text` resolve their element through this same cascade,
+fuzzy fallbacks included. A cfg that matches nothing does not fail: it falls through
+to the zero-selector path and `KeywordFuzzyResolver` matches against the step's
+`description` instead.
+
+```
+Deterministic cascade failed — falling through to zero-selector path
+✓ [keyword-fuzzy] single match → confidence 85%
+```
+
+That forgiveness is correct for an action that *acts* — you want the click to land
+after a redesign. It is wrong for one that *checks*, because it means the assertion
+can pass by finding a different element than the one it names, which is the one
+behaviour an assertion must not have.
+
+Known and unfixed; see [playwright-pitfalls.md](../../docs/playwright-pitfalls.md)
+#7. When you need a check that really fails:
+
+- `assert_count` with an exact expectation, or
+- a POM state method that reads the DOM directly — `locator_count()`,
+  `is_logged_in()` — since those bypass the resolver entirely.
+
+When adding a new `assert_*` action, decide deliberately whether it should resolve
+strictly rather than inheriting the cascade by default.
