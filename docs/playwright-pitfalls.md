@@ -6,7 +6,8 @@ defends against it.
 
 Four of the seven fail *silently* — they pass on small datasets, fast machines or
 recorded fixtures, and go wrong on real ones. Those are the ones worth internalising.
-The last two were found in this repo's own code, by CI runs that were green.
+The last two were found in this repo's own code, by CI runs that were green; both are
+guarded now.
 
 | # | Failure mode | Category | How it shows up | Guarded in |
 |---|---|---|---|---|
@@ -16,7 +17,7 @@ The last two were found in this repo's own code, by CI runs that were green.
 | 4 | Wrong shelf-button selector | Wrong CSS selector | `TimeoutError`, nothing shelved | `poms/openLibrary/pages/book_detail_page.py` |
 | 5 | Missing `await` | Async misuse | **Silent** wrong assertion | everywhere — see below |
 | 6 | Waiting on a load state, not the navigation | `await` on the wrong thing | **Silent**, timing-dependent | `poms/saucedemo/pages/login_page.py` |
-| 7 | An assertion that resolves fuzzily | Forgiving lookup in an unforgiving place | **Silent** false pass | not yet guarded — see below |
+| 7 | An assertion that resolves fuzzily | Forgiving lookup in an unforgiving place | **Silent** false pass | `stepper/engine/resolvers/element_resolver.py` |
 
 Numbers 6 and 7 share a shape with 5 and are worth reading together: in each, the
 code does something reasonable-looking and the run goes green while the thing it was
@@ -222,16 +223,13 @@ outcome — the inventory logo on success, the error banner on failure. Both bra
 become deterministic; waiting only for the success marker would stall the full
 timeout on every genuine bad-credentials run.
 
-`poms/phpTravels/pages/login_page.py` still has the original shape. OpenLibrary's
-does not — it polls `current_url` until it leaves `/account/login`, which is another
-correct way to express the same wait.
+All three sites settle on an outcome now. phpTravels uses the same shape as above;
+OpenLibrary polls `current_url` until it leaves `/account/login`, which is a
+different and equally correct way to express the same wait.
 
 ---
 
 ## 7. An assertion that resolves fuzzily is not an assertion
-
-This one is still live, and is recorded here because it is a design decision rather
-than a typo.
 
 `assert_visible` and `assert_text` find their element the same way every other action
 does:
@@ -265,13 +263,29 @@ the words "Inventory page rendered".
 That is how a heal-test workflow in this repo reported `0 failed` while the login it
 existed to verify had never happened — the assertion could not fail.
 
-**No guard yet.** Fixing it means an exact-match mode for the `assert_*` actions, so
-an assertion resolves deterministically and fails when its element is absent. That
-changes assertion semantics for every existing workflow — some that pass today would
-start failing, several of them rightly — so it is a deliberate decision rather than a
-patch.
+**The guard** — `ElementResolver.resolve(..., strict=True)`:
 
-Until then: an `assert_*` step is a strong signal when it fails and a weak one when
-it passes. Prefer `assert_count` with an exact expectation, or check state through a
-POM method that reads the DOM directly (`locator_count`, `is_logged_in`), which do
-not go through the resolver.
+```python
+if strict:
+    logger.info("[ElementResolver] strict: no deterministic strategy matched → not-found")
+    return ResolveResult(found=False, confidence=0.0, method="not-found")
+```
+
+Strict stops at the deterministic strategies. No zero-selector path, no keyword-fuzzy
+match on the description, no AI pick, no visual fallback: either the cfg names
+something on the page, or the answer is not-found. Several matches still take the
+first — an ambiguous selector is a different problem from a missing one, and it is
+what Playwright's own `.first` does.
+
+`assert_visible`, `assert_text` and `store` opt in. `store` matters as much as the
+assertions and is easier to overlook: a value read off the wrong element is filed
+under the right name, and every later `when:` clause reasons about it.
+
+The acting actions — `click`, `fill`, `hover` — deliberately do **not**, and a test
+asserts that too. Their forgiveness is the reason the cascade exists.
+
+`assert_count` and `store_count` were never affected: they count through
+`page.query_selector_all` and never touched the resolver.
+
+The blast radius of turning this on, across all 16 shipped workflows, was a single
+step — `sd_heal_test`'s `assert_visible`, which was the one passing falsely.

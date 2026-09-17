@@ -40,7 +40,7 @@ playwright-stepper-framework/
 │
 ├── docs/
 │   ├── adding-your-app.md            # Point Stepper at your own app — six files
-│   └── playwright-pitfalls.md        # Failure modes, incl. two still unguarded
+│   └── playwright-pitfalls.md        # Seven failure modes and their guards
 ├── scripts/purge-model-history.sh    # Strip the old vendored model from git history
 ├── ARCHITECTURE.md                   # Full architecture diagrams
 └── CLAUDE.md                         # This file

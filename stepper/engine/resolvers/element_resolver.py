@@ -86,7 +86,29 @@ class ElementResolver:
         page,
         cfg: dict,
         step_description: str = "",
+        *,
+        strict: bool = False,
     ) -> ResolveResult:
+        """
+        Find the element a cfg describes.
+
+        strict=False (the default) is the full cascade: deterministic strategies,
+        then the semantic filter, then the description-driven fallbacks. That
+        forgiveness is the point when the caller is going to *act* — a click
+        should still land after a redesign renames a class.
+
+        strict=True stops at the deterministic strategies. No zero-selector path,
+        no keyword-fuzzy match on the description, no AI pick, no visual
+        fallback: either the cfg names something on the page or the answer is
+        not-found.
+
+        Assertions pass strict=True, and the distinction is the whole reason the
+        argument exists. Under the cascade, `{"css": ".app_logo"}` on a page with
+        no `.app_logo` does not fail — it falls through and matches whatever best
+        fits the step's *description*, so the assertion passes by checking a
+        different element than the one it names. An assertion that heals itself
+        asserts nothing.
+        """
         # Use context description as fallback when caller doesn't pass one.
         # StepRunner.run() calls set_context_description(step.description) before
         # every action, so POM methods that call resolve() without a description
@@ -95,6 +117,11 @@ class ElementResolver:
 
         # Zero-selector mode: no recognized element keys → B → A → AI pick
         if not cfg or not any(k in cfg for k in self._SELECTOR_KEYS):
+            if strict:
+                logger.warning(
+                    "[ElementResolver] strict: cfg names no element keys → not-found"
+                )
+                return ResolveResult(found=False, confidence=0.0, method="not-found")
             if step_description:
                 logger.info(
                     f"[ElementResolver] no element keys in cfg — "
@@ -117,13 +144,34 @@ class ElementResolver:
                     confidence=conf, method=strategy.name
                 )
 
-            # Multiple matches → try semantic filter
+            # Multiple matches. Strict callers take the first — the cfg did match
+            # real elements, so this is an ambiguous selector rather than a
+            # missing one, and Playwright's own .first has the same semantics.
+            # Narrowing by description is exactly what strict mode exists to
+            # avoid.
+            if strict:
+                conf = CONFIDENCE_MAP.get(strategy.name, 0.80)
+                logger.info(
+                    f"✓ [{strategy.name}] strict: {len(candidates)} matches, taking the first "
+                    f"— confidence {conf:.0%}"
+                )
+                return ResolveResult(
+                    found=True, locator=candidates[0],
+                    confidence=conf, method=strategy.name
+                )
+
             logger.debug(f"[{strategy.name}] {len(candidates)} candidates → semantic filter")
             result = await self._semantic_filter(
                 candidates, step_description, strategy.name
             )
             if result.found:
                 return result
+
+        if strict:
+            logger.info(
+                "[ElementResolver] strict: no deterministic strategy matched → not-found"
+            )
+            return ResolveResult(found=False, confidence=0.0, method="not-found")
 
         # All deterministic strategies failed → fall through to zero-selector path
         # (B keyword fuzzy → A accessibility semantic → AI pick → visual AI)
