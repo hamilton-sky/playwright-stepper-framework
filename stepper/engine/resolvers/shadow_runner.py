@@ -132,8 +132,12 @@ class ShadowRunner:
         self._last_description = description or ""
         self._resolver.set_context_description(description)
 
-    async def resolve(self, page, cfg: dict, step_description: str = "") -> ResolveResult:
-        result = await self._resolver.resolve(page, cfg, step_description)
+    async def resolve(self, page, cfg: dict, step_description: str = "",
+                      *, strict: bool = False) -> ResolveResult:
+        # Pass strict through: ShadowRunner wraps a real resolver, and an
+        # assertion running under --shadow must stay strict or the flag would
+        # quietly change what the assertion means.
+        result = await self._resolver.resolve(page, cfg, step_description, strict=strict)
         if result.found and cfg:
             effective_desc = step_description or self._last_description
             task = asyncio.create_task(

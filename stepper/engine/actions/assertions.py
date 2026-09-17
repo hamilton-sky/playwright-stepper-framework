@@ -71,7 +71,10 @@ class AssertTextAction(ActionStrategy):
 
     async def _execute(self, page, step: StepConfig, resolver,
                        context: ExecutionContext, behaviour=None) -> StepResult:
-        result = await resolver.resolve(page, step.element, step.description)
+        # strict: an assertion must check the element it names. Under the full
+        # cascade a cfg that matches nothing falls through to a description-based
+        # match, so the check passes against some other element entirely.
+        result = await resolver.resolve(page, step.element, step.description, strict=True)
         if not result.found:
             return StepResult(step=step, status="failed",
                               error=f"assert_text: element not found → {step.element}")
@@ -104,7 +107,10 @@ class AssertVisibleAction(ActionStrategy):
     async def _execute(self, page, step: StepConfig, resolver,
                        context: ExecutionContext, behaviour=None) -> StepResult:
         hidden = bool(step.extra.get("hidden", False))
-        result = await resolver.resolve(page, step.element, step.description)
+        # strict: an assertion must check the element it names. Under the full
+        # cascade a cfg that matches nothing falls through to a description-based
+        # match, so the check passes against some other element entirely.
+        result = await resolver.resolve(page, step.element, step.description, strict=True)
 
         if not result.found:
             if hidden:
@@ -173,7 +179,10 @@ class StoreAction(ActionStrategy):
             return StepResult(step=step, status="failed",
                               error="store: missing extra.key")
 
-        result = await resolver.resolve(page, step.element, step.description)
+        # strict, for the same reason as the assertions and with a longer tail:
+        # a value read off the wrong element is stored under the right name, and
+        # every `when:` clause and assertion downstream then reasons about it.
+        result = await resolver.resolve(page, step.element, step.description, strict=True)
         if not result.found:
             return StepResult(step=step, status="failed",
                               error=f"store: element not found → {step.element}")

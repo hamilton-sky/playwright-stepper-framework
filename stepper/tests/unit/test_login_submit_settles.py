@@ -131,3 +131,59 @@ async def test_is_logged_in_is_false_rather_than_raising_on_a_dead_page(driver):
     driver.locator_count = AsyncMock(side_effect=RuntimeError("context destroyed"))
 
     assert await login.is_logged_in() is False
+
+
+# ── The same contract, on every site that has a login ─────────────────────────
+#
+# SauceDemo's version is covered above in detail. These assert that the other
+# sites express the same wait, because the fix was applied per-site and a
+# per-site fix is exactly the kind that gets applied to two of three.
+
+@pytest.mark.parametrize(
+    "module_path, class_name, outcome_attrs",
+    [
+        ("poms.phpTravels.pages.login_page", "LoginPage",
+         ("USER_DROPDOWN", "ERROR_ALERT")),
+        ("poms.saucedemo.pages.login_page", "LoginPage",
+         ("APP_LOGO", "ERROR_MSG")),
+    ],
+)
+async def test_every_site_waits_for_an_outcome_after_submit(
+    driver, module_path, class_name, outcome_attrs
+):
+    """
+    Whatever the site, submit() must wait on something that only exists once the
+    submit resolved — and accept either outcome, so a genuine rejection reports
+    its error instead of burning the timeout.
+    """
+    import importlib
+
+    page_cls = getattr(importlib.import_module(module_path), class_name)
+    login = page_cls(driver, "https://example.test")
+    login._interact = AsyncMock(return_value=True)   # type: ignore[method-assign]
+
+    await login.submit()
+
+    assert driver.wait_for_selector.await_count == 1, (
+        f"{module_path} returned from submit() without waiting for an outcome"
+    )
+    selector = driver.wait_for_selector.await_args.args[0]
+    for attr in outcome_attrs:
+        expected = getattr(page_cls.Locators, attr)
+        assert expected in selector, f"{module_path}: {attr} is not part of the wait"
+
+
+async def test_openlibrary_waits_by_polling_the_url_instead(driver):
+    """
+    OpenLibrary solves the same problem a different way — it polls current_url
+    until it leaves the login page. Recorded so that a later "tidy-up" toward one
+    shape does not silently remove a wait that is already correct.
+    """
+    import inspect
+
+    from poms.openLibrary.pages.login_page import LoginPage
+
+    source = inspect.getsource(LoginPage.submit)
+    assert "current_url" in source, (
+        "OpenLibrary's submit() no longer waits for the navigation to commit"
+    )

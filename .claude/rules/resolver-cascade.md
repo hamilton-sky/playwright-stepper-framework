@@ -88,12 +88,29 @@ after a redesign. It is wrong for one that *checks*, because it means the assert
 can pass by finding a different element than the one it names, which is the one
 behaviour an assertion must not have.
 
-Known and unfixed; see [playwright-pitfalls.md](../../docs/playwright-pitfalls.md)
-#7. When you need a check that really fails:
+So `resolve()` takes `strict`:
 
-- `assert_count` with an exact expectation, or
-- a POM state method that reads the DOM directly — `locator_count()`,
-  `is_logged_in()` — since those bypass the resolver entirely.
+```python
+result = await resolver.resolve(page, step.element, step.description, strict=True)
+```
 
-When adding a new `assert_*` action, decide deliberately whether it should resolve
-strictly rather than inheriting the cascade by default.
+Strict stops at the deterministic strategies — no zero-selector path, no
+keyword-fuzzy match on the description, no AI pick, no visual fallback. Either the
+cfg names something on the page or the answer is not-found. Several matches still
+take the first: an ambiguous selector is a different problem from a missing one, and
+it is what Playwright's `.first` does.
+
+| resolve as | actions | why |
+|---|---|---|
+| `strict=True` | `assert_visible`, `assert_text`, `store` | they report a fact; a wrong-but-plausible element makes the report a lie |
+| default cascade | `click`, `fill`, `hover`, … | they act; forgiveness is the point |
+
+`store` belongs with the assertions and is the easy one to miss — the value lands
+under the right key and every later `when:` clause reasons about it.
+
+`assert_count` and `store_count` never used the resolver; they count through
+`page.query_selector_all`.
+
+**When adding a new action, decide which column it is in.** Anything that reports on
+the page rather than changing it wants `strict=True`; the tests in
+`stepper/tests/unit/test_strict_resolution.py` assert both halves.

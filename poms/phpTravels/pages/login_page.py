@@ -8,6 +8,7 @@ from __future__ import annotations
 import logging
 
 from poms.phpTravels.pages.base_page import BasePage
+from poms.shared.diagnostics import log_swallowed
 from poms.shared.locator import Locator
 
 logger = logging.getLogger(__name__)
@@ -58,7 +59,29 @@ class LoginPage(BasePage):
         await self._interact(self.Locators.PASSWORD, "fill", value=value)
 
     async def submit(self) -> None:
+        """
+        Click Login and wait until the submit has actually resolved.
+
+        Same reasoning as SauceDemo's LoginPage, and see pitfall #6 in
+        docs/playwright-pitfalls.md: wait_for_load_state reports on the *current*
+        document, which straight after the click is still the login page — so it
+        returns before the new page commits and the caller reads a stale DOM.
+
+        Waiting for whichever outcome the submit produced makes both branches
+        deterministic: the avatar dropdown on success, the alert on rejection.
+        """
         await self._interact(self.Locators.SUBMIT, "click")
+        await self._settle_after_submit()
+
+    async def _settle_after_submit(self, timeout: int = 10_000) -> None:
+        """Wait for the post-submit page to declare itself, success or failure."""
+        outcome = f"{self.Locators.USER_DROPDOWN}, {self.Locators.ERROR_ALERT}"
+        try:
+            await self._driver.wait_for_selector(outcome, timeout=timeout)
+        except Exception as exc:
+            # A page that never settles is a failed assertion for the caller to
+            # report, not an exception raised out of a POM method.
+            log_swallowed("LoginPage._settle_after_submit", exc, logger)
         await self._driver.wait_for_load_state("domcontentloaded")
 
     async def get_error_message(self) -> str | None:
