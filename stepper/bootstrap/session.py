@@ -39,6 +39,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from stepper.engine.runner.hooks import StepHook, default_web_hooks
+from stepper.engine.runner.when_eval import ConditionRegistry, core_conditions
 
 logger = logging.getLogger(__name__)
 
@@ -160,15 +161,17 @@ class Domain:
     """
     What the composition root needs from a domain to build one run.
 
-    session : (cfg, settings, test_reporter, *, shared) -> SessionAdapter
-    hooks   : (screenshots_dir) -> list[StepHook]
-    shared  : (cfg, settings) -> async context manager yielding an opaque handle
+    session    : (cfg, settings, test_reporter, *, shared) -> SessionAdapter
+    hooks      : (screenshots_dir) -> list[StepHook]
+    shared     : (cfg, settings) -> async context manager yielding a handle
+    conditions : () -> ConditionRegistry, this domain's `when` vocabulary
     """
 
     name: str
     session: Callable[..., Any]
     hooks: Callable[..., list] = field(default=no_hooks)
     shared: Callable[..., Any] = field(default=no_shared)
+    conditions: Callable[[], ConditionRegistry] = field(default=core_conditions)
 
 
 _DOMAINS: dict[str, Domain] = {}
@@ -205,9 +208,20 @@ def domain_names() -> list[str]:
     return sorted(_DOMAINS)
 
 
+def web_conditions() -> ConditionRegistry:
+    """
+    The web domain's `when` vocabulary: core plus url_contains and
+    element_exists. Imported lazily so describing the domain does not drag the
+    browser condition code in with it.
+    """
+    from stepper.engine.browser.conditions import web_conditions as _web
+    return _web()
+
+
 register_domain(Domain(
     name="web",
     session=WebSession,
     hooks=default_web_hooks,
     shared=web_shared_browser,
+    conditions=web_conditions,
 ))

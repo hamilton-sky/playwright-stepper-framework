@@ -72,5 +72,4 @@ class NoopPage(PageModule):
 
     @classmethod
     def register(cls, registry) -> None:
-        registry.register(cls.NoopSetAction())
-        registry.register(cls.NoopEchoAction())
+        cls.register_actions(registry, cls.NoopSetAction(), cls.NoopEchoAction())

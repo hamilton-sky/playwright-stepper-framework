@@ -130,6 +130,4 @@ class SDCheckoutPage(PageModule):
 
     @classmethod
     def register(cls, registry) -> None:
-        action = cls.SDCheckoutAction()
-        registry.register(action)
-        logger.debug("Registered action: %s", action.action_name)
+        cls.register_actions(registry, cls.SDCheckoutAction())

@@ -192,10 +192,9 @@ class SDInventoryPage(PageModule):
 
     @classmethod
     def register(cls, registry) -> None:
-        for action in [
+        cls.register_actions(
+            registry,
             cls.SDCollectProductsAction(),
             cls.SDAddToCartAction(),
             cls.SDSortProductsAction(),
-        ]:
-            registry.register(action)
-            logger.debug("Registered action: %s", action.action_name)
+        )

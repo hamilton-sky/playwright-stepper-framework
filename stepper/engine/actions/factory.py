@@ -32,6 +32,25 @@ class ActionRegistry(ActionFactory):
         self._registry: dict[str, ActionStrategy] = {}
 
     def register(self, action: ActionStrategy):
+        """
+        Add an action under its action_name.
+
+        Raises:
+            ValueError: if that name is already taken by a *different* action.
+                alias() has guarded against this since it was written;
+                register() did not, so a second site claiming a name simply
+                overwrote the first and the only symptom was a workflow
+                quietly running the wrong site's action. Re-registering the
+                same instance is idempotent, because a registry may legitimately
+                be rebuilt in one process.
+        """
+        existing = self._registry.get(action.action_name)
+        if existing is not None and existing is not action:
+            raise ValueError(
+                f"Cannot register '{action.action_name}': already registered to "
+                f"{type(existing).__name__}. Action names share one flat "
+                f"namespace across every site — rename one of them."
+            )
         self._registry[action.action_name] = action
         logger.debug(f"Registered action: {action.action_name}")
         return self  # fluent API → registry.register(A).register(B)
@@ -101,6 +120,7 @@ class ActionRegistry(ActionFactory):
 def build_default_registry(
     screenshots_dir: Path = Path("artifacts/screenshots"),
     browser_launcher=None,
+    conditions=None,
 ) -> ActionRegistry:
     """
     Builds the default registry with all Phase 1 + Phase 2 actions.
@@ -134,8 +154,9 @@ def build_default_registry(
     )
 
     registry     = ActionRegistry()
-    for_each     = ForEachItemAction(action_factory=registry, screenshots_dir=screenshots_dir)
-    ensure_login = EnsureLoginAction(action_factory=registry)
+    for_each     = ForEachItemAction(action_factory=registry, screenshots_dir=screenshots_dir,
+                                     conditions=conditions)
+    ensure_login = EnsureLoginAction(action_factory=registry, conditions=conditions)
     paginate     = PaginateAction(action_factory=registry)
     parallel     = ParallelAction(action_factory=registry, browser_launcher=browser_launcher)
 

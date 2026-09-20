@@ -385,7 +385,8 @@ no engine change.
 | Add a resolver strategy | Implement `ResolverStrategy`, give it a priority, add to the chain | One line |
 | Add a report format | Implement `ReporterStrategy`, add to the composite | One line |
 | Add a planner | Implement `Planner`, inject at `StepRunner` construction | No |
-| Swap the browser adapter | Implement `IBrowserDriver` | No |
+| Swap the browser adapter | Implement `IBrowserDriver`, pass it to `set_driver_factory()` | No |
+| Add a domain (non-browser) | New `sites/<name>/register.py` calling `register_domain()` | No |
 
 The patterns behind these seams — Strategy, Template Method, Factory + Registry,
 Observer, Chain of Responsibility, Adapter, Value Object, Mixin, Dependency Inversion —

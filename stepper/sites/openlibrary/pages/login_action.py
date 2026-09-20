@@ -95,11 +95,4 @@ class OLLoginPage(PageModule):
 
     @classmethod
     def register(cls, registry) -> None:
-        action = cls.OLEnsureLoginAction()
-        if not action.action_name.startswith(cls.site + "_"):
-            raise ValueError(
-                f"{action.__class__.__name__}.action_name must start with "
-                f"'{cls.site}_', got '{action.action_name}'"
-            )
-        registry.register(action)
-        logger.debug("Registered page action: %s", action.action_name)
+        cls.register_actions(registry, cls.OLEnsureLoginAction())

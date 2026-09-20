@@ -12,7 +12,10 @@ DIP: main.py calls register(); everything else stays on interfaces.
 """
 
 from __future__ import annotations
+import logging
 from abc import ABC, abstractmethod
+
+logger = logging.getLogger(__name__)
 
 
 class PageModule(ABC):
@@ -44,6 +47,39 @@ class PageModule(ABC):
     #: The domain whose session these actions act on. Every shipped site is a
     #: browser site; a non-web domain overrides it. See bootstrap/session.py.
     domain: str = "web"
+
+    #: Action names this module registers that deliberately break the
+    #: f"{site}_" rule. Keep it empty unless there is a reason, and write the
+    #: reason in the subclass docstring — an exemption nobody can explain is
+    #: just an unenforced rule.
+    unprefixed_actions: frozenset[str] = frozenset()
+
+    @classmethod
+    def register_actions(cls, registry, *actions):
+        """
+        Check the naming convention, then register.
+
+        This is the enforcement base_page_module used only to *describe*. It
+        was hand-copied into three of OpenLibrary's register() methods and
+        missing from the other ten, so the rule held where it was least needed
+        and not where a new site would trip over it.
+
+        Returns the actions, so a caller that needs one back — to alias it,
+        say — does not have to construct it separately.
+        """
+        prefix = f"{cls.site}_"
+        for action in actions:
+            name = action.action_name
+            if name not in cls.unprefixed_actions and not name.startswith(prefix):
+                raise ValueError(
+                    f"{type(action).__name__}.action_name must start with "
+                    f"{prefix!r}, got {name!r}. Action names share one flat "
+                    f"namespace across every site. If the name is deliberate, "
+                    f"add it to {cls.__name__}.unprefixed_actions and say why."
+                )
+            registry.register(action)
+            logger.debug("Registered %s action: %s", cls.site, name)
+        return actions
 
     @classmethod
     @abstractmethod

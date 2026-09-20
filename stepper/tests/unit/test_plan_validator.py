@@ -221,3 +221,89 @@ def test_the_shipped_workflows_validate_against_the_real_registry():
     for path in workflows:
         steps = [dict_to_step_config(s) for s in json.loads(path.read_text())["steps"]]
         PlanValidator.validate(steps, registry)
+
+
+# ── when-conditions (ticket T4) ───────────────────────────────────────────────
+#
+# A misspelled condition used to fail open at runtime: the evaluator logged a
+# warning and ran the step it was meant to guard. Catching it here is free and
+# happens before a session is opened.
+
+def _conditions():
+    from stepper.engine.browser.conditions import web_conditions
+    return web_conditions()
+
+
+def test_a_known_condition_validates(registry):
+    step = StepConfig(action="click", description="c",
+                      when={"context_greater_than": {"key": "n", "value": 0}})
+
+    PlanValidator.validate([step], registry, _conditions())
+
+
+def test_a_misspelled_condition_is_an_error(registry):
+    step = StepConfig(action="click", description="guarded",
+                      when={"contxt_greater_than": {"key": "n", "value": 0}})
+
+    with pytest.raises(PlanValidationError) as excinfo:
+        PlanValidator.validate([step], registry, _conditions())
+
+    assert "contxt_greater_than" in str(excinfo.value)
+    assert "context_greater_than" in str(excinfo.value)   # did-you-mean
+
+
+def test_conditions_are_only_checked_when_a_registry_is_given(registry):
+    """Callers that pass no registry keep the old, unchecked behaviour."""
+    step = StepConfig(action="click", description="c", when={"nonsense": 1})
+
+    PlanValidator.validate([step], registry)
+
+
+def test_a_typo_beside_a_valid_key_is_still_caught(registry):
+    """
+    At runtime the recognised key wins and the typo is ignored in silence —
+    which is exactly the case worth catching, not excusing.
+    """
+    step = StepConfig(action="click", description="c", when={
+        "context_equals": {"key": "n", "value": 1},
+        "contxt_equals":  {"key": "n", "value": 1},
+    })
+
+    with pytest.raises(PlanValidationError, match="contxt_equals"):
+        PlanValidator.validate([step], registry, _conditions())
+
+
+def test_a_condition_nested_in_a_combinator_is_checked(registry):
+    step = StepConfig(action="click", description="c", when={
+        "all": [{"url_contains": "/x"}, {"not": {"bogus_condition": 1}}],
+    })
+
+    with pytest.raises(PlanValidationError, match="bogus_condition"):
+        PlanValidator.validate([step], registry, _conditions())
+
+
+def test_a_condition_on_a_sub_step_is_checked(registry):
+    """
+    for_each_item holds its sub-steps as raw dicts in extra, so their `when`
+    clauses never reach the validator as StepConfigs of their own.
+    """
+    step = StepConfig(action="click", description="loop", extra={
+        "steps": [{"action": "click", "description": "inner",
+                   "when": {"bogus_condition": 1}}],
+    })
+
+    with pytest.raises(PlanValidationError, match="bogus_condition"):
+        PlanValidator.validate([step], registry, _conditions())
+
+
+def test_a_web_condition_fails_validation_for_a_domain_without_it(registry):
+    """
+    The point of a per-domain vocabulary: a noop run naming url_contains is
+    caught at validate time rather than raising mid-step.
+    """
+    from stepper.engine.runner.when_eval import core_conditions
+
+    step = StepConfig(action="click", description="c", when={"url_contains": "/x"})
+
+    with pytest.raises(PlanValidationError, match="url_contains"):
+        PlanValidator.validate([step], registry, core_conditions())

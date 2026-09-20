@@ -37,9 +37,13 @@ class ForEachItemAction(SubStepRunnerMixin, ActionStrategy):
     """
     action_name = "for_each_item"
 
-    def __init__(self, action_factory, screenshots_dir: Path = Path("artifacts/screenshots")):
+    def __init__(self, action_factory, screenshots_dir: Path = Path("artifacts/screenshots"),
+                 conditions=None):
         self._factory = action_factory
         self._screenshots_dir = screenshots_dir
+        # Sub-steps get the same `when` vocabulary as top-level steps, so a
+        # domain condition works inside for_each as well as outside it.
+        self._conditions = conditions
 
     async def _execute(self, page, step: StepConfig, resolver,
                        context: ExecutionContext, behaviour=None) -> StepResult:
@@ -99,8 +103,9 @@ class EnsureLoginAction(SubStepRunnerMixin, ActionStrategy):
     """
     action_name = "ensure_login"
 
-    def __init__(self, action_factory):
+    def __init__(self, action_factory, conditions=None):
         self._factory = action_factory
+        self._conditions = conditions
 
     async def _execute(self, page, step: StepConfig, resolver,
                        context: ExecutionContext, behaviour=None) -> StepResult:

@@ -1,10 +1,9 @@
 # Universal Runner — making the stepper domain-free
 
-**Status:** T1, T2, T3, T7 and T8 are implemented. **The plan's acceptance
+**Status:** all eight tickets are implemented. **The plan's acceptance
 criterion is green**: a workflow of non-browser steps runs to completion
 through the shipped CLI, with reporting, `when` and context flow, and
-Playwright is never imported. T4, T5 and T6 remain, verified against the tree
-at `69d720f`; none of them is load-bearing for that result.
+Playwright is never imported. All ten leaks in §3 are closed.
 
 ```
 $ python stepper/main.py run noop_smoke
@@ -554,10 +553,13 @@ click, assert_text — passes 4/4 with one browser launch and screenshots from
 the web domain's hook; `run_data_rows` over two rows passes 4/4 twice with
 one launch total.
 
-### T4 — Condition registry
+### T4 — Condition registry — **LANDED**
 
-**Files:** `stepper/engine/runner/when_eval.py`, web domain registration,
-`stepper/tests/unit/test_when_eval.py`
+**Files:** `stepper/engine/runner/when_eval.py`,
+new `stepper/engine/browser/conditions.py`, `stepper/engine/planner/validator.py`,
+`stepper/engine/actions/sub_step_mixin.py`, `stepper/engine/actions/flow.py`,
+`stepper/engine/runner/step_runner.py`, `stepper/bootstrap/session.py`,
+`stepper/main.py`, and the tests for each
 **Do:** registry per §5.3; move `url_contains` / `element_exists` to the web
 domain (L5); make an unknown condition a validation error instead of fail-open.
 **Accept:** a workflow with a misspelled condition fails `validate` with the bad
@@ -571,9 +573,44 @@ distinction that test draws against `element_exists`, which fails *closed*
 (`when_eval.py:122-126`) — that asymmetry is deliberate and should survive.
 Call the change out in the changelog.
 
-### T5 — Namespaced action registry
+**As landed.** `ConditionRegistry` holds `name -> evaluator` and handles the
+combinators itself. Core keeps the five context predicates and `all`/`any`/
+`not`; `url_contains` and `element_exists` moved to
+`engine/browser/conditions.py` and reach a run through `Domain.conditions`, the
+same route as its hooks and its session. Iteration follows insertion order, so
+`test_first_recognised_key_wins` still describes what happens.
 
-**Files:** `stepper/engine/actions/factory.py`, `stepper/engine/pages/base_page_module.py`
+Unknown conditions now raise `UnknownConditionError`, and `PlanValidator`
+catches them before a session opens — with a did-you-mean, and recursing
+through combinators *and* into the raw sub-step dicts that `for_each_item` and
+`parallel` carry in `extra`, which never reached the validator as StepConfigs
+before. `StepRunner` still catches the exception at runtime and runs the step,
+so a plan that somehow reaches execution unvalidated degrades the way it always
+did rather than dying mid-run.
+
+```
+FAIL  _typo_probe
+  Step 2 (guarded by a typo): unknown when-condition 'contxt_greater_than'
+    — did you mean 'context_greater_than', 'context_less_than', 'context_between'?
+```
+
+The inverted test is `test_an_unknown_condition_raises`, and `element_exists`
+still fails closed. Two things the ticket did not anticipate:
+
+- **Sub-steps need the vocabulary too.** `SubStepRunnerMixin` evaluates `when`
+  for nested steps and has no access to the runner, so `ForEachItemAction` and
+  `EnsureLoginAction` now carry the registry and pass it down.
+- **A domain does not exist until its site registers.** `build_action_registry`
+  called `get_domain(cfg.domain)` before `register_all_sites`, which broke the
+  noop run outright — the domain was not registered yet. The conditions are
+  late-bound through `set_conditions()` after registration instead. The noop
+  domain's own test caught this.
+
+### T5 — Namespaced action registry — **LANDED**
+
+**Files:** `stepper/engine/actions/factory.py`,
+`stepper/engine/pages/base_page_module.py`, all 13 site `register()` methods,
+new `stepper/tests/unit/test_action_registry.py`
 **Do:** collision guard in `register()` (mirror the one `alias()` already has at
 `factory.py:89-95`); enforce the `<site>_` prefix once instead of by hand (L6).
 
@@ -606,15 +643,49 @@ prefix checks are deleted; `collect_items` still registers and
 **Risk:** low-medium. May surface an existing duplicate — that is a find, not a
 regression.
 
-### T6 — Inject the driver factory
+**As landed.** `ActionRegistry.register()` refuses a name already held by a
+different action, mirroring `alias()`; re-registering the same instance stays
+idempotent, because a registry is legitimately rebuilt more than once per
+process. No existing duplicate surfaced — the tree was clean.
 
-**Files:** `stepper/engine/pages/glue_action.py`
+`PageModule.register_actions()` is the single enforcement point, and all 13
+site `register()` methods go through it, not just the three that hand-rolled
+the check. The exemption is a class attribute —
+`OLSearchPage.unprefixed_actions = frozenset({"collect_items"})` — so the rule
+and its one exception live together, and
+`test_page_module_conventions` now reads that attribute instead of keeping a
+second copy of the list.
+
+### T6 — Inject the driver factory — **LANDED**
+
+**Files:** `stepper/engine/pages/glue_action.py`, `ARCHITECTURE.md`,
+new `stepper/tests/unit/test_glue_driver_factory.py`
 **Do:** `GlueAction` receives a driver factory instead of importing
 `PlaywrightDriver` (L7).
 **Accept:** `ARCHITECTURE.md:388`'s "Swap the browser adapter → touches existing
 code? No" becomes true. Update that table either way — today it is wrong.
 **Risk:** low, touches every glue action's construction path. Web-only; no other
 domain cares.
+
+**As landed.** `set_driver_factory()` / `reset_driver_factory()` /
+`get_driver_factory()` in `glue_action.py`, plus a `driver_factory` class
+attribute for a per-action override. `_driver()` resolves the factory **per
+call** rather than capturing it at construction: actions are registered once at
+startup and live for the whole process, so a factory read in `__init__` would
+pin whichever adapter was current before any run began.
+
+Not routed through `Domain`, deliberately. Driver adapters exist to wrap a POM
+layer, and §4 says a non-web domain has none — putting `driver` on `Domain`
+would imply otherwise.
+
+`ARCHITECTURE.md` now reads "Implement `IBrowserDriver`, pass it to
+`set_driver_factory()`", which is true, and gained a row for adding a
+non-browser domain.
+
+**Verified** against a real browser: `SDLoginPage.SDLoginAction` built a
+`PlaywrightDriver` through the seam, `_build_pom` constructed the real
+`LoginPage` POM with it, and a `_interact` fill resolved through the live
+cascade.
 
 ### T7 — Make the import graph honest — **LANDED**
 

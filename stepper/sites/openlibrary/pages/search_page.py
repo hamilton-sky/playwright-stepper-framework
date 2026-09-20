@@ -24,6 +24,13 @@ logger = logging.getLogger(__name__)
 class OLSearchPage(PageModule):
     site = "ol"
 
+    #: `collect_items` predates the f"{site}_" convention and the shipped
+    #: workflows reach it through the `ol_collect_books` alias bound below.
+    #: Renaming it would break any workflow still using the old spelling, so
+    #: the name is kept and the exemption is declared here rather than left
+    #: as an unexplained hole in the rule. See .claude/rules/glue-layer.md.
+    unprefixed_actions = frozenset({"collect_items"})
+
     class OLCollectBooksAction(GlueAction):
         """
         Collect book URLs from OpenLibrary search results.
@@ -73,8 +80,6 @@ class OLSearchPage(PageModule):
 
     @classmethod
     def register(cls, registry) -> None:
-        action = cls.OLCollectBooksAction()
-        registry.register(action)
+        action, = cls.register_actions(registry, cls.OLCollectBooksAction())
         # Also register under the ol_ alias used by ol_search_and_add.json
         registry.alias("ol_collect_books", action.action_name)
-        logger.debug("Registered OLSearchPage action: collect_items / ol_collect_books")

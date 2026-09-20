@@ -24,7 +24,7 @@ from stepper.engine.interfaces import (
     StepConfig, StepResult, StepObserver,
     ActionFactory, ReporterStrategy, ExecutionContext
 )
-from stepper.engine.runner.when_eval import evaluate_when
+from stepper.engine.runner.when_eval import ConditionRegistry, core_conditions
 from stepper.engine.runner.hooks import StepHook
 from stepper.engine.resolvers.null_resolver import NullResolver
 from stepper.engine.browser.human_behaviour import HumanBehaviour
@@ -103,6 +103,7 @@ class StepRunner:
         cache: HealCache | None = None,
         hooks: list[StepHook] | None = None,
         session=None,
+        conditions: ConditionRegistry | None = None,
     ):
         """
         page / session
@@ -124,6 +125,12 @@ class StepRunner:
             supplies its CAPTCHA probe and auto-screenshot through
             bootstrap/session.py, which is where every caller in the tree gets
             them from.
+
+        conditions
+            The `when` vocabulary this run understands. Core predicates only by
+            default; the web domain adds url_contains and element_exists
+            through the same route as its hooks. An unregistered condition
+            raises rather than quietly running the step it was meant to guard.
         """
         if action_factory is None:
             raise TypeError("StepRunner requires action_factory=")
@@ -144,6 +151,7 @@ class StepRunner:
         else:
             self._screenshots_dir = None
         self._hooks: list[StepHook] = list(hooks) if hooks else []
+        self._conditions = conditions if conditions is not None else core_conditions()
 
     def add_observer(self, observer: StepObserver):
         self._observers.append(observer)
@@ -161,7 +169,9 @@ class StepRunner:
             # Evaluate `when` condition — skip if false
             if step.when:
                 try:
-                    should_run = await evaluate_when(step.when, ctx, self._page)
+                    should_run = await self._conditions.evaluate(
+                        step.when, ctx, self._page
+                    )
                 except Exception as e:
                     logger.warning(f"Step {idx+1} when-eval error: {e} — step will run")
                     should_run = True
@@ -318,6 +328,7 @@ class StepRunner:
                         behaviour=self._behaviour,
                         healer=None,
                         hooks=self._hooks,
+                        conditions=self._conditions,
                     )
                     for obs in self._observers:
                         replacement_runner.add_observer(obs)
@@ -405,6 +416,7 @@ class StepRunner:
                     behaviour=self._behaviour,
                     healer=None,
                     hooks=self._hooks,
+                    conditions=self._conditions,
                 )
                 for obs in self._observers:
                     replacement_runner.add_observer(obs)
@@ -489,6 +501,7 @@ class StepRunner:
                 behaviour=self._behaviour,
                 healer=None,
                 hooks=self._hooks,
+                conditions=self._conditions,
             )
             for obs in self._observers:
                 injection_runner.add_observer(obs)

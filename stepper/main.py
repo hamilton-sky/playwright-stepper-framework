@@ -38,6 +38,7 @@ from stepper.bootstrap.reporting import build_reporters, serve_allure
 from stepper.bootstrap.session   import get_domain
 
 from stepper.engine.actions.factory      import build_default_registry
+from stepper.engine.actions.sub_step_mixin import SubStepRunnerMixin
 from stepper.engine.planner.validator    import PlanValidator
 from stepper.engine.actions.strategies   import RunWorkflowAction
 from stepper.engine.runner.step_runner   import StepRunner, LoggingObserver
@@ -302,6 +303,15 @@ def build_action_registry(cfg: RunConfig, settings, screenshots_dir: Path):
         browser_launcher=launcher,
     )
     register_all_sites(registry, _stepper_root, screenshots_dir=screenshots_dir)
+
+    # Only now does cfg.domain resolve: a domain is registered by its own
+    # site's register.py, which register_all_sites has just run. Sub-steps
+    # inside for_each / ensure_login get the same `when` vocabulary as
+    # top-level steps.
+    conditions = get_domain(cfg.domain).conditions()
+    for _name, action in registry.items():
+        if isinstance(action, SubStepRunnerMixin):
+            action.set_conditions(conditions)
     return registry
 
 
@@ -361,7 +371,7 @@ def build_validated_registry(cfg: RunConfig, settings, screenshots_dir: Path, st
     subflow_action = RunWorkflowAction(base_dir=cfg.base_dir)
     registry.register(subflow_action)
 
-    PlanValidator.validate(steps, registry)
+    PlanValidator.validate(steps, registry, get_domain(cfg.domain).conditions())
     return registry, subflow_action
 
 
@@ -463,6 +473,7 @@ async def build_pipeline(prepared: PreparedRun, session, observers=None) -> Pipe
         max_heal_attempts=cfg.max_heal_attempts,
         cache=heal_cache,
         hooks=get_domain(cfg.domain).hooks(prepared.screenshots_dir),
+        conditions=get_domain(cfg.domain).conditions(),
     )
     runner.add_observer(LoggingObserver())
     for observer in observers or ():

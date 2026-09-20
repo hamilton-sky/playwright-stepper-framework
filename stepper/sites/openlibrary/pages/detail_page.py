@@ -101,12 +101,6 @@ class OLDetailPage(PageModule):
 
     @classmethod
     def register(cls, registry, screenshots_dir: Path = Path("artifacts/screenshots")) -> None:
-        actions = [cls.OLAddToShelfAction(screenshots_dir=screenshots_dir)]
-        for action in actions:
-            if not action.action_name.startswith(cls.site + "_"):
-                raise ValueError(
-                    f"{action.__class__.__name__}.action_name must start with "
-                    f"'{cls.site}_', got '{action.action_name}'"
-                )
-            registry.register(action)
-            logger.debug(f"Registered page action: {action.action_name}")
+        cls.register_actions(
+            registry, cls.OLAddToShelfAction(screenshots_dir=screenshots_dir)
+        )

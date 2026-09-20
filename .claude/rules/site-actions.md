@@ -44,6 +44,19 @@ workflows use `ol_collect_books`.
 | `pt_select_hotel` | `hotel_results_action.py` | `HotelResultsPage` |
 | `pt_book_hotel` | `hotel_detail_action.py` | `HotelDetailPage` |
 
+### noop (`stepper/sites/_noop/pages/`) — not a real site
+
+A domain with no browser, no resolver and no POMs. It exists to keep the engine
+honest: `stepper/tests/unit/test_noop_domain.py` runs its workflow and asserts
+Playwright never reaches `sys.modules`. Its actions subclass `ActionStrategy`
+directly, not `GlueAction`, because there is no POM layer to protect — see
+[docs/universal-runner-plan.md](../../docs/universal-runner-plan.md) §4.
+
+| Action name | Glue file | POM(s) used |
+|---|---|---|
+| `noop_set` | `noop_page.py` | none |
+| `noop_echo` | `noop_page.py` | none |
+
 ---
 
 ## Workflow Files
@@ -53,6 +66,7 @@ workflows use `ol_collect_books`.
 | OpenLibrary | `stepper/sites/openlibrary/workflows/` |
 | SauceDemo | `stepper/sites/saucedemo/workflows/` |
 | phpTravels | `stepper/sites/phptravels/workflows/` |
+| noop | `stepper/sites/_noop/workflows/` |
 
 Run any workflow from the repo root:
 
