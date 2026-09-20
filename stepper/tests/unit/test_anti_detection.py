@@ -166,12 +166,20 @@ def test_patchright_is_preferred_when_installed(monkeypatch):
 
 
 def test_plain_playwright_is_used_when_patchright_is_absent(monkeypatch):
-    """The default install. It must not raise."""
+    """
+    The default install. It must not raise.
+
+    The one unit test that genuinely needs the playwright package: it asserts
+    get_playwright() hands back that exact object. Everything else in this
+    suite runs without it, so the dependency is declared here rather than
+    imposed on the whole suite — see docs/universal-runner-plan.md, leak L10.
+    """
+    async_api = pytest.importorskip(
+        "playwright.async_api", reason="playwright is not installed"
+    )
     monkeypatch.setitem(sys.modules, "patchright.async_api", None)
 
-    from playwright.async_api import async_playwright
-
-    assert AntiDetection.get_playwright() is async_playwright
+    assert AntiDetection.get_playwright() is async_api.async_playwright
 
 
 # ── detect_captcha ────────────────────────────────────────────────────────────

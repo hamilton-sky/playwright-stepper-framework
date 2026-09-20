@@ -1,7 +1,13 @@
 """
 shared/driver.py — Playwright isolation wrapper.
 
-This is the ONLY file in the automation module that imports from playwright.
+This is the ONLY file in the automation module that imports from playwright,
+and it does so lazily: `Page` and `ElementHandle` are annotations, so they sit
+under TYPE_CHECKING, and `async_playwright` is imported inside the one method
+that launches anything. Importing this module therefore costs no browser —
+which is what lets a run with no browser in it prove that, by asserting
+"playwright" never lands in sys.modules.
+
 All page objects, auth, and performance code depend on IBrowserDriver (interface),
 not on Playwright's Page directly.
 
@@ -13,9 +19,10 @@ Pattern: Adapter
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
-from playwright.async_api import Page, ElementHandle
+if TYPE_CHECKING:                       # annotations only — see module docstring
+    from playwright.async_api import Page, ElementHandle
 
 from poms.shared.interfaces import IBrowserDriver, IBrowserLauncher, IElementHandle
 

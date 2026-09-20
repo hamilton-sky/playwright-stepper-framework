@@ -47,6 +47,36 @@ logger = logging.getLogger(__name__)
 _stepper_root = Path(__file__).resolve().parent
 
 
+def _workflow_domain(workflow_path: str | None) -> str | None:
+    """
+    The domain a workflow file declares, or None if it declares none.
+
+    A workflow says which kind of session it needs with a top-level
+    ``"domain"`` key; everything shipped omits it and gets "web". Read
+    defensively — this runs before the planner has validated anything, and a
+    malformed file should fail with the planner's error, not this one.
+    """
+    if not workflow_path:
+        return None
+    try:
+        raw = json.loads(Path(workflow_path).read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    if isinstance(raw, dict):
+        declared = raw.get("domain")
+        if isinstance(declared, str) and declared:
+            return declared
+    return None
+
+
+def _with_workflow_domain(cfg: RunConfig) -> RunConfig:
+    """Let the workflow's own ``domain`` key decide which session opens."""
+    declared = _workflow_domain(cfg.workflow_path)
+    if declared is None or declared == cfg.domain:
+        return cfg
+    return replace(cfg, domain=declared)
+
+
 def _extract_site(workflow_path: str | None) -> str:
     if not workflow_path:
         return "shared"
@@ -362,6 +392,7 @@ def prepare_run(cfg: RunConfig, resolver=None) -> PreparedRun:
     any expensive resource is opened — and a caller that only wants to check a
     plan can stop after this call.
     """
+    cfg      = _with_workflow_domain(cfg)
     steps    = plan_steps(cfg)
     settings = build_settings(cfg)
 
@@ -670,6 +701,7 @@ async def run_data_rows(cfg: RunConfig, rows: list[dict], cli_vars: dict) -> Non
     domain "shared" is one browser, so a hundred rows cost one launch and a
     hundred contexts — which is what this function existed to do.
     """
+    cfg      = _with_workflow_domain(cfg)
     settings = build_settings(cfg)
     resolver = build_resolver(settings.use_visual_ai)
     domain   = get_domain(cfg.domain)

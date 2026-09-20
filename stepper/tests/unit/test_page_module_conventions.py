@@ -30,6 +30,18 @@ from stepper.engine.pages.glue_action import GlueAction
 
 _SITES_DIR = Path(__file__).resolve().parents[2] / "sites"
 
+def _owning_page_module(action):
+    """The PageModule class an action is nested inside, or None."""
+    owner  = type(action).__qualname__.split(".")[0]
+    module = importlib.import_module(type(action).__module__)
+    return getattr(module, owner, None)
+
+
+def _action_domain(action) -> str:
+    """Which domain's session an action acts on. PageModule defaults to "web"."""
+    return getattr(_owning_page_module(action), "domain", "web")
+
+
 #: Action names that deliberately break the f"{site}_" rule, with the reason.
 #: `collect_items` predates the convention; OLSearchPage.register() aliases
 #: `ol_collect_books` to the same instance so workflows can use either, and the
@@ -73,9 +85,7 @@ def test_every_site_action_is_prefixed_with_its_site(registries):
     for name, action in site_actions.items():
         if name in _PREFIX_EXEMPT:
             continue
-        owner = type(action).__qualname__.split(".")[0]
-        module = importlib.import_module(type(action).__module__)
-        page_module = getattr(module, owner, None)
+        page_module = _owning_page_module(action)
         site = getattr(page_module, "site", None)
         if site and not name.startswith(f"{site}_"):
             offenders.append(f"{name} (declared site={site!r} on {owner})")
@@ -112,24 +122,56 @@ def test_the_alias_and_its_target_are_the_same_instance(registries):
     assert site_actions["collect_items"] is site_actions["ol_collect_books"]
 
 
-def test_every_site_action_subclasses_glue_action(registries):
+def test_every_web_action_subclasses_glue_action(registries):
     """
     GlueAction is what supplies _build_pom, and _build_pom is what makes
     page=/resolver=/behaviour= keyword-mandatory. Subclassing ActionStrategy
     directly compiles, runs, and silently skips the resolver cascade.
+
+    Web actions only. The rule protects the POM layer, and a domain with no
+    selectors has no POM layer to protect — it is Flow → Action, two layers
+    rather than three. A PageModule declaring a non-web `domain` is opting out
+    of a rule that has nothing to say about it, not evading one that does.
+    See docs/universal-runner-plan.md §4.
     """
     _engine, site_actions = registries
 
     offenders = [
         f"{name} ({type(action).__qualname__})"
         for name, action in site_actions.items()
-        if not isinstance(action, GlueAction)
+        if _action_domain(action) == "web" and not isinstance(action, GlueAction)
     ]
 
     assert not offenders, (
         "These site actions do not subclass GlueAction, so they can construct a "
         "POM without a resolver:\n  " + "\n  ".join(offenders)
     )
+
+
+def test_a_non_web_action_really_is_declared_non_web(registries):
+    """
+    The exemption above keys off PageModule.domain, so it is only as honest as
+    that attribute. A web action that subclassed ActionStrategy directly and
+    then declared domain="something" to quiet the test would be exactly the
+    bug the rule exists to catch — so check the opt-out is used by a module
+    that genuinely has no POMs behind it.
+    """
+    _engine, site_actions = registries
+
+    non_web = {
+        name: action for name, action in site_actions.items()
+        if _action_domain(action) != "web"
+    }
+
+    for name, action in non_web.items():
+        module = importlib.import_module(type(action).__module__)
+        source = Path(module.__file__).read_text(encoding="utf-8")
+        assert "_build_pom" not in source, (
+            f"{name} is declared non-web but its module builds POMs"
+        )
+        assert "poms." not in source, (
+            f"{name} is declared non-web but its module imports from poms/"
+        )
 
 
 def test_every_site_action_has_a_description(registries):

@@ -1,7 +1,15 @@
 # Universal Runner — making the stepper domain-free
 
-**Status:** T1, T2 and T3 are implemented — the spine is done. T4–T8 are still
-proposal, verified against the tree at `69d720f`.
+**Status:** T1, T2, T3, T7 and T8 are implemented. **The plan's acceptance
+criterion is green**: a workflow of non-browser steps runs to completion
+through the shipped CLI, with reporting, `when` and context flow, and
+Playwright is never imported. T4, T5 and T6 remain, verified against the tree
+at `69d720f`; none of them is load-bearing for that result.
+
+```
+$ python stepper/main.py run noop_smoke
+  Result: 2/3 passed  (0 failed)          # third step skipped by its `when`
+```
 
 The goal is that `StepRunner` runs any domain behind an adapter, with the
 browser demoted from "the core" to "the first adapter".
@@ -80,7 +88,15 @@ accident into a contract.
 > POMs, and `"playwright" not in sys.modules` holds for the whole run —
 > including registry construction.
 
-That last clause is what fails today, and L9 is why.
+That last clause was what failed, and L9 was why.
+
+**It passes now** (T7, T8). `stepper/sites/_noop/` is that domain, discovered
+by the same glob as the three browser sites, and
+`test_noop_domain.py::test_a_noop_run_never_imports_playwright` runs
+`main.run()` over its workflow in a fresh process and finds no Playwright in
+`sys.modules`. The plan's original sentence and this stricter one are both
+green; what remains — T4, T5, T6 — is tidying the seams, not reaching the
+goal.
 
 ---
 
@@ -600,9 +616,10 @@ code? No" becomes true. Update that table either way — today it is wrong.
 **Risk:** low, touches every glue action's construction path. Web-only; no other
 domain cares.
 
-### T7 — Make the import graph honest (NEW — prerequisite for T8)
+### T7 — Make the import graph honest — **LANDED**
 
-**Files:** `stepper/main.py:257`, `poms/shared/driver.py:18`, `stepper/tests/conftest.py:7`
+**Files:** `poms/shared/driver.py`, `stepper/tests/conftest.py`,
+`stepper/tests/unit/test_anti_detection.py`
 **Do:** three targeted changes so that "no browser" also means "no Playwright
 import":
 
@@ -624,9 +641,32 @@ import":
 **Risk:** low, but it touches the POM layer's one shared file — the only ticket
 in this plan that does. It changes imports only, no behaviour.
 
-### T8 — The proof: a second domain that does nothing
+**As landed — and smaller than the ticket.** Change 2 alone did it. Moving
+`Page` and `ElementHandle` in `poms/shared/driver.py` under `TYPE_CHECKING`
+took `validate_plan()` from **57 Playwright modules to 0**, because that module
+was the only thing the eager import in `build_action_registry` was pulling in.
+So the launcher-factory indirection (change 1) was never needed and was not
+built: `build_action_registry` still constructs a `PlaywrightBrowserLauncher`,
+and that now costs nothing. If T6 injects a driver factory it may want to
+revisit this, but on its own merits, not this one's.
 
-**Files:** new `stepper/sites/_noop/` (or `examples/noop_domain/`), plus a unit test
+Change 3 landed as written — `async_playwright` moved inside the
+`stepper_browser` fixture. One further thing the ticket did not predict:
+`test_anti_detection.py::test_plain_playwright_is_used_when_patchright_is_absent`
+genuinely needs the package, since it asserts `get_playwright()` returns that
+exact object. It now declares that with `pytest.importorskip` rather than
+imposing the dependency on the whole suite.
+
+**Verified** by running the unit suite with a `sys.meta_path` blocker that
+raises `ModuleNotFoundError` for anything under `playwright`, which is what an
+absent package actually raises: **872 passed, 1 skipped**.
+
+### T8 — The proof: a second domain that does nothing — **LANDED**
+
+**Files:** new `stepper/sites/_noop/` (page module, register, workflow),
+new `stepper/tests/unit/test_noop_domain.py`,
+`stepper/engine/pages/base_page_module.py`,
+`stepper/tests/unit/test_page_module_conventions.py`
 **Do:** a noop domain with a `NoopSession` (returns a plain object), two trivial
 actions, no hooks, no resolver, no POMs. Add a test that runs a small workflow
 of them and asserts `"playwright" not in sys.modules`.
@@ -643,6 +683,36 @@ Two constraints the original draft missed:
   with the collected-failures error from `infra.py:69`.
 
 **Risk:** none once T7 is in. It is the receipt.
+
+**As landed.** `stepper/sites/_noop/` holds a `NoopPage` with two actions
+(`noop_set`, `noop_echo`), a `register.py` that registers both *and* the
+`noop` domain, and `workflows/noop_smoke.json`. It went in under `sites/`
+rather than `examples/` precisely so that §2's claim about `register_all_sites`
+globbing `sites/*/register.py` got tested rather than asserted — it needed no
+change, and `validate` went from 16/16 to 17/17 on its own.
+
+Three things the ticket did not anticipate:
+
+- **A workflow has to be able to say which domain it needs.** `RunConfig.domain`
+  alone was not enough: the CLI builds the config, so `run noop_smoke` would
+  have opened a browser. A workflow now declares a top-level `"domain"` key,
+  and `prepare_run` reads it. Everything shipped omits it and gets `"web"`.
+- **`register()` runs more than once per process**, so a `Domain` built inside
+  it is a new object each time and trips `register_domain`'s guard (§5.5). The
+  noop domain is one module-level constant. The guard was right; the first
+  draft of the caller was wrong.
+- **The layering test had to learn about §4.**
+  `test_every_site_action_subclasses_glue_action` required `GlueAction` of
+  every site action. That rule protects the POM layer, and this domain has
+  none — so `PageModule` gained `domain: str = "web"`, the test now applies
+  the rule to web actions only, and a new test checks the opt-out is honest by
+  asserting a non-web module neither imports `poms.` nor calls `_build_pom`.
+
+**Verified:** `test_a_noop_run_never_imports_playwright` runs
+`main.run(noop_smoke)` in a **subprocess** — pytest shares one interpreter and
+`test_anti_detection` legitimately imports Playwright, so an in-process
+assertion would pass or fail on test ordering — and asserts statuses
+`passed, passed, skipped` with an empty Playwright module list.
 
 ---
 
@@ -692,11 +762,11 @@ has a test to invert, and it belongs in the changelog.
    to `artifacts: list[str]` (cleaner, touches every reporter).
    *Recommendation: leave them for now; revisit when a second real domain
    produces artifacts.*
-3. **Where does a domain declare itself?** `sites/<name>/register.py` already
-   exists and is discovered automatically (`bootstrap/infra.py:59`). Extending
-   its `register()` to also return a session factory and hooks is the smallest
-   possible change — prefer it over a new registration mechanism. Note its
-   current signature takes `screenshots_dir` (see T8).
+3. ~~**Where does a domain declare itself?**~~ **Settled in T8:** in its own
+   `sites/<name>/register.py`, which calls `register_domain()` alongside its
+   action registrations. `register_all_sites` needed no change to find it. The
+   `Domain` must be a module-level constant, not built inside `register()` —
+   see T8.
 4. ~~**Null object or call-site guard for L8?**~~ **Settled in T2:** null
    object. See §5.4.
 
