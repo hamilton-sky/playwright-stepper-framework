@@ -25,7 +25,7 @@ from stepper.engine.interfaces import (
     ActionFactory, ReporterStrategy, ExecutionContext
 )
 from stepper.engine.runner.when_eval import evaluate_when
-from stepper.engine.runner.hooks import StepHook, default_web_hooks
+from stepper.engine.runner.hooks import StepHook
 from stepper.engine.resolvers.null_resolver import NullResolver
 from stepper.engine.browser.human_behaviour import HumanBehaviour
 from stepper.engine.healer.interfaces import HealerStrategy
@@ -119,9 +119,11 @@ class StepRunner:
             non-browser run failed every step with an AttributeError.
 
         hooks
-            Per-step hooks (engine/runner/hooks.py). Omit them and the web pair
-            — CAPTCHA probe before, auto-screenshot after — is used, which is
-            what this loop hard-wired before. Pass [] for none.
+            Per-step hooks (engine/runner/hooks.py). None by default — the
+            runner brings no domain behaviour of its own. The web domain
+            supplies its CAPTCHA probe and auto-screenshot through
+            bootstrap/session.py, which is where every caller in the tree gets
+            them from.
         """
         if action_factory is None:
             raise TypeError("StepRunner requires action_factory=")
@@ -141,10 +143,7 @@ class StepRunner:
             self._screenshots_dir: Path | None = Path(screenshots_dir)
         else:
             self._screenshots_dir = None
-        self._hooks: list[StepHook] = (
-            list(hooks) if hooks is not None
-            else default_web_hooks(self._screenshots_dir)
-        )
+        self._hooks: list[StepHook] = list(hooks) if hooks else []
 
     def add_observer(self, observer: StepObserver):
         self._observers.append(observer)

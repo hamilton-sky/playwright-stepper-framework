@@ -1,7 +1,7 @@
 # Universal Runner — making the stepper domain-free
 
-**Status:** T1 and T2 are implemented. T3–T8 are still proposal, verified
-against the tree at `69d720f`.
+**Status:** T1, T2 and T3 are implemented — the spine is done. T4–T8 are still
+proposal, verified against the tree at `69d720f`.
 
 The goal is that `StepRunner` runs any domain behind an adapter, with the
 browser demoted from "the core" to "the first adapter".
@@ -293,6 +293,12 @@ This plan does not touch the POM layer at all.
 
 Keep them small. Each is one `Protocol`/ABC and one default implementation.
 
+A fourth fell out of T3 and is worth naming here: **`Domain`**
+(`stepper/bootstrap/session.py`) is what the composition root asks for the
+other three. It is a frozen dataclass of factories — `session`, `hooks`,
+`shared` — registered by name, with only `web` registered by default. §5.5
+covers it.
+
 ### 5.1 `SessionAdapter` — replaces the raw page
 
 ```python
@@ -307,6 +313,12 @@ returns a boto3 session. The runner holds the opaque return value and passes it
 through, exactly as it passes `page` today — so `ActionStrategy.execute`'s
 signature does not change, and all 23 existing engine actions keep working
 untouched. (23 verified: `grep -rh "action_name = " stepper/engine/actions/*.py | wc -l`.)
+
+**As landed (T3).** `engine/session.py` carries the contract and `NullSession`
+only. The browser's own adapter is `WebSession` in
+`stepper/bootstrap/session.py` — bootstrap is the composition-root package, and
+keeping the concrete adapter there is what lets the engine stay free of
+Playwright. `open()` returns a `Page`, exactly as sketched.
 
 ### 5.2 `StepHook` — where the unconditional browser calls go
 
@@ -353,6 +365,29 @@ Fix the fail-open bug while you are in there: `when_eval.py:155-157` returns
 have guarded. With a registry, an unregistered condition should be a plan-time
 error, caught by `validate` before any session opens. **See T4 — this is a
 pinned behaviour, not an oversight.**
+
+### 5.5 `Domain` — what the composition root asks
+
+```python
+@dataclass(frozen=True)
+class Domain:
+    name: str
+    session: Callable[..., SessionAdapter]   # (cfg, settings, test_reporter, *, shared)
+    hooks:   Callable[..., list[StepHook]]   # (screenshots_dir)
+    shared:  Callable[..., Any]              # (cfg, settings) -> async CM
+```
+
+`shared` is the one piece the original plan had no place for, and it is not
+invented: `run_data_rows` runs the same workflow once per data row and reuses
+**one** browser across all of them. That is an optimisation the web domain
+offers, not a property of the session contract — so it sits behind a domain
+factory rather than in the runner or in `main.py`. A domain with nothing to
+share uses `no_shared`, which yields `None`.
+
+`register_domain` refuses to replace a domain with a *different* one under a
+name already taken — the same reasoning as `alias()` in `factory.py`, and the
+guard `register()` still lacks (L6, T5). Re-registering the identical `Domain`
+is allowed, so a test can swap one in idempotently.
 
 ### 5.4 What L8 needs — resolver as an optional dependency
 
@@ -463,9 +498,11 @@ that *does* resolve, and `continue_on_failure` — runs against a plain
 resolve pass; the one that does fails with *"This run has no element resolver,
 so 'click submit' cannot be resolved…"* rather than an `AttributeError`.
 
-### T3 — Move the browser bootstrap behind the adapter
+### T3 — Move the browser bootstrap behind the adapter — **LANDED**
 
-**Files:** `stepper/main.py` (`run()`, `open_page()`, `build_pipeline()`)
+**Files:** `stepper/main.py` (`run()`, `open_page()`, `build_pipeline()`,
+`run_data_rows()`), new `stepper/bootstrap/session.py`,
+new `stepper/tests/unit/test_domains.py`
 **Do:** `run()` resolves a `SessionAdapter` by domain and calls `open()`;
 `build_pipeline` takes the session, not a Playwright `Browser` (L4).
 **Accept:** `python stepper/main.py validate` still launches nothing; `run` on
@@ -473,6 +510,33 @@ any existing workflow behaves identically.
 **Risk:** medium-high. This is the composition root; `--show`, `--heal`,
 anti-detection args and the parallel launcher all pass through here. Do it in
 one focused change, not alongside others.
+
+**As landed.** `main.py` no longer names Playwright anywhere. `open_page()` is
+gone — its body is `WebSession.open()`. `build_pipeline` takes a session,
+opens it, and passes the domain's hooks to the `StepRunner`; the caller owns
+closing it. `RunConfig` gained `domain: str = "web"`.
+
+Two things the ticket did not anticipate:
+
+- **`run_data_rows` shares one browser across rows.** A naive "one session per
+  run" would have turned one launch into N. Hence `Domain.shared` (§5.5) and
+  `WebSession(..., shared=browser)`, which owns the context but not the
+  browser. Verified: two rows, one launch.
+- **The T1 fallback had to flip here.** `StepRunner` defaulted to the web hook
+  pair so T1 could land without breaking callers. Now that the composition
+  root supplies them, the default is `[]` — a runner that knows which domain
+  it is running is the thing this seam exists to undo. This is a real
+  behaviour change for anyone constructing a `StepRunner` directly: **omitting
+  `hooks=` used to give you the CAPTCHA gate and auto-screenshots, and now
+  gives you neither.** In-tree, `test_step_runner.py`'s fixture is the only
+  such caller; it now passes `default_web_hooks(screenshots_dir)` and every
+  assertion in that file is unchanged.
+
+**Verified:** 862 unit tests pass, 865 collect across the tree. `validate`
+opens nothing. A real Chromium run through `main.run()` — navigate, fill,
+click, assert_text — passes 4/4 with one browser launch and screenshots from
+the web domain's hook; `run_data_rows` over two rows passes 4/4 twice with
+one launch total.
 
 ### T4 — Condition registry
 
@@ -617,11 +681,12 @@ has a test to invert, and it belongs in the changelog.
 
 ## 9. Open questions to settle before T1
 
-1. **Does a domain own a session, or does a workflow?** Simplest: one session
-   per run, chosen by the workflow's domain. Mixed-domain workflows (a browser
-   step and an AWS step in one file) are a much larger design and should be
-   explicitly out of scope for now — but decide it consciously, because T2's
-   signature depends on the answer.
+1. ~~**Does a domain own a session, or does a workflow?**~~ **Settled in T3:**
+   one session per run, and the domain is named on `RunConfig.domain`
+   (default `"web"`). A run that wants to share something across several
+   sessions — as `run_data_rows` shares a browser — goes through
+   `Domain.shared`, not through a longer-lived session. Mixed-domain workflows
+   stay out of scope.
 2. **`StepResult.screenshot` / `screenshots` are web words on a domain-free
    type** (`interfaces.py:111-112`). Leave them (cheap, harmless) or generalise
    to `artifacts: list[str]` (cleaner, touches every reporter).

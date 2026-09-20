@@ -25,6 +25,7 @@ from stepper.engine.interfaces import (
     StepObserver,
     StepResult,
 )
+from stepper.engine.runner.hooks import default_web_hooks
 from stepper.engine.runner.step_runner import StepRunner
 
 
@@ -120,6 +121,10 @@ def reporter():
 @pytest.fixture
 def make_runner(page, behaviour, reporter):
     def _make(mapping, screenshots_dir=None, **kwargs):
+        # The CAPTCHA gate and the auto-screenshot are the web domain's hooks
+        # now, not the loop's own behaviour. Everything this file asserts about
+        # them is unchanged; only where they come from is.
+        kwargs.setdefault("hooks", default_web_hooks(screenshots_dir))
         return StepRunner(
             page=page,
             action_factory=FakeFactory(mapping),

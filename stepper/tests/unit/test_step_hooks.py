@@ -258,11 +258,23 @@ async def test_an_empty_hook_list_writes_no_screenshot_even_with_a_dir(make_runn
 
 # ── The default pair ──────────────────────────────────────────────────────────
 
-def test_omitting_hooks_installs_the_web_pair(reporter):
+def test_omitting_hooks_installs_none(reporter):
+    """
+    The runner brings no domain behaviour of its own. T1 kept the web pair as
+    the fallback so nothing broke while the composition root still hard-wired
+    a browser; T3 moved that choice to bootstrap/session.py, so the fallback is
+    now what a domain-free runner should have — nothing.
+    """
     runner = StepRunner(page=MagicMock(), action_factory=FakeFactory(PassingAction()),
                         reporter=reporter)
 
-    installed = [type(h) for h in runner._hooks]
+    assert runner._hooks == []
+
+
+def test_the_web_domain_is_where_the_browser_pair_comes_from():
+    from stepper.bootstrap.session import get_domain
+
+    installed = [type(h) for h in get_domain("web").hooks(None)]
 
     assert installed == [CaptchaHook, ScreenshotHook]
 

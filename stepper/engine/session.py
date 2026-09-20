@@ -19,10 +19,11 @@ See docs/universal-runner-plan.md §5.1, ticket T2.
         async def close(self):
             await self._client.aclose()
 
-The browser's adapter is deliberately not here yet — it is still built inline
-in main.run(), which is leak L4 and ticket T3's job. This module carries the
-contract and the null implementation only, so that T2 does not drag the
-composition root along with it.
+The browser's own adapter is not here: it is WebSession in
+stepper/bootstrap/session.py, alongside the domain registry that main.py asks
+for it. This module carries the contract and the null implementation only —
+putting a Playwright-shaped class in the engine is exactly what the plan is
+undoing.
 """
 
 from __future__ import annotations

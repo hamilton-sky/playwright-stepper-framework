@@ -108,9 +108,9 @@ def default_web_hooks(screenshots_dir: Path | None = None) -> list[StepHook]:
     """
     The pair StepRunner used to hard-wire, in the order it ran them.
 
-    StepRunner falls back to these when no hooks are passed, so every existing
-    caller keeps today's behaviour. T3 moves the choice to the composition
-    root, at which point the fallback becomes an empty list and the web domain
-    supplies this explicitly.
+    Registered as the web domain's hooks in bootstrap/session.py, which is how
+    every browser run in the tree gets them. StepRunner itself defaults to no
+    hooks: a runner that knows which domain it is running is the thing this
+    whole seam exists to undo.
     """
     return [CaptchaHook(), ScreenshotHook(screenshots_dir)]
