@@ -1,7 +1,7 @@
 # Universal Runner — making the stepper domain-free
 
-**Status:** proposal, verified against the tree at `69d720f`. Nothing here is
-implemented and no file in this repo has been changed by it.
+**Status:** T1 and T2 are implemented. T3–T8 are still proposal, verified
+against the tree at `69d720f`.
 
 The goal is that `StepRunner` runs any domain behind an adapter, with the
 browser demoted from "the core" to "the first adapter".
@@ -311,14 +311,29 @@ untouched. (23 verified: `grep -rh "action_name = " stepper/engine/actions/*.py 
 ### 5.2 `StepHook` — where the unconditional browser calls go
 
 ```python
-class StepHook(Protocol):
-    async def before(self, session, step: StepConfig) -> None: ...
-    async def after(self, session, step: StepConfig, result: StepResult) -> None: ...
+class StepHook:
+    async def before(self, session, step: StepConfig, idx: int) -> StepResult | None: ...
+    async def after(self, session, step: StepConfig, result: StepResult, idx: int) -> None: ...
 ```
 
 `CaptchaHook.before` is L1. `ScreenshotHook.after` is L2. Both registered only
 by the web domain. Keep swallowing exceptions *inside* the hooks — that
 behaviour is wanted; it just should not be hard-wired into the generic loop.
+
+**As built, two deviations from the sketch above.** Both were forced by what
+the code being moved actually does:
+
+- **`idx` is in the signature.** The auto-screenshot filenames are numbered
+  from the step index (`step_03_click.png`), so a hook that cannot see the
+  index cannot reproduce them. The alternative — a counter inside the hook —
+  is stateful and wrong across the sub-runners the heal path builds.
+- **`before` returns `StepResult | None`.** L1 does not merely observe; it
+  *aborts* the step and substitutes a failure. A hook that can only observe
+  could not carry the CAPTCHA gate, so returning a result aborts and returning
+  None proceeds.
+
+`StepHook` is a plain base class with both halves defaulting to no-ops, rather
+than a Protocol, so a hook that only needs one half writes only one half.
 
 ### 5.3 `ConditionRegistry` — replaces the `when_eval` ladder
 
@@ -356,6 +371,12 @@ Either way, the outcome T2 must produce is the one `flow.py:376` already
 models: a domain that omits an optional dependency and then needs it gets a
 sentence explaining that, not an `AttributeError` multiplied by the retry count.
 
+**Settled: option 1.** `stepper/engine/resolvers/null_resolver.py` holds
+`NullResolver` and `NoResolverError`. `set_context_description()` is a no-op;
+`resolve()` raises and names what was being looked for. It deliberately does
+not subclass `ElementResolver` — inheriting would drag the cascade's imports
+into a domain that is not paying for them.
+
 ---
 
 ## 6. Work plan
@@ -372,9 +393,10 @@ T7 is new and must land before T8, which is the receipt.
         T7 ─────────────┘          T7 is a hard prerequisite for T8
 ```
 
-### T1 — Extract the per-step browser calls into hooks
+### T1 — Extract the per-step browser calls into hooks — **LANDED**
 
-**Files:** `stepper/engine/runner/step_runner.py`, new `stepper/engine/runner/hooks.py`
+**Files:** `stepper/engine/runner/step_runner.py`, new `stepper/engine/runner/hooks.py`,
+new `stepper/tests/unit/test_step_hooks.py`
 **Do:** define `StepHook`; move L1 and L2 into `CaptchaHook` / `ScreenshotHook`;
 `StepRunner` takes `hooks: list[StepHook] | None = None` and calls them around
 `action.execute`.
@@ -385,9 +407,32 @@ in the same places.
 produced one" check (`step_runner.py:222`, `not result.screenshot and not
 step.skip_screenshot`) must move together — read them carefully before cutting.
 
-### T2 — `SessionAdapter`, and make resolver genuinely optional
+**As landed.** `StepHook`, `CaptchaHook`, `ScreenshotHook` and
+`default_web_hooks()` are in `hooks.py`; `StepRunner` takes `hooks=` and falls
+back to the web pair when none is given, so every existing caller keeps today's
+behaviour and the existing tests pin it unchanged. Hooks propagate into the
+sub-runners the heal path builds, so a domain's choice survives healing. A hook
+that raises is logged through `log_swallowed` and skipped — a broken hook must
+not take the run down.
 
-**Files:** `stepper/engine/runner/step_runner.py`, new `stepper/engine/session.py`
+Two visible changes, neither asserted by any test:
+
+- The abort log line moved from `✗ CAPTCHA wall hit at step 1 — stopping` to
+  `✗ Step 1 stopped before it ran — CAPTCHA detected before step …`. The runner
+  no longer knows the word CAPTCHA; the hook's own error text carries it, and
+  the line is now longer and more specific.
+- `step_runner` no longer imports `AntiDetection` at all — `CaptchaHook`
+  imports it lazily, inside `before`.
+
+**Verified:** 809 unit tests pass unmodified, plus 16 new ones. A real
+Chromium run over navigate / fill / click / assert_text / a missing element
+produced all five screenshots with unchanged names and numbering.
+
+### T2 — `SessionAdapter`, and make resolver genuinely optional — **LANDED**
+
+**Files:** `stepper/engine/runner/step_runner.py`, new `stepper/engine/session.py`,
+new `stepper/engine/resolvers/null_resolver.py`,
+new `stepper/tests/unit/test_domain_free_runner.py`
 **Do:** define `SessionAdapter`; change `StepRunner.__init__` to accept `session`
 and `resolver: object | None = None` (L3). **And fix L8** — apply §5.4, because
 widening the signature without it makes every step fail. Keep the attribute name
@@ -397,6 +442,26 @@ actions that do not use the resolver, and every step reports `passed` — not a
 laundered `AttributeError`. An action that *does* need a resolver fails with a
 sentence naming the missing dependency.
 **Risk:** medium. L8 is the whole ticket; the signature change is the easy half.
+
+**As landed.** `session.py` carries the `SessionAdapter` Protocol and
+`NullSession`; the browser's adapter is still built inline in `main.run()`,
+which is T3's job. `StepRunner` accepts `session=` as an alias for `page=`
+— `page` keeps working and the internal attribute is still `_page`, so the
+rename stays T8's. `resolver=` is optional and defaults to `NullResolver`.
+The typed `ElementResolver | ShadowRunner` annotation is gone (L3), and with
+it the module-level `element_resolver` import.
+
+One signature change worth knowing about: `reporter` and `resolver` swapped
+positions, because a parameter cannot take a default while a required one
+follows it. Every call site in the tree passes these by keyword, so nothing
+broke; a positional caller outside the tree would. `action_factory` and
+`reporter` stay mandatory and now raise `TypeError` naming themselves.
+
+**Verified:** a five-step workflow — counters, two `when` branches, an action
+that *does* resolve, and `continue_on_failure` — runs against a plain
+`object()` session with `resolver` omitted and `hooks=[]`. Steps that do not
+resolve pass; the one that does fails with *"This run has no element resolver,
+so 'click submit' cannot be resolved…"* rather than an `AttributeError`.
 
 ### T3 — Move the browser bootstrap behind the adapter
 
@@ -567,8 +632,8 @@ has a test to invert, and it belongs in the changelog.
    its `register()` to also return a session factory and hooks is the smallest
    possible change — prefer it over a new registration mechanism. Note its
    current signature takes `screenshots_dir` (see T8).
-4. **Null object or call-site guard for L8?** §5.4 recommends the null object.
-   Settle it before T2, not during.
+4. ~~**Null object or call-site guard for L8?**~~ **Settled in T2:** null
+   object. See §5.4.
 
 ---
 
