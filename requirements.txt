@@ -1,4 +1,10 @@
-playwright==1.58.0
+# 1.56.0 bundles chromium r1194 / ffmpeg r1011, which is what the Claude Code
+# web containers ship prebuilt in /opt/pw-browsers. 1.58 wants chromium r1208,
+# so every run there died at launch asking for `playwright install` — which
+# those containers cannot do. If you bump this, check the new chromium
+# revision against that image, or set BROWSER_EXECUTABLE_PATH (see
+# poms/shared/driver.py) to point at whatever browser is actually present.
+playwright==1.56.0
 python-dotenv>=1.0.0
 PyYAML==6.0.3
 pytest==9.0.2

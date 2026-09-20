@@ -96,6 +96,12 @@ python stepper/main.py validate
 # the embed-direct rung calls no provider. --no-heal-cache is what makes this a
 # measurement rather than a replay of the committed heal_cache.json.
 python stepper/main.py run sd_heal_test --heal 2 --no-heal-cache --show
+
+# Run against a browser Playwright did not download for itself. Needed when the
+# machine ships a prebuilt chromium of a different revision than the pinned
+# playwright expects — the launch otherwise dies asking for `playwright install`.
+# requirements.txt pins the matching version; this is the escape hatch.
+BROWSER_EXECUTABLE_PATH=/opt/pw-browsers/chromium python stepper/main.py run ol_smoke_test
 ```
 
 All three entry points land in the same `main()`:

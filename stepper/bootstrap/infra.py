@@ -34,11 +34,22 @@ def build_resolver(use_visual_ai: bool):
 
 
 async def launch_browser(pw, cfg_browser: str, headless: bool, slow_mo: int):
+    """
+    Launch the configured browser.
+
+    BROWSER_EXECUTABLE_PATH overrides the binary Playwright would pick — see
+    poms.shared.driver.browser_launch_kwargs for when that is needed. It is
+    applied as given, so point it at a binary of the same family as
+    `cfg_browser`.
+    """
+    from poms.shared.driver import browser_launch_kwargs
+
     launchers = {"chromium": pw.chromium, "firefox": pw.firefox, "webkit": pw.webkit}
     return await launchers.get(cfg_browser, pw.chromium).launch(
         headless=headless,
         slow_mo=slow_mo,
         args=["--disable-blink-features=AutomationControlled"],
+        **browser_launch_kwargs(),
     )
 
 
