@@ -1,0 +1,23 @@
+{
+  "name": "noop — domain-free smoke test",
+  "description": "Proves the engine runs a workflow with no browser, no resolver and no POMs. Run it with: python stepper/main.py run noop_smoke",
+  "domain": "noop",
+  "steps": [
+    {
+      "action": "noop_set",
+      "description": "store a count",
+      "extra": { "key": "widgets", "value": 3 }
+    },
+    {
+      "action": "noop_echo",
+      "description": "read the count back",
+      "extra": { "key": "widgets" }
+    },
+    {
+      "action": "noop_echo",
+      "description": "skipped unless there are more than ten widgets",
+      "when": { "context_greater_than": { "key": "widgets", "value": 10 } },
+      "extra": { "key": "widgets" }
+    }
+  ]
+}

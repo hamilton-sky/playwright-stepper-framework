@@ -4,7 +4,6 @@ from pathlib import Path
 
 import pytest
 import pytest_asyncio
-from playwright.async_api import async_playwright
 
 # `stepper` and `poms` resolve through the installed package
 # (`pip install -e .`). This one entry lets the suite also run straight from a
@@ -99,7 +98,18 @@ def pytest_generate_tests(metafunc):
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session") # Add loop_scope here
 async def stepper_browser(request):
-    """One browser for the entire test session."""
+    """
+    One browser for the entire test session.
+
+    async_playwright is imported here rather than at module scope on purpose.
+    pytest loads every ancestor conftest, so a top-level import put Playwright
+    into sys.modules before any unit test ran — which made the unit suite
+    uncollectable without the package installed, and made the one assertion
+    the domain-free work is aimed at ("playwright" not in sys.modules)
+    impossible to write. See docs/universal-runner-plan.md, leak L10.
+    """
+    from playwright.async_api import async_playwright
+
     try:
         settings    = load_settings()
         slow_mo     = settings.slow_mo_ms

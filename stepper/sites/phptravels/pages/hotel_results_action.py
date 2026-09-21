@@ -84,6 +84,4 @@ class PTHotelResultsPage(PageModule):
 
     @classmethod
     def register(cls, registry) -> None:
-        action = cls.PTSelectHotelAction()
-        registry.register(action)
-        logger.debug("Registered action: %s", action.action_name)
+        cls.register_actions(registry, cls.PTSelectHotelAction())

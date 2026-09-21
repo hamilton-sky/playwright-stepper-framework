@@ -1,7 +1,13 @@
 """
 shared/driver.py — Playwright isolation wrapper.
 
-This is the ONLY file in the automation module that imports from playwright.
+This is the ONLY file in the automation module that imports from playwright,
+and it does so lazily: `Page` and `ElementHandle` are annotations, so they sit
+under TYPE_CHECKING, and `async_playwright` is imported inside the one method
+that launches anything. Importing this module therefore costs no browser —
+which is what lets a run with no browser in it prove that, by asserting
+"playwright" never lands in sys.modules.
+
 All page objects, auth, and performance code depend on IBrowserDriver (interface),
 not on Playwright's Page directly.
 
@@ -12,12 +18,53 @@ Pattern: Adapter
 
 from __future__ import annotations
 
+import logging
+import os
 from pathlib import Path
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
-from playwright.async_api import Page, ElementHandle
+if TYPE_CHECKING:                       # annotations only — see module docstring
+    from playwright.async_api import Page, ElementHandle
 
 from poms.shared.interfaces import IBrowserDriver, IBrowserLauncher, IElementHandle
+
+logger = logging.getLogger(__name__)
+
+#: Env var pointing at a browser binary to use instead of the one Playwright
+#: downloaded for itself.
+_EXECUTABLE_PATH_VAR = "BROWSER_EXECUTABLE_PATH"
+
+
+def browser_launch_kwargs() -> dict:
+    """
+    Extra kwargs for browser_type.launch(), empty unless an override is set.
+
+    Playwright refuses to launch unless the exact chromium revision its version
+    expects is on disk. That is usually what you want — but a prebuilt
+    container often ships one specific revision and no way to download another,
+    so a version bump here turns every run there into "please run playwright
+    install", which is the one thing that image cannot do.
+
+    requirements.txt pins the version whose revision matches the image we run
+    in. This is the escape hatch for when it does not:
+
+        BROWSER_EXECUTABLE_PATH=/opt/pw-browsers/chromium python stepper/main.py run ...
+
+    A path that does not exist is ignored with a warning rather than failing the
+    launch, so a stale value in someone's .env degrades to the normal behaviour
+    instead of breaking every run.
+    """
+    raw = os.environ.get(_EXECUTABLE_PATH_VAR, "").strip()
+    if not raw:
+        return {}
+    if not Path(raw).exists():
+        logger.warning(
+            "%s=%s does not exist — falling back to Playwright's own browser",
+            _EXECUTABLE_PATH_VAR, raw,
+        )
+        return {}
+    logger.info("Using browser executable %s (%s)", raw, _EXECUTABLE_PATH_VAR)
+    return {"executable_path": raw}
 
 
 class PlaywrightElementHandle(IElementHandle):
@@ -138,7 +185,8 @@ class PlaywrightBrowserLauncher(IBrowserLauncher):
     async def create_page(self) -> tuple[Any, Any]:
         from playwright.async_api import async_playwright
         pw = await async_playwright().start()
-        browser = await pw.chromium.launch(headless=self._headless)
+        browser = await pw.chromium.launch(headless=self._headless,
+                                           **browser_launch_kwargs())
         ctx_kwargs: dict = {}
         if self._storage_state_path and self._storage_state_path.exists():
             ctx_kwargs["storage_state"] = str(self._storage_state_path)

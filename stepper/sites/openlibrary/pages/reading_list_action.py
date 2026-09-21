@@ -235,17 +235,10 @@ class OLReadingListPage(PageModule):
 
     @classmethod
     def register(cls, registry) -> None:
-        actions = [
+        cls.register_actions(
+            registry,
             cls.OLClearReadingListAction(),
             cls.OLStoreCountAction(),
             cls.OLAssertCountAction(),
             cls.OLEnsureCountAction(),
-        ]
-        for action in actions:
-            if not action.action_name.startswith(cls.site + "_"):
-                raise ValueError(
-                    f"{action.__class__.__name__}.action_name must start with "
-                    f"'{cls.site}_', got '{action.action_name}'"
-                )
-            registry.register(action)
-            logger.debug(f"Registered page action: {action.action_name}")
+        )

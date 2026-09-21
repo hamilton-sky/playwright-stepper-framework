@@ -59,23 +59,40 @@ one is a `TypeError` at the call site rather than a silently degraded run.
 
 ### Registration
 
-Actions are registered by **instance**, keyed off `action_name`:
+Actions are registered by **instance**, through `PageModule.register_actions()`:
 
 ```python
-registry.register(cls.MyAction())        # ActionRegistry.register(action) -> self
+@classmethod
+def register(cls, registry) -> None:
+    cls.register_actions(registry, cls.MyAction(), cls.MyOtherAction())
 ```
 
-`register()` is fluent, so calls chain. Each site's `stepper/sites/<site>/register.py`
-calls `register(registry)` on every PageModule in that site; `main.py` calls that once
-at startup.
+`register_actions` checks the naming rule once and then registers. Use it rather
+than `registry.register()` directly — the check used to be hand-copied into three
+of OpenLibrary's register() methods and missing from the other ten.
+
+Each site's `stepper/sites/<site>/register.py` calls `register(registry)` on every
+PageModule in that site; `main.py` calls that once at startup.
 
 `action_name` must match the `"action"` key in workflow JSON, and must start with
-`f"{site}_"`. The one exception in the tree is `OLSearchPage`, whose action is
-registered as `collect_items` and additionally aliased to `ol_collect_books`:
+`f"{site}_"`. `ActionRegistry.register()` also refuses a name another action
+already holds — one flat namespace across every site means a collision would
+otherwise just overwrite, and the only symptom is a workflow running the wrong
+site's action.
+
+The one exception in the tree is `OLSearchPage`, whose action is registered as
+`collect_items` and additionally aliased to `ol_collect_books`. A deliberate
+exception is declared on the class, so the rule and its hole live together:
 
 ```python
-registry.register(action)
-registry.alias("ol_collect_books", action.action_name)
+class OLSearchPage(PageModule):
+    site = "ol"
+    unprefixed_actions = frozenset({"collect_items"})   # predates the convention
+
+    @classmethod
+    def register(cls, registry) -> None:
+        action, = cls.register_actions(registry, cls.OLCollectBooksAction())
+        registry.alias("ol_collect_books", action.action_name)
 ```
 
 `alias()` binds a second name to the *same instance*, and refuses to point at an
@@ -98,6 +115,8 @@ Every site's `config.py` exposes `load_settings()`. (Older docs said `get_settin
 ### What glue files must NOT do
 
 - No raw Playwright selectors (no `page.locator("#foo")` directly)
+- No importing `PlaywrightDriver` yourself — `self._driver(page)` builds whatever
+  adapter the run is configured with (`set_driver_factory` in `glue_action.py`)
 - No flow control beyond what a single action needs
 - No imports from `stepper/sites/*/workflows/` — flows depend on glue, not the reverse
 - Never construct POMs without `page=`, `resolver=` and `behaviour=`

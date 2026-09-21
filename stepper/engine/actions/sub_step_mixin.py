@@ -56,8 +56,27 @@ class SubStepRunnerMixin:
       _run_sub_steps() — apply substitutions, evaluate `when` conditions,
                          dispatch each sub-step through the action factory.
 
-    Requires the host class to expose self._factory (ActionFactory).
+    Requires the host class to expose self._factory (ActionFactory). A host may
+    also expose self._conditions (ConditionRegistry) to give its sub-steps the
+    same `when` vocabulary the run was built with; without one, sub-steps get
+    the core conditions only.
     """
+
+    #: Hosts set this in __init__ or through set_conditions(). None means
+    #: "core conditions only".
+    _conditions = None
+
+    def set_conditions(self, conditions) -> "SubStepRunnerMixin":
+        """
+        Late-bind the run's `when` vocabulary.
+
+        A domain's conditions are only knowable once its site has registered,
+        and sites register into a registry that already holds these actions —
+        so the composition root sets them here afterwards rather than at
+        construction. See main.build_action_registry.
+        """
+        self._conditions = conditions
+        return self
 
     async def _run_sub_steps(
         self,
@@ -94,7 +113,9 @@ class SubStepRunnerMixin:
             # Evaluate `when` condition before running the sub-step
             if sub_cfg.when:
                 try:
-                    should_run = await evaluate_when(sub_cfg.when, context, page)
+                    should_run = await evaluate_when(
+                        sub_cfg.when, context, page, conditions=self._conditions
+                    )
                 except Exception as e:
                     logger.warning(
                         "_run_sub_steps when-eval error: %s — sub-step will run", e

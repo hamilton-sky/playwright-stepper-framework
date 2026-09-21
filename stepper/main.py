@@ -33,11 +33,12 @@ if _repo_root not in sys.path:
     sys.path.insert(0, _repo_root)
 
 from stepper.bootstrap.settings  import load_env, load_settings_safe
-from stepper.bootstrap.infra     import build_resolver, launch_browser, register_all_sites
+from stepper.bootstrap.infra     import build_resolver, register_all_sites
 from stepper.bootstrap.reporting import build_reporters, serve_allure
+from stepper.bootstrap.session   import get_domain
 
-from stepper.engine.browser.anti_detection import AntiDetection
 from stepper.engine.actions.factory      import build_default_registry
+from stepper.engine.actions.sub_step_mixin import SubStepRunnerMixin
 from stepper.engine.planner.validator    import PlanValidator
 from stepper.engine.actions.strategies   import RunWorkflowAction
 from stepper.engine.runner.step_runner   import StepRunner, LoggingObserver
@@ -45,6 +46,36 @@ from stepper.engine.runner.step_runner   import StepRunner, LoggingObserver
 logger = logging.getLogger(__name__)
 
 _stepper_root = Path(__file__).resolve().parent
+
+
+def _workflow_domain(workflow_path: str | None) -> str | None:
+    """
+    The domain a workflow file declares, or None if it declares none.
+
+    A workflow says which kind of session it needs with a top-level
+    ``"domain"`` key; everything shipped omits it and gets "web". Read
+    defensively — this runs before the planner has validated anything, and a
+    malformed file should fail with the planner's error, not this one.
+    """
+    if not workflow_path:
+        return None
+    try:
+        raw = json.loads(Path(workflow_path).read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    if isinstance(raw, dict):
+        declared = raw.get("domain")
+        if isinstance(declared, str) and declared:
+            return declared
+    return None
+
+
+def _with_workflow_domain(cfg: RunConfig) -> RunConfig:
+    """Let the workflow's own ``domain`` key decide which session opens."""
+    declared = _workflow_domain(cfg.workflow_path)
+    if declared is None or declared == cfg.domain:
+        return cfg
+    return replace(cfg, domain=declared)
 
 
 def _extract_site(workflow_path: str | None) -> str:
@@ -125,6 +156,9 @@ class RunConfig:
     shadow: bool = False
     ci: bool = False
     ci_output: str | None = None
+    #: Which domain opens this run's session. Every shipped site is a browser
+    #: site; a non-web workflow names its own. See bootstrap/session.py.
+    domain: str = "web"
 
     def __post_init__(self) -> None:
         if not self.workflow_path and not self.task:
@@ -190,12 +224,14 @@ class PreparedRun:
 
 @dataclass
 class Pipeline:
-    """A prepared run bound to a live page — ready to execute, not yet executed."""
+    """A prepared run bound to an open session — ready to execute, not yet executed."""
 
     prepared: PreparedRun
     runner: StepRunner
     context: Any
     page: Any
+    #: The adapter that opened it. Closing the pipeline means closing this.
+    session: Any = None
 
     @property
     def cfg(self) -> RunConfig:
@@ -267,6 +303,15 @@ def build_action_registry(cfg: RunConfig, settings, screenshots_dir: Path):
         browser_launcher=launcher,
     )
     register_all_sites(registry, _stepper_root, screenshots_dir=screenshots_dir)
+
+    # Only now does cfg.domain resolve: a domain is registered by its own
+    # site's register.py, which register_all_sites has just run. Sub-steps
+    # inside for_each / ensure_login get the same `when` vocabulary as
+    # top-level steps.
+    conditions = get_domain(cfg.domain).conditions()
+    for _name, action in registry.items():
+        if isinstance(action, SubStepRunnerMixin):
+            action.set_conditions(conditions)
     return registry
 
 
@@ -326,7 +371,7 @@ def build_validated_registry(cfg: RunConfig, settings, screenshots_dir: Path, st
     subflow_action = RunWorkflowAction(base_dir=cfg.base_dir)
     registry.register(subflow_action)
 
-    PlanValidator.validate(steps, registry)
+    PlanValidator.validate(steps, registry, get_domain(cfg.domain).conditions())
     return registry, subflow_action
 
 
@@ -357,6 +402,7 @@ def prepare_run(cfg: RunConfig, resolver=None) -> PreparedRun:
     any expensive resource is opened — and a caller that only wants to check a
     plan can stop after this call.
     """
+    cfg      = _with_workflow_domain(cfg)
     steps    = plan_steps(cfg)
     settings = build_settings(cfg)
 
@@ -383,38 +429,32 @@ def prepare_run(cfg: RunConfig, resolver=None) -> PreparedRun:
     )
 
 
-async def open_page(cfg: RunConfig, browser, settings, test_reporter):
-    """Create the browser context and page, with session, video and stealth applied."""
-    context_kwargs: dict = {"viewport": {"width": 1280, "height": 800}}
-    context_kwargs.update(AntiDetection.context_kwargs())
-
-    if settings.storage_state_path and Path(str(settings.storage_state_path)).exists():
-        context_kwargs["storage_state"] = str(settings.storage_state_path)
-        logger.info(f"Loaded session from {settings.storage_state_path}")
-
-    if cfg.record_video and test_reporter and test_reporter.manager.current_test_dir:
-        videos_dir = test_reporter.manager.current_test_dir / "videos"
-        videos_dir.mkdir(parents=True, exist_ok=True)
-        context_kwargs["record_video_dir"]  = str(videos_dir)
-        context_kwargs["record_video_size"] = {"width": 1280, "height": 800}
-        logger.info(f"Recording video → {videos_dir}")
-
-    context = await browser.new_context(**context_kwargs)
-    page    = await context.new_page()
-    await AntiDetection.apply_page_patches(page)
-    return context, page
-
-
-async def build_pipeline(prepared: PreparedRun, browser, observers=None) -> Pipeline:
+def build_session(prepared: PreparedRun, shared=None):
     """
-    Bind a prepared run to a live page.
+    Ask this run's domain for an unopened session.
 
-    Split out of run() so callers that are not the CLI — a test, a server, a UI —
-    can hold the runner and page and drive them directly. `observers` are added
-    alongside the default LoggingObserver, which is how a UI streams step events.
+    Building it is free — nothing is launched until build_pipeline opens it —
+    so a caller can decide on a domain without paying for it.
     """
     cfg = prepared.cfg
-    context, page = await open_page(cfg, browser, prepared.settings, prepared.test_reporter)
+    return get_domain(cfg.domain).session(
+        cfg, prepared.settings, prepared.test_reporter, shared=shared,
+    )
+
+
+async def build_pipeline(prepared: PreparedRun, session, observers=None) -> Pipeline:
+    """
+    Open a session and bind a prepared run to it.
+
+    Split out of run() so callers that are not the CLI — a test, a server, a UI —
+    can hold the runner and drive it directly. `observers` are added alongside
+    the default LoggingObserver, which is how a UI streams step events.
+
+    The caller owns the session's lifetime: this opens it, and whoever passed it
+    in is responsible for `await session.close()`.
+    """
+    cfg    = prepared.cfg
+    target = await session.open()
 
     heal_cache = None
     if cfg.workflow_path and cfg.use_heal_cache:
@@ -424,7 +464,7 @@ async def build_pipeline(prepared: PreparedRun, browser, observers=None) -> Pipe
         logger.info("⚕ Heal cache disabled — every heal goes through the cascade")
 
     runner = StepRunner(
-        page=page,
+        session=target,
         action_factory=prepared.registry,
         resolver=prepared.resolver,
         reporter=prepared.reporter,
@@ -432,6 +472,8 @@ async def build_pipeline(prepared: PreparedRun, browser, observers=None) -> Pipe
         healer=build_healer(cfg, prepared.registry),
         max_heal_attempts=cfg.max_heal_attempts,
         cache=heal_cache,
+        hooks=get_domain(cfg.domain).hooks(prepared.screenshots_dir),
+        conditions=get_domain(cfg.domain).conditions(),
     )
     runner.add_observer(LoggingObserver())
     for observer in observers or ():
@@ -439,7 +481,9 @@ async def build_pipeline(prepared: PreparedRun, browser, observers=None) -> Pipe
 
     prepared.subflow_action.bind(runner.run)
 
-    return Pipeline(prepared=prepared, runner=runner, context=context, page=page)
+    return Pipeline(prepared=prepared, runner=runner,
+                    context=getattr(session, "context", None),
+                    page=target, session=session)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -533,14 +577,20 @@ async def run(
     """
     Plan, assemble and execute one run — the whole pipeline end to end.
 
-    Launches its own browser and closes it. Callers needing finer control — a
-    shared browser, step-event streaming, validation without a browser — use the
-    pieces directly:
+    Opens this run's session and closes it. Which session that is comes from
+    the domain named on the RunConfig; for every shipped site that is "web",
+    and opening it is what launches the browser. Callers needing finer control
+    — a shared session, step-event streaming, validation without opening
+    anything — use the pieces directly:
 
-        steps    = validate_plan(cfg)               # no browser at all
+        steps    = validate_plan(cfg)               # opens nothing at all
         prepared = prepare_run(cfg)
-        pipeline = await build_pipeline(prepared, browser, observers=[my_observer])
-        results  = await execute_pipeline(pipeline)
+        session  = build_session(prepared)
+        pipeline = await build_pipeline(prepared, session, observers=[my_observer])
+        try:
+            results = await execute_pipeline(pipeline)
+        finally:
+            await session.close()
     """
     cfg = RunConfig(
         workflow_path=workflow_path,
@@ -558,23 +608,16 @@ async def run(
     # Plan and validate before anything expensive is opened.
     prepared = prepare_run(cfg, resolver=resolver)
 
-    async_playwright = AntiDetection.get_playwright()
-    pw_instance = await async_playwright().start()
-    browser = await launch_browser(pw_instance, prepared.settings.browser,
-                                   cfg.headless, prepared.settings.slow_mo)
-
+    # Nothing is launched until build_pipeline opens the session, and closing it
+    # is what flushes a recorded video — so it has to happen even when the run
+    # raised, and even when build_pipeline itself did.
+    session = build_session(prepared)
     try:
         with _tee_logs_to_run_file(prepared.test_reporter):
-            pipeline = await build_pipeline(prepared, browser, observers=observers)
-            try:
-                results = await execute_pipeline(pipeline)
-            finally:
-                # Closing the context flushes any recorded video, so it has to
-                # happen even when the run raised.
-                await pipeline.context.close()
+            pipeline = await build_pipeline(prepared, session, observers=observers)
+            results = await execute_pipeline(pipeline)
     finally:
-        await browser.close()
-        await pw_instance.stop()
+        await session.close()
 
     if cfg.allure_serve:
         serve_allure(_stepper_root)
@@ -662,32 +705,33 @@ def apply_heals(workflow_path: Path, auto_yes: bool) -> None:
 
 async def run_data_rows(cfg: RunConfig, rows: list[dict], cli_vars: dict) -> None:
     """
-    Run one workflow once per data row, reusing a single browser.
+    Run one workflow once per data row, reusing whatever the domain can share.
 
-    Each row gets its own context and its own report directory; the browser and
-    the resolver are built once for the whole set.
+    Each row gets its own session and its own report directory; the shared
+    resource and the resolver are built once for the whole set. For the web
+    domain "shared" is one browser, so a hundred rows cost one launch and a
+    hundred contexts — which is what this function existed to do.
     """
+    cfg      = _with_workflow_domain(cfg)
     settings = build_settings(cfg)
     resolver = build_resolver(settings.use_visual_ai)
+    domain   = get_domain(cfg.domain)
 
-    async_playwright = AntiDetection.get_playwright()
-    async with async_playwright() as pw:
-        browser = await launch_browser(pw, settings.browser, cfg.headless, settings.slow_mo)
-        try:
-            for i, row in enumerate(rows, 1):
-                merged = {**row, **cli_vars}
-                logger.info(f"[data-driven] row {i}/{len(rows)}: {merged}")
+    async with domain.shared(cfg, settings) as shared:
+        for i, row in enumerate(rows, 1):
+            merged = {**row, **cli_vars}
+            logger.info(f"[data-driven] row {i}/{len(rows)}: {merged}")
 
-                row_cfg  = replace(cfg, variables=merged, allure_serve=False)
-                prepared = prepare_run(row_cfg, resolver=resolver)
-                with _tee_logs_to_run_file(prepared.test_reporter):
-                    pipeline = await build_pipeline(prepared, browser)
-                    try:
-                        await execute_pipeline(pipeline)
-                    finally:
-                        await pipeline.context.close()
-        finally:
-            await browser.close()
+            row_cfg  = replace(cfg, variables=merged, allure_serve=False)
+            prepared = prepare_run(row_cfg, resolver=resolver)
+            session  = build_session(prepared, shared=shared)
+            with _tee_logs_to_run_file(prepared.test_reporter):
+                try:
+                    pipeline = await build_pipeline(prepared, session)
+                    await execute_pipeline(pipeline)
+                finally:
+                    # Closes this row's context; the shared browser outlives it.
+                    await session.close()
 
 
 def main() -> None:

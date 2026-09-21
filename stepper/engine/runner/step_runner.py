@@ -16,7 +16,6 @@ import asyncio
 import logging
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import copy
 import dataclasses
@@ -25,12 +24,9 @@ from stepper.engine.interfaces import (
     StepConfig, StepResult, StepObserver,
     ActionFactory, ReporterStrategy, ExecutionContext
 )
-from stepper.engine.resolvers.element_resolver import ElementResolver
-
-if TYPE_CHECKING:
-    from stepper.engine.resolvers.shadow_runner import ShadowRunner
-from stepper.engine.runner.when_eval import evaluate_when
-from stepper.engine.browser.anti_detection import AntiDetection
+from stepper.engine.runner.when_eval import ConditionRegistry, core_conditions
+from stepper.engine.runner.hooks import StepHook
+from stepper.engine.resolvers.null_resolver import NullResolver
 from stepper.engine.browser.human_behaviour import HumanBehaviour
 from stepper.engine.healer.interfaces import HealerStrategy
 from stepper.engine.healer.dom_snapshot import DOMSnapshotCascade
@@ -96,19 +92,54 @@ class StepRunner:
 
     def __init__(
         self,
-        page,
-        action_factory: ActionFactory,
-        resolver: ElementResolver | ShadowRunner,
-        reporter: ReporterStrategy,
+        page=None,
+        action_factory: ActionFactory | None = None,
+        reporter: ReporterStrategy | None = None,
+        resolver=None,
         screenshots_dir: Path | None = None,
         behaviour: HumanBehaviour | None = None,
         healer: HealerStrategy | None = None,
         max_heal_attempts: int = 0,
         cache: HealCache | None = None,
+        hooks: list[StepHook] | None = None,
+        session=None,
+        conditions: ConditionRegistry | None = None,
     ):
-        self._page            = page
+        """
+        page / session
+            The thing actions act on. `page` is the historical name and still
+            works; `session` is the same slot under the name a non-web domain
+            would use. The runner never inspects it — see engine/session.py.
+            The internal attribute stays _page until T3 moves the bootstrap.
+
+        resolver
+            Optional. A domain with no elements to find passes nothing and gets
+            a NullResolver: descriptions go nowhere, and an action that tries to
+            resolve one raises NoResolverError naming what it wanted. It used to
+            be a required ElementResolver | ShadowRunner, which is why a
+            non-browser run failed every step with an AttributeError.
+
+        hooks
+            Per-step hooks (engine/runner/hooks.py). None by default — the
+            runner brings no domain behaviour of its own. The web domain
+            supplies its CAPTCHA probe and auto-screenshot through
+            bootstrap/session.py, which is where every caller in the tree gets
+            them from.
+
+        conditions
+            The `when` vocabulary this run understands. Core predicates only by
+            default; the web domain adds url_contains and element_exists
+            through the same route as its hooks. An unregistered condition
+            raises rather than quietly running the step it was meant to guard.
+        """
+        if action_factory is None:
+            raise TypeError("StepRunner requires action_factory=")
+        if reporter is None:
+            raise TypeError("StepRunner requires reporter=")
+
+        self._page            = page if page is not None else session
         self._factory         = action_factory
-        self._resolver        = resolver
+        self._resolver        = resolver if resolver is not None else NullResolver()
         self._reporter        = reporter
         self._behaviour       = behaviour or HumanBehaviour()
         self._healer          = healer
@@ -119,6 +150,8 @@ class StepRunner:
             self._screenshots_dir: Path | None = Path(screenshots_dir)
         else:
             self._screenshots_dir = None
+        self._hooks: list[StepHook] = list(hooks) if hooks else []
+        self._conditions = conditions if conditions is not None else core_conditions()
 
     def add_observer(self, observer: StepObserver):
         self._observers.append(observer)
@@ -136,7 +169,9 @@ class StepRunner:
             # Evaluate `when` condition — skip if false
             if step.when:
                 try:
-                    should_run = await evaluate_when(step.when, ctx, self._page)
+                    should_run = await self._conditions.evaluate(
+                        step.when, ctx, self._page
+                    )
                 except Exception as e:
                     logger.warning(f"Step {idx+1} when-eval error: {e} — step will run")
                     should_run = True
@@ -190,15 +225,21 @@ class StepRunner:
         # so JSON can write "limit": "{{gap}}" and get the runtime value.
         step = _resolve_count_vars(step, ctx)
 
-        # Pre-step CAPTCHA check — fail fast with a clear message
-        captcha = await AntiDetection.detect_captcha(self._page)
-        if captcha:
-            result = StepResult(
-                step=step, status="failed",
-                error=f"CAPTCHA detected before step — manual intervention required ({captcha})"
-            )
-            self._notify_log(f"✗ CAPTCHA wall hit at step {idx+1} — stopping", "error")
-            return result, [], ctx
+        # Pre-step hooks. Any may abort the step by returning a result — the
+        # web domain's CaptchaHook is the one that does. A hook that raises is
+        # logged and ignored: a broken hook must not take the run down.
+        for hook in self._hooks:
+            try:
+                aborted = await hook.before(self._page, step, idx)
+            except Exception as _e:
+                log_swallowed(f"StepRunner[{type(hook).__name__}.before, step {idx+1}]",
+                              _e, logger)
+                continue
+            if aborted is not None:
+                self._notify_log(
+                    f"✗ Step {idx+1} stopped before it ran — {aborted.error}", "error"
+                )
+                return aborted, [], ctx
 
         # Inter-step human-like pause (jittered)
         await self._behaviour.inter_step_delay()
@@ -217,16 +258,14 @@ class StepRunner:
         ):
             result, step_suggestions, ctx = await self._run_heal_loop(idx, step, steps, result, ctx)
 
-        # Auto-screenshot: capture page state after each step if the action
-        # didn't already produce one. Framework-level — no POM dependency.
-        if self._screenshots_dir and not result.screenshot and not step.skip_screenshot:
+        # Post-step hooks. They see the final result — after retries and after
+        # the heal loop — and may amend it; ScreenshotHook attaches its path here.
+        for hook in self._hooks:
             try:
-                safe_action = step.action.replace("/", "_").replace("\\", "_")
-                shot_path = self._screenshots_dir / f"step_{idx+1:02d}_{safe_action}.png"
-                await self._page.screenshot(path=str(shot_path), full_page=False)
-                result.screenshot = str(shot_path)
+                await hook.after(self._page, step, result, idx)
             except Exception as _e:
-                log_swallowed(f"StepRunner._run_step[auto-screenshot, step {idx+1}]", _e, logger)
+                log_swallowed(f"StepRunner[{type(hook).__name__}.after, step {idx+1}]",
+                              _e, logger)
 
         return result, step_suggestions, ctx
 
@@ -288,6 +327,8 @@ class StepRunner:
                         screenshots_dir=self._screenshots_dir,
                         behaviour=self._behaviour,
                         healer=None,
+                        hooks=self._hooks,
+                        conditions=self._conditions,
                     )
                     for obs in self._observers:
                         replacement_runner.add_observer(obs)
@@ -374,6 +415,8 @@ class StepRunner:
                     screenshots_dir=self._screenshots_dir,
                     behaviour=self._behaviour,
                     healer=None,
+                    hooks=self._hooks,
+                    conditions=self._conditions,
                 )
                 for obs in self._observers:
                     replacement_runner.add_observer(obs)
@@ -457,6 +500,8 @@ class StepRunner:
                 screenshots_dir=self._screenshots_dir,
                 behaviour=self._behaviour,
                 healer=None,
+                hooks=self._hooks,
+                conditions=self._conditions,
             )
             for obs in self._observers:
                 injection_runner.add_observer(obs)
