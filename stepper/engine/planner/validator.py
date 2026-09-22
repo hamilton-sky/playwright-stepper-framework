@@ -10,6 +10,7 @@ from __future__ import annotations
 import difflib
 
 from stepper.engine.interfaces import StepConfig
+from stepper.engine.planner.domains import domains_in_step
 
 
 class PlanValidationError(Exception):
@@ -23,15 +24,16 @@ class PlanValidationError(Exception):
 class PlanValidator:
     """
     Validates that every step in a plan references a registered action, carries
-    a non-empty description, and guards itself with conditions this run's
-    domain actually understands.
+    a non-empty description, guards itself with conditions this run's domain
+    actually understands, and names only domains the run can open.
 
     Usage:
-        PlanValidator.validate(steps, registry, conditions)
+        PlanValidator.validate(steps, registry, conditions, domains)
     """
 
     @staticmethod
-    def validate(steps: list[StepConfig], registry, conditions=None) -> None:
+    def validate(steps: list[StepConfig], registry,
+                 conditions=None, domains=None) -> None:
         """
         Check all steps against the registry.
         Raises PlanValidationError listing every problem found.
@@ -40,12 +42,18 @@ class PlanValidator:
         clause is checked against it — a misspelled condition used to fail open
         at runtime and silently run the step it was meant to guard, so catching
         it here is the whole point of passing one.
+
+        `domains` is the names of the domains registered for this run. When
+        given, every step's action — and every sub-step's — must declare one of
+        them. Without it the mismatch surfaces as UnknownDomainError partway
+        through the run, after a browser has already launched (M5).
         """
         known = registry.names()
         errors: list[str] = []
         bad: list[StepConfig] = []
         saw_unknown_action = False
         saw_unknown_condition = False
+        saw_unknown_domain = False
 
         for i, step in enumerate(steps, 1):
             step_errors: list[str] = []
@@ -70,6 +78,17 @@ class PlanValidator:
                         + _did_you_mean(bad_key, conditions.names())
                     )
 
+            if domains is not None:
+                for action_name, domain in domains_in_step(step, registry):
+                    if domain is None or domain in domains:
+                        continue
+                    saw_unknown_domain = True
+                    step_errors.append(
+                        f"action '{action_name}' acts on domain '{domain}', "
+                        f"which this run has no session for"
+                        + _did_you_mean(domain, sorted(domains))
+                    )
+
             if step_errors:
                 label = step.description or step.action or "<empty step>"
                 errors.append(f"Step {i} ({label}): " + "; ".join(step_errors))
@@ -84,6 +103,9 @@ class PlanValidator:
             if saw_unknown_condition:
                 message += ("\n\nRegistered when-conditions:\n  "
                             + "\n  ".join(conditions.names()))
+            if saw_unknown_domain:
+                message += ("\n\nRegistered domains:\n  "
+                            + "\n  ".join(sorted(domains)))
             raise PlanValidationError(message, bad_steps=bad)
 
 

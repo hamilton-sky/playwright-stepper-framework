@@ -15,7 +15,7 @@ import os
 import sys
 import time
 from contextlib import contextmanager
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -35,11 +35,13 @@ if _repo_root not in sys.path:
 from stepper.bootstrap.settings  import load_env, load_settings_safe
 from stepper.bootstrap.infra     import build_resolver, register_all_sites
 from stepper.bootstrap.reporting import build_reporters, serve_allure
-from stepper.bootstrap.session   import domain_names, get_domain
+from stepper.bootstrap.session   import (DomainNotReadyError, domain_names,
+                                         get_domain)
 from stepper.engine.session      import SessionSet
 
 from stepper.engine.actions.factory      import build_default_registry
 from stepper.engine.actions.sub_step_mixin import SubStepRunnerMixin
+from stepper.engine.planner.domains      import domains_used
 from stepper.engine.planner.validator    import PlanValidator
 from stepper.engine.actions.strategies   import RunWorkflowAction
 from stepper.engine.runner.step_runner   import StepRunner, LoggingObserver
@@ -221,6 +223,8 @@ class PreparedRun:
     registry: Any
     screenshots_dir: Path
     subflow_action: RunWorkflowAction
+    #: Domains this run will open a session for, primary included (M5).
+    domains: list = field(default_factory=list)
 
 
 @dataclass
@@ -374,27 +378,100 @@ def build_validated_registry(cfg: RunConfig, settings, screenshots_dir: Path, st
     subflow_action = RunWorkflowAction(base_dir=cfg.base_dir)
     registry.register(subflow_action)
 
-    PlanValidator.validate(steps, registry, get_domain(cfg.domain).conditions())
+    PlanValidator.validate(
+        steps, registry,
+        get_domain(cfg.domain).conditions(),
+        domains=domain_names(),
+    )
     return registry, subflow_action
+
+
+@dataclass(frozen=True)
+class PlanReport:
+    """
+    What can be learned about a workflow without opening anything (M5).
+
+    `domains` is every domain the run would open a session for. `missing` maps
+    a domain to what its preflight says is absent here, and is empty when every
+    one of them is ready.
+
+    The split matters: a plan is either well-formed or it is not, and that does
+    not depend on which machine is asking. Whether this machine has a browser,
+    a database or a set of credentials does. So `validate` reports `missing`
+    and still calls the workflow valid, while `run` refuses to start.
+    """
+
+    steps: list
+    domains: list
+    missing: dict
+
+    @property
+    def ready(self) -> bool:
+        return not self.missing
+
+
+def plan_domains(cfg: RunConfig, steps, registry) -> list[str]:
+    """
+    Every domain this run opens a session for.
+
+    The primary is always in the list even when no step names it: build_pipeline
+    opens it eagerly, which for a web run is the moment the browser launches.
+    """
+    return sorted({cfg.domain, *domains_used(steps, registry)})
+
+
+def preflight_domains(cfg: RunConfig, settings, domains) -> dict[str, list[str]]:
+    """
+    Ask each domain what it is missing here. Empty dict means all are ready.
+
+    A preflight that raises is reported rather than propagated: one domain's
+    broken check must not stop the others being asked, and `validate` over
+    every workflow must not die on the first.
+    """
+    missing: dict[str, list[str]] = {}
+    for name in domains:
+        try:
+            reasons = list(get_domain(name).preflight(cfg, settings) or [])
+        except Exception as exc:
+            reasons = [f"preflight raised {type(exc).__name__}: {exc}"]
+        if reasons:
+            missing[name] = reasons
+    return missing
+
+
+def plan_report(cfg: RunConfig, settings=None) -> PlanReport:
+    """
+    Plan, validate and preflight with no browser and no directories created.
+
+    Pass `settings` when reporting on many workflows in a row — loading them is
+    what emits the provider-key warnings, and once is enough.
+
+    Raises PlanValidationError when the plan is bad. An unready domain is not a
+    bad plan: it lands in `missing` and the caller decides (see PlanReport).
+    """
+    cfg      = _with_workflow_domain(cfg)
+    settings = settings if settings is not None else build_settings(cfg)
+    steps    = plan_steps(cfg)
+    registry, _ = build_validated_registry(
+        cfg, settings, cfg.artifact_path("screenshots"), steps,
+    )
+    domains = plan_domains(cfg, steps, registry)
+    return PlanReport(
+        steps=steps,
+        domains=domains,
+        missing=preflight_domains(cfg, settings, domains),
+    )
 
 
 def validate_plan(cfg: RunConfig, settings=None) -> list:
     """
-    Plan and validate with no browser, no reporters and no directories created.
+    The steps of a valid plan, or PlanValidationError.
 
-    Pass `settings` when validating many workflows in a row — loading them is
-    what emits the provider-key warnings, and once is enough.
-
-    Raises PlanValidationError when the plan is bad; returns the steps when good.
+    Kept as the narrow answer for callers that only want "is this workflow
+    well-formed?". `plan_report` is the same work with the domains and their
+    readiness attached.
     """
-    steps = plan_steps(cfg)
-    build_validated_registry(
-        cfg,
-        settings if settings is not None else build_settings(cfg),
-        cfg.artifact_path("screenshots"),
-        steps,
-    )
-    return steps
+    return plan_report(cfg, settings).steps
 
 
 def prepare_run(cfg: RunConfig, resolver=None) -> PreparedRun:
@@ -425,11 +502,27 @@ def prepare_run(cfg: RunConfig, resolver=None) -> PreparedRun:
         cfg, settings, screenshots_dir, steps
     )
 
+    # Every domain this run will open, checked before any of them opens. A
+    # missing browser or absent credential is cheaper to learn here than eight
+    # steps in, and the message names the domain rather than the symptom (M5).
+    domains = plan_domains(cfg, steps, registry)
+    missing = preflight_domains(cfg, settings, domains)
+    if missing:
+        raise DomainNotReadyError(_not_ready_message(missing), missing)
+
     return PreparedRun(
         cfg=cfg, steps=steps, settings=settings, resolver=resolver,
         reporter=reporter, test_reporter=test_reporter, registry=registry,
         screenshots_dir=screenshots_dir, subflow_action=subflow_action,
+        domains=domains,
     )
+
+
+def _not_ready_message(missing: dict) -> str:
+    lines = [f"{len(missing)} domain(s) this workflow needs are not ready here:"]
+    for name, reasons in missing.items():
+        lines.extend(f"  {name}: {reason}" for reason in reasons)
+    return "\n".join(lines)
 
 
 def build_session(prepared: PreparedRun, shared=None):

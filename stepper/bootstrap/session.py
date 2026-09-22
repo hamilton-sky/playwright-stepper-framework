@@ -7,11 +7,12 @@ it. That is leak L4 in docs/universal-runner-plan.md, and it is why the only
 shipped entry point could not run a workflow that has no browser in it.
 
 The composition root now asks a *domain* for those things instead. A domain is
-three factories:
+a few factories:
 
-    session   what the run acts on, opened and closed per run
-    hooks     what runs around every step (engine/runner/hooks.py)
-    shared    a resource several runs in one invocation may share
+    session    what the run acts on, opened and closed per run
+    hooks      what runs around every step (engine/runner/hooks.py)
+    shared     a resource several runs in one invocation may share
+    preflight  what is missing here, checked before anything opens (M5)
 
 Only the web domain is registered here. T8's noop domain registers itself the
 same way, and a real second domain — AWS, HTTP, a database — would too.
@@ -154,6 +155,30 @@ async def no_shared(cfg=None, settings=None):
     yield None
 
 
+def no_preflight(cfg=None, settings=None) -> list[str]:
+    """
+    For a domain that needs nothing beyond being registered.
+
+    The noop domain is the honest case: NullSession opens a bare object, so
+    there is no credential, binary or endpoint that could be absent.
+    """
+    return []
+
+
+def web_preflight(cfg=None, settings=None) -> list[str]:
+    """
+    The browser domain's plan-time check: is there a browser to launch?
+
+    Credentials are deliberately not checked here. They belong to a *site* —
+    poms/saucedemo/config.py reads SAUCEDEMO_*, poms/openlibrary/config.py
+    reads OPENLIBRARY_* — and the web domain spans all three sites. A domain
+    asserting facts about one site's environment would put site knowledge in
+    the wrong layer.
+    """
+    from stepper.bootstrap.infra import browser_preflight
+    return browser_preflight(getattr(settings, "browser", None) or "chromium")
+
+
 # ── The registry ──────────────────────────────────────────────────────────────
 
 @dataclass(frozen=True)
@@ -165,6 +190,7 @@ class Domain:
     hooks      : (screenshots_dir) -> list[StepHook]
     shared     : (cfg, settings) -> async context manager yielding a handle
     conditions : () -> ConditionRegistry, this domain's `when` vocabulary
+    preflight  : (cfg, settings) -> list[str], what is missing; [] means ready
     """
 
     name: str
@@ -172,6 +198,22 @@ class Domain:
     hooks: Callable[..., list] = field(default=no_hooks)
     shared: Callable[..., Any] = field(default=no_shared)
     conditions: Callable[[], ConditionRegistry] = field(default=core_conditions)
+    preflight: Callable[..., list] = field(default=no_preflight)
+
+
+class DomainNotReadyError(RuntimeError):
+    """
+    A domain this run needs reported something missing from the environment.
+
+    Raised at plan time, before a session opens, with every reason from every
+    unready domain — the same all-errors-at-once principle PlanValidator uses.
+    `missing` maps domain name to its reasons, for a caller that wants to
+    render them rather than print the message.
+    """
+
+    def __init__(self, message: str, missing: dict[str, list[str]]):
+        super().__init__(message)
+        self.missing = missing
 
 
 _DOMAINS: dict[str, Domain] = {}
@@ -224,4 +266,5 @@ register_domain(Domain(
     hooks=default_web_hooks,
     shared=web_shared_browser,
     conditions=web_conditions,
+    preflight=web_preflight,
 ))
