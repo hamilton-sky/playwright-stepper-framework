@@ -12,6 +12,7 @@ ActionStrategy, every class below overrides _execute() only.
 from __future__ import annotations
 import asyncio
 import logging
+import re
 from pathlib import Path
 
 from stepper.engine.interfaces import (
@@ -21,6 +22,16 @@ from stepper.engine.interfaces import (
 from stepper.engine.actions._common import _wait_for, _checked_input_value
 
 logger = logging.getLogger(__name__)
+
+
+#: A URL that already names its scheme — http, https, file, about, data.
+#: The test used to be `url.startswith("http")`, which reads as "is this
+#: absolute?" and is not: it prepended https:// to `file:///tmp/x.html`,
+#: producing `https://file///tmp/x.html`, and it left `httpbin.org` alone
+#: because the *hostname* happens to begin with "http". Matching a scheme
+#: asks the question that was meant. Bare hostnames and bare paths still get
+#: https:// exactly as before.
+_HAS_SCHEME = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.\-]*:")
 
 
 class NavigateAction(ActionStrategy):
@@ -34,7 +45,7 @@ class NavigateAction(ActionStrategy):
     async def _execute(self, page, step: StepConfig, resolver,
                        context: ExecutionContext, behaviour=None) -> StepResult:
         url = step.input_value or step.url
-        if not url.startswith("http"):
+        if not _HAS_SCHEME.match(url):
             url = f"https://{url}"
 
         logger.info(f"→ navigate: {url}")

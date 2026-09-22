@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Stepper — local inventory fixture</title>
+</head>
+<body>
+  <h1>Warehouse inventory</h1>
+
+  <!-- The value the mixed workflow scrapes and writes to the database.
+       A static file rather than a served page on purpose: the workflow is
+       meant to run in CI with no network, no port and no process to manage. -->
+  <p>Item: <span id="item-name">Dune</span></p>
+  <p>On hand: <span id="item-count">42</span></p>
+
+  <button id="confirm" type="button"
+          onclick="document.getElementById('status').textContent='confirmed'">
+    Confirm stock take
+  </button>
+  <p id="status">pending</p>
+</body>
+</html>

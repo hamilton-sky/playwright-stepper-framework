@@ -34,6 +34,12 @@ stepper/sites/*/artifacts/drift_log.json
 stepper/sites/*/artifacts/heal_suggestions.json
 stepper/sites/shared/
 
+# The db domain's default SQLite file. Unlike the per-run artifacts above it
+# accumulates rather than being rewritten, so a committed copy would make every
+# later run start from whatever state the last committer left behind. Point
+# STEPPER_DB_PATH elsewhere to keep one deliberately.
+stepper/sites/db/artifacts/
+
 jira-to-stepper-pipeline/
 plans/
 strategy/

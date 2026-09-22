@@ -1,7 +1,6 @@
 # Mixed-domain workflows — a browser step and a database step in one file
 
-**Status:** M1–M5 are implemented. M6 is still proposal, verified against
-`6347371` (the merge of the universal-runner work).
+**Status:** M1–M6 are implemented. The plan is complete.
 
 All four open questions in §9 are settled — see each one. Routing is live, and
 `validate` now names the domains each workflow opens:
@@ -333,7 +332,7 @@ domain supplies a resolver — which is the web domain and, by design, only it.
 | **M3** | Hooks and conditions per domain — **LANDED** | medium | 5.3 is a bug fix; 5.4 revisits T4's signature |
 | **M4** | Dispatchers route sub-steps — **LANDED** | medium-high | `parallel` tabs mode must refuse cross-domain |
 | **M5** | Plan-time domain discovery — **LANDED** | low | `validate` reports the domains a workflow needs |
-| **M6** | The receipt: a real second domain | low | See below |
+| **M6** | The receipt: a real second domain — **LANDED** | low | See below |
 
 ### M1 and M2, as landed
 
@@ -574,7 +573,110 @@ One thing this does not do: a *false negative* is still possible by design. A
 silent preflight means nothing certainly wrong was found, not that the launch
 will succeed.
 
-### M6 should be SQLite, not AWS
+### M6, as landed — and what it found
+
+SQLite, as argued below. What the ticket turned out to be *for* is different
+from what this section predicted.
+
+**The receipt is not a demo app.** The plan said "write a row through the UI,
+assert it through SQL", which implies a local server the browser POSTs to. That
+was dropped deliberately. What such a server uniquely proves is that a
+browser-driven INSERT is visible to a second SQLite connection — a property of
+SQLite and of the fixture, not of the stepper, whose contract is routing,
+shared context and lifecycle. It would have bought a port, a process and a
+class of CI flake in exchange for testing the demo.
+
+What ships instead keeps the spirit and drops the fixture: a `store` step reads
+a value off a rendered page, a `db_execute` writes it as a row, and
+`db_assert_count` reads it back. The value genuinely originates in the browser
+and lands in the database inside one run. The page is a checked-in `file://`
+fixture, so the whole thing is network-free and needs no server:
+
+```
+  passed   domain=db    db: table for what the page reports
+  passed   domain=web   web: open the local inventory page
+  passed   domain=web   web: read the item name off the page
+  passed   domain=web   web: read the count off the page
+  passed   domain=db    db: write what the browser read — bound, never interpolated
+  passed   domain=db    db: the row the browser produced is there
+  passed   domain=web   web: confirm, but only once the database agrees
+  passed   domain=web   web: the page reacted
+```
+
+`SELECT item, on_hand FROM stock_takes` afterwards returns `('Dune', '42')` —
+the two values the fixture page displays.
+
+**The real value was the three bugs a second real domain exposed.** `_noop`
+could never find them: it has nothing to open, so no configuration, no
+preflight, no session lifecycle and no failure modes.
+
+*Conditions came from the primary domain only.* M3 tagged every condition with
+the domain whose session it needs and taught `evaluate` to route by that tag;
+M2 built the SessionSet it routes into. The merge was never written — `main.py`
+composed the vocabulary as `get_domain(cfg.domain).conditions()`. The browser
+being the only domain with conditions to tag is why it survived M3, M4 and M5.
+The moment a second domain had one, the mixed workflow was rejected at plan
+time:
+
+```
+  FAIL  db_web_mixed
+    Step 7 (web: confirm, but only once the database agrees):
+      unknown when-condition 'db_row_exists'
+```
+
+`main.plan_conditions` now merges the vocabularies of every domain the plan
+uses — which M5's `plan_domains` is what makes definable — and `extend` refuses
+two domains claiming one name, as `ActionRegistry.register` already does for
+actions. Only domains the plan touches are merged, so a typo cannot resolve
+into some unrelated domain's vocabulary.
+
+*`navigate` broke every non-http scheme.* `if not url.startswith("http")` reads
+as "is this absolute?" and is not: it turned `file:///tmp/page.html` into
+`https://file///tmp/page.html`, and left `httpbin.org` alone because the
+hostname begins with "http". It now matches a URL scheme. Bare hostnames and
+bare paths still get `https://` exactly as before.
+
+*A workflow reported 8/8 passed while writing garbage.* The planner substitutes
+`{{name}}` from a workflow's `variables` block before the run starts, so it
+cannot see a value `store` saved mid-run. The literal `{{item}}` went into the
+table — and `db_assert_count` compared against the same unresolved `{{item}}`,
+agreed with itself, and passed. Params now resolve against the
+`ExecutionContext`, and an unresolved reference **fails the step**:
+
+```
+  ✗ Hard stop at step 2: db_execute: unresolved parameter reference(s)
+    ['never_stored']. The context holds: (nothing yet).
+```
+
+That asymmetry with sub-step substitution — which deliberately leaves unknown
+tokens alone — is the point. A stray token in a log line is a nuisance; a stray
+token in the data, validated by a comparison against itself, is a test that
+cannot fail.
+
+**What the domain actually is.** `stepper/sites/db/` declares everything from
+its own folder — session, preflight, conditions, actions, config, workflows —
+and `register_all_sites` finds it by the same `sites/*/register.py` glob that
+finds saucedemo. No file outside that directory names the db domain. Its
+config is *not* under `poms/`: a database has no pages, so a `poms/db/` would
+be a folder named after a layer it is not in. It does reuse
+`poms/shared/config.py`'s loader, which is the legal direction and verified
+browser-free.
+
+`close()` commits rather than rolling back. A workflow is a script someone
+wrote to make things happen; discarding its writes at teardown would report
+every step passed and leave nothing behind, which is the shape of failure this
+whole line of work exists to remove.
+
+**Verified.** 1064 unit tests pass, up from 1020; 1050 pass and 14 skip with
+Playwright unimportable; the suite is unchanged with an empty browsers
+directory and with no `PLAYWRIGHT_BROWSERS_PATH` at all. `validate` is 19/19
+with a domain on every line — `db_smoke` reads `[db]`, `db_web_mixed` reads
+`[db, web]`. `db_smoke` runs 5/6 with one step correctly skipped by a db-tagged
+condition, in a subprocess that never imports Playwright. The mixed workflow
+runs 8/8 against real Chromium, and CI runs it in the integration job with no
+network and no credentials.
+
+### Why SQLite, not AWS
 
 `sqlite3` is in the standard library. A `db` domain built on it needs no new
 dependency, no credentials and no network, so the proof workflow — *write a row

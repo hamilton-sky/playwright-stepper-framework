@@ -30,6 +30,7 @@ playwright-stepper-framework/
 │       ├── openlibrary/pages/
 │       ├── saucedemo/pages/
 │       ├── phptravels/pages/
+│       ├── db/                       # Non-browser domain — SQLite, stdlib only
 │       └── */workflows/*.json        # Declarative workflow definitions
 │
 ├── examples/
@@ -94,6 +95,14 @@ python stepper/main.py run ol_smoke_test --show
 # marks a valid workflow whose domain is not ready on this machine — no browser,
 # no credentials — which `run` refuses but `validate` only reports.
 python stepper/main.py validate
+
+# A browser session and a SQLite connection in one run, sharing one context.
+# No network and no credentials — the page is a checked-in file:// fixture.
+python stepper/main.py run db_web_mixed \
+  --vars "{\"page_url\": \"file://$PWD/stepper/sites/db/fixtures/inventory.html\"}"
+
+# The same domain with no browser at all
+python stepper/main.py run db_smoke
 
 # Watch the healer work on deliberately broken selectors. No API key needed —
 # the embed-direct rung calls no provider. --no-heal-cache is what makes this a
