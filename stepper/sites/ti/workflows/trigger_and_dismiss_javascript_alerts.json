@@ -1,0 +1,11 @@
+{
+  "name": "The Internet — trigger and dismiss javascript alerts",
+  "description": "Navigate to the JS alerts page and handle alert, confirm, and prompt dialogs.",
+  "continue_on_failure": true,
+  "steps": [
+    {
+      "action": "ti_handle_alerts",
+      "description": "Navigate to /javascript_alerts and handle all three dialog types"
+    }
+  ]
+}

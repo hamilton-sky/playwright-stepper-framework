@@ -30,6 +30,7 @@ playwright-stepper-framework/
 │       ├── openlibrary/pages/
 │       ├── saucedemo/pages/
 │       ├── phptravels/pages/
+│       ├── ti/                       # the-internet — generated from a crawl
 │       ├── db/                       # Non-browser domain — SQLite, stdlib only
 │       └── */workflows/*.json        # Declarative workflow definitions
 │
