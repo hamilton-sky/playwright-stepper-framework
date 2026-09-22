@@ -34,6 +34,12 @@ stepper/sites/*/artifacts/drift_log.json
 stepper/sites/*/artifacts/heal_suggestions.json
 stepper/sites/shared/
 
+# Discovery traces from /discover-site: a11y snapshots of a live site, written
+# for /generate-poms to read. Scratch input to a generator, not source — and a
+# snapshot of whatever was on screen during a crawl, which may include content
+# from a logged-in session.
+.stepper/
+
 # The db domain's default SQLite file. Unlike the per-run artifacts above it
 # accumulates rather than being rewritten, so a committed copy would make every
 # later run start from whatever state the last committer left behind. Point

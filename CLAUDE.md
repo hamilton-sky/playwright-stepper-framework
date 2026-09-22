@@ -62,6 +62,7 @@ Read the relevant rule file **before** making changes in that area:
 | Three-layer contract + dependency direction | [.claude/rules/three-layer-contract.md](.claude/rules/three-layer-contract.md) |
 | Design patterns used throughout the framework | [.claude/rules/design-patterns.md](.claude/rules/design-patterns.md) |
 | Adding a new site end-to-end | [docs/adding-your-app.md](docs/adding-your-app.md) |
+| Generating a site from a live crawl | `/discover-site` then `/generate-poms` |
 | Playwright failure modes the POMs guard against | [docs/playwright-pitfalls.md](docs/playwright-pitfalls.md) |
 | Full architecture diagrams | [ARCHITECTURE.md](ARCHITECTURE.md) |
 
