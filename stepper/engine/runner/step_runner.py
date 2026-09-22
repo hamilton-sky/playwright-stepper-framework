@@ -102,7 +102,7 @@ class StepRunner:
         healer: HealerStrategy | None = None,
         max_heal_attempts: int = 0,
         cache: HealCache | None = None,
-        hooks: list[StepHook] | None = None,
+        hooks: dict[str | None, list[StepHook]] | None = None,
         session=None,
         sessions: SessionSet | None = None,
         conditions: ConditionRegistry | None = None,
@@ -124,11 +124,15 @@ class StepRunner:
             non-browser run failed every step with an AttributeError.
 
         hooks
-            Per-step hooks (engine/runner/hooks.py). None by default — the
-            runner brings no domain behaviour of its own. The web domain
-            supplies its CAPTCHA probe and auto-screenshot through
-            bootstrap/session.py, which is where every caller in the tree gets
-            them from.
+            Per-step hooks, keyed by domain: {"web": [...], "db": [...]}. A
+            step runs its own domain's hooks and no others — which is what
+            keeps a browser's screenshot hook away from a database connection.
+            None is a key like any other, so hooks for session-agnostic steps
+            go under {None: [...]}; nothing in the tree wants any.
+
+            Empty by default. The runner brings no domain behaviour of its own;
+            the web domain supplies its CAPTCHA probe and auto-screenshot
+            through bootstrap/session.py.
 
         conditions
             The `when` vocabulary this run understands. Core predicates only by
@@ -156,8 +160,24 @@ class StepRunner:
             self._screenshots_dir: Path | None = Path(screenshots_dir)
         else:
             self._screenshots_dir = None
-        self._hooks: list[StepHook] = list(hooks) if hooks else []
+        self._hooks: dict[str | None, list[StepHook]] = {
+            domain: list(items) for domain, items in (hooks or {}).items()
+        }
         self._conditions = conditions if conditions is not None else core_conditions()
+
+    def _hooks_for(self, step: StepConfig) -> list[StepHook]:
+        """
+        The hooks for this step's domain, and only those.
+
+        Resolved from the action rather than the step, because the action is
+        what declares a domain. An unknown action has no hooks — it is about to
+        fail in the retry loop with a better message than a hook could give.
+        """
+        try:
+            domain = self._factory.create(step.action).domain
+        except Exception:
+            return []
+        return self._hooks.get(domain, ())
 
     @property
     def _page(self):
@@ -188,7 +208,7 @@ class StepRunner:
             if step.when:
                 try:
                     should_run = await self._conditions.evaluate(
-                        step.when, ctx, self._page
+                        step.when, ctx, self._sessions
                     )
                 except Exception as e:
                     logger.warning(f"Step {idx+1} when-eval error: {e} — step will run")
@@ -243,10 +263,11 @@ class StepRunner:
         # so JSON can write "limit": "{{gap}}" and get the runtime value.
         step = _resolve_count_vars(step, ctx)
 
-        # Pre-step hooks. Any may abort the step by returning a result — the
-        # web domain's CaptchaHook is the one that does. A hook that raises is
-        # logged and ignored: a broken hook must not take the run down.
-        for hook in self._hooks:
+        # Pre-step hooks — this step's domain only. Any may abort the step by
+        # returning a result; the web domain's CaptchaHook is the one that does.
+        # A hook that raises is logged and ignored: a broken hook must not take
+        # the run down.
+        for hook in self._hooks_for(step):
             try:
                 aborted = await hook.before(self._page, step, idx)
             except Exception as _e:
@@ -278,7 +299,7 @@ class StepRunner:
 
         # Post-step hooks. They see the final result — after retries and after
         # the heal loop — and may amend it; ScreenshotHook attaches its path here.
-        for hook in self._hooks:
+        for hook in self._hooks_for(step):
             try:
                 await hook.after(self._page, step, result, idx)
             except Exception as _e:

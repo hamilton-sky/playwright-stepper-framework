@@ -1,6 +1,6 @@
 # Mixed-domain workflows — a browser step and a database step in one file
 
-**Status:** M1 and M2 are implemented. M3–M6 are still proposal, verified
+**Status:** M1, M2 and M3 are implemented. M4–M6 are still proposal, verified
 against `6347371` (the merge of the universal-runner work).
 
 The four open questions in §9 are settled — see each one. Routing is live:
@@ -329,7 +329,7 @@ domain supplies a resolver — which is the web domain and, by design, only it.
 |---|---|---|---|
 | **M1** | Actions declare a domain — **LANDED** | low | No behaviour change; a single-domain run is unaffected |
 | **M2** | `SessionSet`, lazy open, close-all — **LANDED** | medium | `StepRunner` takes it *alongside* one session |
-| **M3** | Hooks and conditions per domain | medium | 5.3 is a bug fix; 5.4 revisits T4's signature |
+| **M3** | Hooks and conditions per domain — **LANDED** | medium | 5.3 is a bug fix; 5.4 revisits T4's signature |
 | **M4** | Dispatchers route sub-steps | medium-high | `parallel` tabs mode must refuse cross-domain |
 | **M5** | Plan-time domain discovery | low | `validate` reports the domains a workflow needs |
 | **M6** | The receipt: a real second domain | low | See below |
@@ -368,6 +368,55 @@ the set from *all* registered domains keeps that working, and now correctly —
 945 pass and 1 skips with Playwright made unimportable. A real Chromium run of
 a six-step workflow mixing web and noop steps passes 6/6 with one launch, and
 `run_data_rows` still shares one browser across two rows.
+
+### M3, as landed
+
+**Hooks are a dict keyed by domain, and only a dict.** A flat list was
+considered and rejected: a list meaning "every step" *is* the defect this
+ticket removes, so accepting one would keep the footgun in the API for callers
+that no longer exist. `main.py` is the only production caller; the churn was
+two test files whose doubles now declare a domain, which they should have all
+along since they test domain-routed dispatch.
+
+`None` is a key like any other, which is why M3 needs no separate "global
+hooks" bucket: hooks for session-agnostic steps go under `{None: [...]}`, and
+the dispatch rule stays one sentence — *a step runs its own domain's hooks*.
+Nothing in the tree wants one; `StepObserver` is already the seam for
+cross-cutting logging and timing.
+
+**Conditions carry a domain, tagged at registration** —
+`registry.register("url_contains", url_contains, domain="web")`. The registry
+resolves the session before calling, so an evaluator's signature stays
+`(session, spec, context)`, the one T4 settled. `evaluate()` accepts a bare
+session as well as a `SessionSet` and wraps it, so sub-step dispatch (still
+unrouted until M4) and every existing test keep working.
+
+One gap found while verifying: `StepResult.domain` existed but the reporter
+never serialized it, so §9 Q3's stated benefit — *"makes a mixed-run report
+readable"* — was not actually delivered. `results.json` now carries `domain`
+on each step, omitted when the run is single-domain and every row would say
+the same thing.
+
+**Verified** against a real browser, where the fix is visible as an artifact
+rather than an assertion:
+
+```
+  status   domain  screenshots                step
+  passed   web     step_01_navigate.png       web: open the page
+  passed   noop    — none —                   noop: store a count
+  passed   web     step_03_click.png          web: log in button
+  passed   noop    — none —                   noop: read the count back
+  passed   web     step_05_assert_text.png    web: url_contains + context in one when
+```
+
+The noop steps got no screenshot because the web domain's `ScreenshotHook`
+never ran for them. Before M3 it ran, called `session.screenshot(...)` on a
+non-page, and swallowed the error — silence rather than a failure. The last
+step's `when` combines `url_contains` (needs the web session) with
+`context_greater_than` (needs none) in one clause.
+
+961 unit tests pass, up from 947; 960 pass and 1 skips with Playwright made
+unimportable.
 
 ### M6 should be SQLite, not AWS
 

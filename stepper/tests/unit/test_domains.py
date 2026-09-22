@@ -224,12 +224,29 @@ async def test_build_pipeline_opens_the_session_once(fake_domain, prepared):
 
 
 async def test_build_pipeline_gives_the_runner_the_domains_hooks(fake_domain, prepared):
+    """
+    Keyed by domain since M3, so a step runs its own domain's hooks and no
+    others — the whole point of the change.
+    """
     _domain, marker = fake_domain
     session = build_session(prepared)
 
     pipeline = await build_pipeline(prepared, session)
 
-    assert pipeline.runner._hooks == [marker]
+    assert pipeline.runner._hooks["test_fake"] == [marker]
+
+
+async def test_every_domains_hooks_are_present_not_just_the_primary(fake_domain, prepared):
+    """
+    A workflow may name a step from another domain, so that domain's hooks have
+    to be there to run — or not run, in the case of a domain with none.
+    """
+    session = build_session(prepared)
+
+    pipeline = await build_pipeline(prepared, session)
+
+    assert "web" in pipeline.runner._hooks
+    assert pipeline.runner._hooks["noop"] == []
 
 
 async def test_build_pipeline_does_not_close_what_it_opened(fake_domain, prepared):

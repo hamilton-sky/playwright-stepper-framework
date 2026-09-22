@@ -36,6 +36,7 @@ class ScriptedAction(ActionStrategy):
     """Action that returns a scripted sequence of statuses, one per call."""
 
     action_name = "scripted"
+    domain      = "web"      # so this file's web hooks apply to it
 
     def __init__(self, statuses=("passed",), on_execute=None):
         self._statuses = list(statuses)
@@ -53,6 +54,7 @@ class ScriptedAction(ActionStrategy):
 
 class RaisingAction(ActionStrategy):
     action_name = "raising"
+    domain      = "web"
 
     def __init__(self):
         self.calls = 0
@@ -122,10 +124,10 @@ def reporter():
 @pytest.fixture
 def make_runner(page, behaviour, reporter):
     def _make(mapping, screenshots_dir=None, **kwargs):
-        # The CAPTCHA gate and the auto-screenshot are the web domain's hooks
-        # now, not the loop's own behaviour. Everything this file asserts about
-        # them is unchanged; only where they come from is.
-        kwargs.setdefault("hooks", default_web_hooks(screenshots_dir))
+        # The CAPTCHA gate and the auto-screenshot are the web domain's hooks,
+        # keyed by domain since M3. Everything this file asserts about them is
+        # unchanged; only where they come from is.
+        kwargs.setdefault("hooks", {"web": default_web_hooks(screenshots_dir)})
         # url_contains and element_exists are the web domain's conditions, so a
         # runner that is standing in for a browser run has to be given them.
         kwargs.setdefault("conditions", web_conditions())

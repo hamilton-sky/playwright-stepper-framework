@@ -124,6 +124,9 @@ class TestReportReporter(ReporterStrategy):
                 "description": r.step.description or r.step.action,
                 "action": r.step.action,
                 "status": r.status,
+                # Which domain's session ran it. Omitted for a single-domain
+                # run, where every row would carry the same value.
+                **({"domain": r.domain} if r.domain else {}),
                 "confidence": round(r.confidence, 3),
                 "duration_ms": r.duration_ms,
                 "screenshots": [Path(s).name for s in r.screenshots] if r.screenshots else (

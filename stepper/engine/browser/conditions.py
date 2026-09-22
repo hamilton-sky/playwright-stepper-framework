@@ -55,6 +55,6 @@ def web_conditions() -> ConditionRegistry:
     """Core plus the two that need a page — in the ladder's original order."""
     return (
         core_conditions()
-        .register("url_contains", url_contains)
-        .register("element_exists", element_exists)
+        .register("url_contains", url_contains, domain="web")
+        .register("element_exists", element_exists, domain="web")
     )

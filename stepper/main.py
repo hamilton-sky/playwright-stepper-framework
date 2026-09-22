@@ -515,7 +515,11 @@ async def build_pipeline(prepared: PreparedRun, session, observers=None) -> Pipe
         healer=build_healer(cfg, prepared.registry),
         max_heal_attempts=cfg.max_heal_attempts,
         cache=heal_cache,
-        hooks=get_domain(cfg.domain).hooks(prepared.screenshots_dir),
+        # Every domain's hooks, keyed by domain. A step runs its own domain's
+        # and no others, so the browser's screenshot hook never reaches a
+        # session that is not a page.
+        hooks={name: get_domain(name).hooks(prepared.screenshots_dir)
+               for name in domain_names()},
         conditions=get_domain(cfg.domain).conditions(),
     )
     runner.add_observer(LoggingObserver())
