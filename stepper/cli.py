@@ -244,10 +244,12 @@ def cmd_validate(args, pipeline) -> int:
     # only storage_state_path varies between workflows.
     base = pipeline.build_settings(pipeline.RunConfig(workflow_path=str(targets[0])))
 
+    unready: dict[str, list[str]] = {}
+
     for path in targets:
         cfg = pipeline.RunConfig(workflow_path=str(path))
         try:
-            steps = pipeline.validate_plan(
+            report = pipeline.plan_report(
                 cfg, base._replace(storage_state_path=cfg.storage_state_path)
             )
         except PlanValidationError as exc:
@@ -259,11 +261,26 @@ def cmd_validate(args, pipeline) -> int:
             failed += 1
             _out(f"  FAIL  {path.stem:<{width}}  {type(exc).__name__}: {exc}")
         else:
-            _out(f"  OK    {path.stem:<{width}}  {len(steps):>2} steps")
+            domains = ", ".join(report.domains)
+            mark    = "OK  " if report.ready else "OK ?"
+            _out(f"  {mark}  {path.stem:<{width}}  "
+                 f"{len(report.steps):>2} steps  [{domains}]")
+            unready.update(report.missing)
 
     _out(f"\n{len(targets) - failed}/{len(targets)} valid.")
     if failed:
         _out("Run 'actions' to see every registered action name.")
+
+    # A workflow is well-formed or it is not, and that does not depend on this
+    # machine. Whether this machine has the browser or the credentials does —
+    # so an unready domain is reported and does not change the exit code. `run`
+    # is where it becomes a refusal.
+    if unready:
+        _out("\nMarked ? — valid, but a domain they use is not ready here:")
+        for name, reasons in sorted(unready.items()):
+            for reason in reasons:
+                _out(f"  {name}: {reason}")
+
     return 1 if failed else 0
 
 
@@ -527,9 +544,14 @@ def run_cli(pipeline, argv: list[str] | None = None) -> int:
     if deprecation:
         print(f"note: {deprecation} — the old form still works.", file=sys.stderr)
 
+    # Imported here rather than reached for through `pipeline`: an exception
+    # class is not part of the injected pipeline's surface, and every test
+    # double would otherwise have to carry one.
+    from stepper.bootstrap.session import DomainNotReadyError
+
     try:
         return args.func(args, pipeline)
-    except CommandError as exc:
+    except (CommandError, DomainNotReadyError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     except KeyboardInterrupt:

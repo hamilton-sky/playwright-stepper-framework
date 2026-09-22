@@ -1,9 +1,10 @@
 # Mixed-domain workflows — a browser step and a database step in one file
 
-**Status:** M1–M4 are implemented. M5 and M6 are still proposal, verified
-against `6347371` (the merge of the universal-runner work).
+**Status:** M1–M5 are implemented. M6 is still proposal, verified against
+`6347371` (the merge of the universal-runner work).
 
-The four open questions in §9 are settled — see each one. Routing is live:
+All four open questions in §9 are settled — see each one. Routing is live, and
+`validate` now names the domains each workflow opens:
 
 ```
   passed   domain=web   'web: open the page'
@@ -331,7 +332,7 @@ domain supplies a resolver — which is the web domain and, by design, only it.
 | **M2** | `SessionSet`, lazy open, close-all — **LANDED** | medium | `StepRunner` takes it *alongside* one session |
 | **M3** | Hooks and conditions per domain — **LANDED** | medium | 5.3 is a bug fix; 5.4 revisits T4's signature |
 | **M4** | Dispatchers route sub-steps — **LANDED** | medium-high | `parallel` tabs mode must refuse cross-domain |
-| **M5** | Plan-time domain discovery | low | `validate` reports the domains a workflow needs |
+| **M5** | Plan-time domain discovery — **LANDED** | low | `validate` reports the domains a workflow needs |
 | **M6** | The receipt: a real second domain | low | See below |
 
 ### M1 and M2, as landed
@@ -471,6 +472,98 @@ sub-step actually ran and shared the context.
 976 unit tests pass, up from 961; 975 pass and 1 skips with Playwright made
 unimportable.
 
+### M5, as landed
+
+Two halves, and they are worth keeping apart.
+
+**Discovery** is a read. `planner/domains.py` walks a plan, maps each action
+name to its `domain` through the registry, and returns the set. It descends
+into sub-steps for the reason M4 made urgent: a `for_each_item` body is where a
+second domain actually hides, and a walk that stopped at the top level would
+report `[web]` for a workflow that opens a database halfway through — a
+confident wrong answer. `PlanValidator` gained a fourth argument and turns a
+domain no session exists for into a plan error, beside unknown actions and
+unknown `when` keys, with the same did-you-mean and the same all-errors-at-once
+rule. `validate` prints what it found:
+
+```
+  OK    sd_happy_path    6 steps  [web]
+  OK    noop_smoke       3 steps  [noop]
+```
+
+The primary domain is always listed even when no step names it, because
+`build_pipeline` opens it eagerly — for a web run that is the moment the
+browser launches.
+
+**Preflight** is a question put to the environment. `Domain` gained a fifth
+factory, `preflight(cfg, settings) -> list[str]`, defaulting to `no_preflight`
+exactly as `hooks` and `shared` default — so every domain predating M5 keeps
+working, and a domain with nothing to check says nothing. Reasons come back as
+a list rather than an exception so one domain missing three things reports
+three lines.
+
+The web domain's preflight answers *is there a browser to launch?* It reads the
+revision Playwright insists on out of the driver's own `browsers.json` and
+looks for that build on disk, which is the mismatch
+`poms.shared.driver.browser_launch_kwargs` exists to work around. Credentials
+are deliberately **not** checked there: they belong to a *site* — `SAUCEDEMO_*`,
+`OPENLIBRARY_*` — and the web domain spans three of them, so a domain asserting
+facts about one site's environment would put site knowledge in the wrong layer.
+
+The rule that shaped that check is that a false "not ready" blocks a run that
+would have worked, which is worse than the late failure it replaces. So every
+uncertain case reports nothing, and the tests pin the silences as hard as the
+failures: a browser with per-platform `revisionOverrides` (webkit), an
+unreadable manifest, `PLAYWRIGHT_BROWSERS_PATH=0`, an unknown browser name. An
+existing `BROWSER_EXECUTABLE_PATH` silences it outright — pointing it at a
+binary is exactly the case where the revision on disk is *expected* not to
+match. A path that points nowhere does not, because `browser_launch_kwargs`
+warns and falls back, so Playwright's own build is what will run.
+
+**The two commands take different postures on the same fact**, which is §9 Q4's
+real answer. A plan is well-formed or it is not, and that does not depend on
+the machine asking; whether this machine has a browser does. So:
+
+```
+  $ python stepper/main.py validate sd_smoke_test      # exit 0
+    OK ?  sd_smoke_test   5 steps  [web]
+    1/1 valid.
+    Marked ? — valid, but a domain they use is not ready here:
+      web: playwright is not installed — pip install -r requirements.txt
+
+  $ python stepper/main.py run sd_smoke_test           # exit 1
+    error: 1 domain(s) this workflow needs are not ready here:
+      web: playwright is not installed — pip install -r requirements.txt
+```
+
+Collapsing the two would have turned CI red: `.github/workflows/ci.yml` runs
+`validate` and deliberately tolerates absent OpenLibrary secrets, warning and
+skipping rather than failing.
+
+`prepare_run` raises `DomainNotReadyError` before a reporter or a session is
+built, so the refusal costs nothing. `validate_plan` keeps its old signature
+and narrow answer; `plan_report` is the same work with domains and readiness
+attached.
+
+**Verified** with a real browser, plus the mixed workflow §0 describes:
+
+```
+  passed   domain=web    web: open the local page
+  passed   domain=noop   noop: store a count
+  passed   domain=web    web+noop: a loop with both inside
+  passed   domain=web    web: click, gated on the noop value
+```
+
+Plan-time discovery reported `['noop', 'web']` for it — `noop_echo` appears
+only inside the loop body, so that is the sub-step walk working on a real file.
+`validate` is 17/17 with a domain on every line. 1019 unit tests pass, up from
+976; 1007 pass and 12 skip with Playwright made unimportable, and `run
+noop_smoke` still completes with it gone.
+
+One thing this does not do: a *false negative* is still possible by design. A
+silent preflight means nothing certainly wrong was found, not that the launch
+will succeed.
+
 ### M6 should be SQLite, not AWS
 
 `sqlite3` is in the standard library. A `db` domain built on it needs no new
@@ -487,7 +580,9 @@ through the UI, assert it through SQL* — runs in CI hermetically, the way
 2. **No `ActionStrategy` subclass needs editing** beyond adding a class
    attribute, and glue actions need not even do that (5.1).
 3. **The three-layer contract is untouched.** POMs stay web-only.
-4. **CLI unchanged**, plus `validate` gaining a line about domains.
+4. **CLI unchanged**, plus `validate` gaining a domain column and, for a
+   domain that is not ready here, an `OK ?` mark and a note under the summary.
+   Its exit code still tracks validity alone.
 
 One deliberate exception: **hooks stop running for steps outside their domain**
 (5.3). In a single-domain run that is a no-op.
@@ -516,10 +611,11 @@ One deliberate exception: **hooks stop running for steps outside their domain**
 3. ~~**Should `StepResult` record the domain?**~~ **Settled: yes.**
    `StepResult.domain` is additive and gives the routing tests something
    concrete to assert rather than infer.
-4. **What happens when a workflow names a domain whose credentials are
-   missing?** Fail at plan time with the domain named, not at first use.
-   *Still open — it belongs to M5.* M2 does the runtime half: an unregistered
-   domain raises `UnknownDomainError` naming it and listing what the run has.
+4. ~~**What happens when a workflow names a domain whose credentials are
+   missing?**~~ **Settled: `run` refuses at plan time, `validate` reports and
+   passes.** The two commands ask different questions, so they get different
+   answers — see M5 below. M2 did the runtime half: an unregistered domain
+   raises `UnknownDomainError` naming it and listing what the run has.
 
 ---
 

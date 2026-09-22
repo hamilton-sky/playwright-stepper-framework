@@ -89,7 +89,10 @@ python stepper/main.py run ol_smoke_test
 # Show browser window (headless is the default)
 python stepper/main.py run ol_smoke_test --show
 
-# Check every workflow without launching a browser (exits 1 if any is invalid)
+# Check every workflow without launching a browser (exits 1 if any is invalid).
+# Each line ends with the domains that workflow opens a session for. An `OK ?`
+# marks a valid workflow whose domain is not ready on this machine — no browser,
+# no credentials — which `run` refuses but `validate` only reports.
 python stepper/main.py validate
 
 # Watch the healer work on deliberately broken selectors. No API key needed —

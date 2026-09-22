@@ -1,6 +1,9 @@
 from __future__ import annotations
 import importlib
+import json
 import logging
+import os
+import sys
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -51,6 +54,93 @@ async def launch_browser(pw, cfg_browser: str, headless: bool, slow_mo: int):
         args=["--disable-blink-features=AutomationControlled"],
         **browser_launch_kwargs(),
     )
+
+
+# ── Can the browser even launch? ──────────────────────────────────────────────
+
+def browser_preflight(cfg_browser: str = "chromium") -> list[str]:
+    """
+    What would stop launch_browser from working, checked without launching.
+
+    This is the web domain's plan-time check (M5). It runs before a workflow
+    starts, so "please run playwright install" arrives instead of a run that
+    plans, validates, opens reporters and only then dies.
+
+    Silence is not a promise that the launch will succeed — it means nothing
+    *certainly* wrong was found. Every uncertain case reports nothing on
+    purpose: a false "no browser" blocks a run that would have worked, which is
+    a worse failure than the late one this replaces.
+    """
+    try:
+        import playwright
+    except ImportError:
+        return ["playwright is not installed — pip install -r requirements.txt"]
+
+    override = os.environ.get("BROWSER_EXECUTABLE_PATH", "").strip()
+    if override and Path(override).exists():
+        return []          # the escape hatch decides which binary runs; trust it
+
+    missing = _missing_browser_build(cfg_browser, Path(playwright.__file__).parent)
+    return [missing] if missing else []
+
+
+def _missing_browser_build(cfg_browser: str, package_root: Path) -> str | None:
+    """
+    The revision Playwright insists on, and whether it is on disk.
+
+    Playwright refuses to launch against any build but the exact revision its
+    version pins — the mismatch poms.shared.driver.browser_launch_kwargs exists
+    to work around. That revision is declared in the driver's own browsers.json,
+    so the answer is a directory lookup rather than a launch attempt.
+    """
+    try:
+        manifest = package_root / "driver" / "package" / "browsers.json"
+        entries = json.loads(manifest.read_text(encoding="utf-8")).get("browsers", [])
+    except Exception:
+        return None                          # cannot tell → say nothing
+
+    entry = next((b for b in entries if b.get("name") == cfg_browser), None)
+    revision = (entry or {}).get("revision")
+    if entry is None or revision is None or entry.get("revisionOverrides"):
+        # revisionOverrides means the wanted revision varies by platform, and
+        # resolving that here would duplicate Playwright's own logic badly.
+        return None
+
+    root = _browsers_root()
+    if root is None:
+        return None
+    if (root / f"{cfg_browser}-{revision}").is_dir():
+        return None
+
+    present = sorted(p.name for p in root.iterdir()
+                     if p.is_dir() and p.name.startswith(f"{cfg_browser}-")) \
+        if root.is_dir() else []
+    found = f" (found {', '.join(present)})" if present else ""
+    return (
+        f"{cfg_browser} build {revision} is not installed in {root}{found} — run "
+        f"`playwright install {cfg_browser}`, or point BROWSER_EXECUTABLE_PATH "
+        f"at a binary you already have"
+    )
+
+
+def _browsers_root() -> Path | None:
+    """
+    Where Playwright keeps its browsers, or None when that is not knowable.
+
+    PLAYWRIGHT_BROWSERS_PATH=0 installs them beside the package in a layout
+    this check does not model, so it answers None rather than guessing.
+    """
+    raw = os.environ.get("PLAYWRIGHT_BROWSERS_PATH", "").strip()
+    if raw == "0":
+        return None
+    if raw:
+        return Path(raw)
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Caches" / "ms-playwright"
+    if sys.platform.startswith("win"):
+        local = os.environ.get("LOCALAPPDATA")
+        return Path(local) / "ms-playwright" if local else None
+    return Path.home() / ".cache" / "ms-playwright"
 
 
 def register_all_sites(registry, stepper_root: Path, screenshots_dir=None) -> None:
