@@ -7,6 +7,14 @@ incomplete should fail at plan time with the domain named, not at first use.
 
 Two rules carry the risk, and they pull in opposite directions.
 
+**The unit suite is browser-free.** `.github/workflows/ci.yml`'s Unit Tests job
+installs the Playwright package and deliberately no browsers — that is what
+makes it the fast job. So every test here owns its own browsers directory
+through the autouse fixture below and never reads the machine's. Written the
+other way they passed on a developer box with chromium installed and failed in
+CI, which is the wrong way round for a suite whose whole promise is "no
+browser, no network, no credentials".
+
 **A false "not ready" blocks a run that would have worked.** `run` refuses on a
 preflight failure, so every uncertain case in the browser check must report
 nothing. The tests below pin the silences as hard as the failures — a check
@@ -76,31 +84,84 @@ needs_playwright = pytest.mark.skipif(
 )
 
 
+def _wanted_revision(browser: str) -> str:
+    """
+    The build Playwright insists on, read straight from its manifest.
+
+    Deliberately not routed through the code under test: a fixture built from
+    the thing it verifies proves nothing. This reads the same source of truth
+    the production check reads, independently.
+    """
+    import json
+    import playwright
+
+    manifest = (Path(playwright.__file__).parent
+                / "driver" / "package" / "browsers.json")
+    entries = json.loads(manifest.read_text(encoding="utf-8"))["browsers"]
+    return next(b["revision"] for b in entries if b["name"] == browser)
+
+
+@pytest.fixture(autouse=True)
+def browsers_root(monkeypatch, tmp_path):
+    """
+    An empty browsers directory this test owns.
+
+    Autouse so no test in this file can accidentally read the machine's real
+    one. Whether the box running the suite happens to have chromium must not
+    decide whether these pass — CI's unit job has none, a developer box has one.
+    """
+    root = tmp_path / "ms-playwright"
+    root.mkdir()
+    monkeypatch.setenv("PLAYWRIGHT_BROWSERS_PATH", str(root))
+    monkeypatch.delenv("BROWSER_EXECUTABLE_PATH", raising=False)
+    return root
+
+
+@pytest.fixture
+def installed_chromium(browsers_root):
+    """The same directory, with the chromium build Playwright wants present."""
+    if _playwright_installed():
+        (browsers_root / f"chromium-{_wanted_revision('chromium')}").mkdir()
+    return browsers_root
+
+
 @needs_playwright
 def test_a_browser_that_is_not_installed_is_reported():
     """
-    firefox is not in this image. The message has to name the revision, since
-    "firefox is missing" and "the wrong firefox build is present" need
-    different fixes.
+    The message has to name the revision: "chromium is missing" and "the wrong
+    chromium build is present" need different fixes.
     """
-    reasons = browser_preflight("firefox")
+    reasons = browser_preflight("chromium")
 
     assert len(reasons) == 1
-    assert "firefox" in reasons[0]
-    assert "playwright install firefox" in reasons[0]
+    assert _wanted_revision("chromium") in reasons[0]
+    assert "playwright install chromium" in reasons[0]
 
 
 @needs_playwright
-def test_the_installed_browser_passes():
+def test_an_installed_browser_passes(installed_chromium):
     assert browser_preflight("chromium") == []
 
 
 @needs_playwright
-def test_web_preflight_reads_the_browser_off_settings():
+def test_the_message_names_the_builds_that_are_present(browsers_root):
+    """
+    A present-but-wrong revision is the failure the version pin in
+    requirements.txt exists to prevent, and the one BROWSER_EXECUTABLE_PATH
+    works around. Naming what *is* there is what tells the two apart.
+    """
+    (browsers_root / "chromium-999").mkdir()
+
+    assert "found chromium-999" in browser_preflight("chromium")[0]
+
+
+@needs_playwright
+def test_web_preflight_reads_the_browser_off_settings(installed_chromium):
     assert web_preflight(None, _Settings("chromium")) == []
     assert web_preflight(None, _Settings("firefox")) != []
 
 
+@needs_playwright
 def test_web_preflight_assumes_chromium_when_settings_say_nothing():
     """
     plan_report may be called with settings that predate a browser field, and
@@ -109,7 +170,7 @@ def test_web_preflight_assumes_chromium_when_settings_say_nothing():
     assert web_preflight(None, None) == browser_preflight("chromium")
 
 
-# ── The browser check: what it deliberately stays quiet about ─────────────────
+# ── What the browser check deliberately stays quiet about ────────────────────
 
 @needs_playwright
 def test_an_executable_override_that_exists_silences_the_check(monkeypatch, tmp_path):
@@ -123,11 +184,12 @@ def test_an_executable_override_that_exists_silences_the_check(monkeypatch, tmp_
     binary.write_text("#!/bin/sh\n")
     monkeypatch.setenv("BROWSER_EXECUTABLE_PATH", str(binary))
 
-    assert browser_preflight("firefox") == []
+    assert browser_preflight("chromium") == []
 
 
 @needs_playwright
-def test_an_override_pointing_nowhere_does_not_silence_the_check(monkeypatch):
+def test_an_override_pointing_nowhere_does_not_silence_the_check(
+        monkeypatch, installed_chromium):
     """
     browser_launch_kwargs ignores a stale path with a warning and falls back to
     Playwright's own browser, so the revision on disk is what will actually be
@@ -136,8 +198,8 @@ def test_an_override_pointing_nowhere_does_not_silence_the_check(monkeypatch):
     """
     monkeypatch.setenv("BROWSER_EXECUTABLE_PATH", "/nowhere/at/all/chromium")
 
-    assert browser_preflight("firefox") != []
     assert browser_preflight("chromium") == []
+    assert browser_preflight("firefox") != []
 
 
 @needs_playwright
@@ -161,7 +223,7 @@ def test_browsers_installed_beside_the_package_are_not_judged(monkeypatch):
     monkeypatch.setenv("PLAYWRIGHT_BROWSERS_PATH", "0")
 
     assert _browsers_root() is None
-    assert browser_preflight("firefox") == []
+    assert browser_preflight("chromium") == []
 
 
 def test_a_missing_playwright_is_reported(monkeypatch):
@@ -177,7 +239,7 @@ def test_a_missing_playwright_is_reported(monkeypatch):
 
 
 @needs_playwright
-def test_an_unreadable_manifest_is_not_judged(monkeypatch, tmp_path):
+def test_an_unreadable_manifest_is_not_judged(monkeypatch):
     """Any uncertainty reports nothing — including a Playwright layout change."""
     import stepper.bootstrap.infra as infra
 
@@ -268,7 +330,7 @@ def registered_sites():
 
 
 @needs_playwright
-def test_plan_report_names_the_domains_a_workflow_opens():
+def test_plan_report_names_the_domains_a_workflow_opens(installed_chromium):
     report = plan_report(RunConfig(workflow_path=_WEB_WORKFLOW))
 
     assert report.domains == ["web"]
@@ -321,7 +383,7 @@ def test_run_refuses_to_prepare_when_a_domain_is_not_ready(monkeypatch):
 
 
 @needs_playwright
-def test_a_ready_run_still_prepares(monkeypatch):
+def test_a_ready_run_still_prepares(installed_chromium):
     import stepper.main as main
     prepared = main.prepare_run(RunConfig(workflow_path=_WEB_WORKFLOW),
                                 resolver=_STUB_RESOLVER)

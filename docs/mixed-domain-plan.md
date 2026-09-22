@@ -556,9 +556,19 @@ attached.
 
 Plan-time discovery reported `['noop', 'web']` for it — `noop_echo` appears
 only inside the loop body, so that is the sub-step walk working on a real file.
-`validate` is 17/17 with a domain on every line. 1019 unit tests pass, up from
-976; 1007 pass and 12 skip with Playwright made unimportable, and `run
+`validate` is 17/17 with a domain on every line. 1020 unit tests pass, up from
+976; 1006 pass and 14 skip with Playwright made unimportable, and `run
 noop_smoke` still completes with it gone.
+
+The suite stays browser-free, which cost a round of CI to get right. The first
+version of these tests read the machine's real browsers directory, so they
+passed here and failed in the Unit Tests job — which installs the Playwright
+package and deliberately no browsers, since that is what makes it the fast job.
+They now own a `PLAYWRIGHT_BROWSERS_PATH` through an autouse fixture and drive
+both states themselves, so the check's logic is what is under test rather than
+the box running it. Verified in all four environments: browsers present, an
+empty browsers directory, no `PLAYWRIGHT_BROWSERS_PATH` at all, and Playwright
+unimportable.
 
 One thing this does not do: a *false negative* is still possible by design. A
 silent preflight means nothing certainly wrong was found, not that the launch
