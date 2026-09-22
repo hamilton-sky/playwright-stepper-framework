@@ -11,10 +11,10 @@ Pattern: Mixin
 
 from __future__ import annotations
 import copy
-import json
 import logging
 
 from stepper.engine.utils import dict_to_step_config as _dict_to_step_config
+from stepper.engine.runner.interpolation import mapping_lookup, resolve
 
 logger = logging.getLogger(__name__)
 
@@ -23,28 +23,19 @@ def _apply_substitutions(obj, subs: dict):
     """
     Recursively replace {{key}} tokens in a nested dict/list/str structure.
 
-    Values in subs that are dicts or lists are serialised to JSON strings
-    so they can be safely embedded into string fields.
-    Non-string scalar fields (int, bool, None) are passed through untouched.
+    The walk, the type rules and the JSON embedding all live in
+    runner/interpolation.py, shared with the runner's own context pass and the
+    db domain's parameter binding — three copies of one idea is how they drift
+    apart.
+
+    What is *not* shared is the failure mode. An unknown token here is left
+    alone, deliberately: a visible {{typo}} in a log line reads as "the name was
+    wrong", where a silent empty string reads as "the value was blank". The
+    runner's pass fails the step instead, because a token that reaches an
+    action's arguments is not cosmetic — see that module's docstring.
     """
-    if isinstance(obj, str):
-        # Pure reference: preserve original type (mirrors _substitute in planner.py)
-        stripped = obj.strip()
-        if stripped.startswith("{{") and stripped.endswith("}}"):
-            key = stripped[2:-2].strip()
-            if key in subs:
-                return subs[key]
-        for k, v in subs.items():
-            token = f"{{{{{k}}}}}"
-            if token in obj:
-                v_str = json.dumps(v) if isinstance(v, (dict, list)) else str(v)
-                obj = obj.replace(token, v_str)
-        return obj
-    if isinstance(obj, dict):
-        return {k: _apply_substitutions(v, subs) for k, v in obj.items()}
-    if isinstance(obj, list):
-        return [_apply_substitutions(i, subs) for i in obj]
-    return obj  # int, bool, None — pass through untouched
+    resolved, _missing = resolve(obj, mapping_lookup(subs))
+    return resolved
 
 
 class SubStepRunnerMixin:

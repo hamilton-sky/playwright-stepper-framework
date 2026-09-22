@@ -68,16 +68,42 @@ main.py
 
 ```
 Phase 1 — Plan time (JsonFilePlanner)
-  variables{} block substituted into all step fields before StepRunner runs.
+  Source: the workflow's own variables{} block.
+  Substituted into every step field before StepRunner sees them.
   "{{target_count}}" → 5
-  Deterministic — same JSON always produces same StepConfig list.
+  Deterministic — the same JSON always produces the same StepConfig list.
+  An unknown token is left alone.
 
-Phase 2 — Runtime (StepRunner._resolve_context_vars)
-  context.counts keys substituted just before each step executes.
-  "{{gap}}" → 3   (value written by ol_ensure_count earlier in the same run)
-  Pure "{{key}}" reference preserves original type (int, bool).
-  Mixed string "page_{{n}}" is string-substituted.
+Phase 2 — Run time (StepRunner._resolve_context_vars)
+  Source: the ExecutionContext — counts, the generic store that `store`
+  writes to, and the non-empty named fields. Anything context.get answers.
+  Scope:  url, input_value, element, extra, when, description.
+  "{{gap}}"  → 3      written by an earlier step
+  "{{item}}" → "Dune" captured off a page by `store`
+  Runs at the top of the loop, before `when` is evaluated and before the
+  observers see the step, so a condition compares against the resolved
+  operand and a log line matches the report.
+  An unknown token FAILS the step.
 ```
+
+Both phases preserve type on a pure `"{{key}}"` reference — an int stays an
+int, so a later comparison behaves — and stringify an embedded one, since
+there is nothing else it could become inside a sentence. Containers embed as
+JSON rather than `str(...)`, which would emit Python literals nothing can parse.
+
+**Why Phase 2 is strict where the others are forgiving.** Plan-time and
+sub-step substitution leave an unknown token alone, so a typo reads as "the
+name was wrong" rather than as a blank value. Phase 2 refuses, because its
+output goes into an action's arguments rather than a log line. Both failures
+that motivated it were silent: a literal `"{{gap}}"` reaching a POM and dying
+three frames down as `'<' not supported between instances of 'int' and 'str'`,
+and a literal `"{{item}}"` written to a database and then asserted against the
+same literal — a check that agrees with itself and cannot fail.
+
+A third substitution exists for sub-steps (`for_each_item`, `parallel`,
+`paginate`): the dispatcher passes per-item values as a plain mapping. It
+shares the walk in `runner/interpolation.py` with Phase 2 and keeps the
+forgiving failure mode.
 
 ---
 
@@ -112,6 +138,34 @@ Per-step value always wins over the flow default.
 flow-level: true   →  all steps soft-fail by default
 step-level: false  →  that specific step hard-stops (e.g. ol_ensure_login)
 ```
+
+---
+
+## Domains — what a step acts on
+
+`StepRunner` holds no page. It holds a `SessionSet`, and per step it asks the
+action which domain it belongs to and looks that domain's session up.
+
+```
+  action.domain ──► sessions.get(domain) ──► the object the action receives
+       "web"                                  a Playwright Page
+       "db"                                   a sqlite3 Connection
+       "noop"                                 a bare object
+        None                                  None — declared session-agnostic
+```
+
+Per-domain: the session, the hooks that run around a step, the `when`
+vocabulary, and the preflight check. Shared across all domains: the
+`ExecutionContext` below — which is how a value a browser step scraped reaches
+a database step in the same run.
+
+Sessions open on first use and close in reverse order, so a workflow that
+never reaches a db step never opens a connection. A domain declares itself
+from its own `sites/*/register.py`; no central file lists them.
+
+See [../../ARCHITECTURE.md](../../ARCHITECTURE.md) for the diagram and
+[../../docs/mixed-domain-plan.md](../../docs/mixed-domain-plan.md) for how it
+came about.
 
 ---
 
