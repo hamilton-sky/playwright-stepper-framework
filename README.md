@@ -18,14 +18,21 @@ element anyway, escalating from free local strategies to paid AI only when they 
 ```mermaid
 flowchart LR
     A["<b>JSON Workflow</b><br/>WHAT to do"] --> B["<b>Stepper Engine</b><br/>HOW to run it"]
-    B --> C["<b>POM Layer</b><br/>WHERE elements are"]
-    C --> D["<b>Playwright</b><br/>DO it"]
+    B --> W["<b>web</b><br/>POM layer → Playwright"]
+    B --> D["<b>db</b><br/>sqlite3 connection"]
+    B --> X["<b>your domain</b><br/>HTTP, AWS, a queue"]
 
     style A fill:#e8f0fe,stroke:#4285f4,color:#111
     style B fill:#e6f4ea,stroke:#34a853,color:#111
-    style C fill:#fef7e0,stroke:#fbbc04,color:#111
-    style D fill:#f1f3f4,stroke:#9aa0a6,color:#111
+    style W fill:#fef7e0,stroke:#fbbc04,color:#111
+    style D fill:#fef7e0,stroke:#fbbc04,color:#111
+    style X fill:#f1f3f4,stroke:#9aa0a6,stroke-dasharray:4 3,color:#111
 ```
+
+The engine holds no browser. Per step it asks the action which **domain** it acts
+on and hands it that domain's session — a Playwright `Page`, a `sqlite3`
+connection, whatever a domain you add opens. Sessions open on first use, so a
+workflow with no browser steps never launches one.
 
 ---
 
@@ -107,9 +114,16 @@ spelling.
 Every element identifier lives in a `Locator` value object inside a POM's `Locators` inner
 class. Workflow JSON contains action names and parameters only — never a CSS selector.
 
-### The fourth axis: domains
+Full diagrams: [ARCHITECTURE.md](ARCHITECTURE.md).
+Where things stand: [docs/state-of-the-stepper.md](docs/state-of-the-stepper.md).
+Layer rules: [.claude/rules/three-layer-contract.md](.claude/rules/three-layer-contract.md).
 
-The three layers say *where* code lives. A **domain** says *what a step acts on*.
+---
+
+## Domains — one run, several kinds of step
+
+The three layers say *where code lives*. A **domain** says *what a step acts on*,
+and it is the axis that makes this more than a Playwright wrapper.
 
 ```
   ┌────────────────────────────────────────────────────────────┐
@@ -125,17 +139,77 @@ The three layers say *where* code lives. A **domain** says *what a step acts on*
    └─────────┘         └───────────┘        └──────────┘
 ```
 
-A domain supplies its own session, hooks, `when` vocabulary and preflight check, and
-declares itself from its own folder under `stepper/sites/` — no central file lists them.
-Sessions open on first use and close in reverse order, so a db-only workflow never launches
-a browser.
+### One workflow, two domains
 
-The POM layer stays browser-only. A non-browser domain has no selectors, so it has no POMs
-and its actions subclass `ActionStrategy` directly rather than `GlueAction`.
+This is the whole point, so here it is as a file rather than a claim. A browser
+step reads a value off a rendered page, a database step writes it, and a later
+browser step is gated on what the database says — one `ExecutionContext`, one
+report, two sessions open at once:
 
-Full diagrams: [ARCHITECTURE.md](ARCHITECTURE.md).
-Where things stand: [docs/state-of-the-stepper.md](docs/state-of-the-stepper.md).
-Layer rules: [.claude/rules/three-layer-contract.md](.claude/rules/three-layer-contract.md).
+```json
+{
+  "domain": "web",
+  "steps": [
+    { "action": "navigate", "description": "web: open the page",
+      "url": "{{page_url}}" },
+
+    { "action": "store", "description": "web: read the count off the page",
+      "element": { "id": "item-count" }, "extra": { "key": "on_hand" } },
+
+    { "action": "db_execute", "description": "db: write what the browser read",
+      "extra": { "sql": "INSERT INTO stock_takes (item, on_hand) VALUES (?, ?)",
+                 "params": ["Dune", "{{on_hand}}"] } },
+
+    { "action": "click", "description": "web: confirm, once the database agrees",
+      "element": { "role": "button", "name": "Confirm stock take" },
+      "when": { "db_row_exists": {
+                  "sql": "SELECT 1 FROM stock_takes WHERE item = ?",
+                  "params": ["Dune"] } } }
+  ]
+}
+```
+
+`{{on_hand}}` is resolved from the run's context, and SQL values are bound as
+parameters rather than pasted into the statement. `db_row_exists` is the db
+domain's own `when` condition — a run's condition vocabulary is the merge of
+every domain it uses.
+
+That workflow ships as `db_web_mixed.json` and runs in CI against a real
+browser with **no network and no credentials**: the page is a checked-in
+`file://` fixture and the database is a temp file.
+
+### What a domain supplies
+
+```
+  session     what to open, and how to close it        (required)
+  hooks       what runs around each of its steps
+  shared      a handle several runs may reuse
+  conditions  its own `when` vocabulary, domain-tagged
+  preflight   what is missing here, checked before anything opens
+```
+
+A domain declares itself from its own folder under `stepper/sites/`;
+`register_all_sites` globs `sites/*/register.py`, so **no central file lists
+them** and adding one edits nothing outside its own directory.
+
+`validate` reports the domains each workflow needs before opening anything:
+
+```
+  OK    sd_happy_path     6 steps  [web]
+  OK    db_smoke          6 steps  [db]
+  OK    db_web_mixed      8 steps  [db, web]
+  OK ?  sd_smoke_test     5 steps  [web]     ← valid, but no browser here
+```
+
+`OK ?` means the workflow is well-formed but a domain it needs is not ready on
+this machine. `validate` reports that and still exits 0; `run` refuses.
+
+The POM layer stays browser-only. A non-browser domain has no selectors, so it
+has no POMs and its actions subclass `ActionStrategy` directly rather than
+`GlueAction` — there is nothing to inject a resolver into.
+
+How this came about: [docs/universal-runner-plan.md](docs/universal-runner-plan.md) ·
+[docs/mixed-domain-plan.md](docs/mixed-domain-plan.md).
 
 ---
 
@@ -298,7 +372,10 @@ python stepper/main.py run ol_regression_roundtrip \
 
 ## Engine Actions
 
-Site-agnostic, registered in `build_default_registry()`:
+Registered in `build_default_registry()` and available to every *site* — which
+is not the same as every *domain*. All but two act on the **web** domain and
+receive a Playwright `Page`; `load_test_data` and `run_workflow` declare no
+domain and are handed no session at all.
 
 | Action | Description |
 |---|---|
@@ -329,12 +406,32 @@ Site-agnostic, registered in `build_default_registry()`:
 Site-specific actions (`ol_*`, `sd_*`, `pt_*`) are catalogued in
 [.claude/rules/site-actions.md](.claude/rules/site-actions.md).
 
+### Actions from a non-browser domain
+
+Registered by `stepper/sites/db/register.py`, not by the engine — a domain
+brings its own actions the same way a site does. `page` here is the
+`sqlite3.Connection` the db domain opened:
+
+| Action | Description |
+|---|---|
+| `db_execute` | Run a statement that changes the database, and commit it |
+| `db_query` | Read the first column of the first row into the context |
+| `db_assert_count` | Count rows and compare against `extra.expected` |
+
+SQL values come from `extra.params` and are **bound, never interpolated** — a
+`{{name}}` inside a param reads a value an earlier step stored, and an
+unresolved one fails the step rather than being written as a literal.
+
+The db domain also registers one `when` condition, `db_row_exists`. Full tables
+for every site and domain: [.claude/rules/site-actions.md](.claude/rules/site-actions.md).
+
 ---
 
 ## Workflows
 
-Sixteen ready-to-run workflows — `python stepper/main.py list` prints this table
-live from disk. Run any of them from the repo root:
+Nineteen ready-to-run workflows — `python stepper/main.py list` prints this table
+live from disk, and `python stepper/main.py validate` adds the domains each one
+opens. Run any of them from the repo root:
 
 ```bash
 python stepper/main.py run <workflow-name>
@@ -370,6 +467,28 @@ python stepper/main.py run <workflow-name>
 | Workflow | What it showcases |
 |---|---|
 | `hotel_booking.json` | Login → search → select → book |
+
+**db** — `stepper/sites/db/workflows/` · *no browser required*
+
+| Workflow | What it showcases |
+|---|---|
+| `db_smoke.json` | SQLite only — seed, read back, assert, gate a step on `db_row_exists` |
+| `db_web_mixed.json` | **A browser session and a database connection in one run**, sharing a context and a report. Hermetic: a `file://` fixture page and a temp database |
+
+**noop** — `stepper/sites/_noop/workflows/` · *not a real site*
+
+| Workflow | What it showcases |
+|---|---|
+| `noop_smoke.json` | The engine running with no browser, no resolver and no POMs — its test asserts Playwright never reaches `sys.modules` |
+
+The two below need an argument, since one takes a path and the other a database:
+
+```bash
+python stepper/main.py run db_smoke
+
+python stepper/main.py run db_web_mixed \
+  --vars "{\"page_url\": \"file://$PWD/stepper/sites/db/fixtures/inventory.html\"}"
+```
 
 ---
 
