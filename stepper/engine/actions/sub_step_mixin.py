@@ -59,12 +59,42 @@ class SubStepRunnerMixin:
     Requires the host class to expose self._factory (ActionFactory). A host may
     also expose self._conditions (ConditionRegistry) to give its sub-steps the
     same `when` vocabulary the run was built with; without one, sub-steps get
-    the core conditions only.
+    the core conditions only, and self._sessions (SessionSet) to route each
+    sub-step to its own domain's session.
     """
 
     #: Hosts set this in __init__ or through set_conditions(). None means
     #: "core conditions only".
     _conditions = None
+
+    #: Set by the composition root through set_sessions(). None means "hand
+    #: every sub-step whatever session the parent received", which is how
+    #: dispatch behaved before routing existed.
+    _sessions = None
+
+    def set_sessions(self, sessions) -> "SubStepRunnerMixin":
+        """
+        Late-bind the run's sessions, so sub-steps route like top-level steps.
+
+        Same shape as set_conditions above, and for the same reason: a
+        dispatcher is registered once at startup, while the SessionSet belongs
+        to one run. build_pipeline sets it once the set exists. Registries are
+        built per run, so an instance is never shared between runs.
+        """
+        self._sessions = sessions
+        return self
+
+    async def _session_for(self, action, fallback):
+        """
+        The session this sub-step's action should act on.
+
+        Falls back to whatever the parent was handed when no set is bound —
+        a direct caller or a test double — which is exactly the pre-routing
+        behaviour.
+        """
+        if self._sessions is None:
+            return fallback
+        return await self._sessions.get(action.domain)
 
     def set_conditions(self, conditions) -> "SubStepRunnerMixin":
         """
@@ -114,7 +144,8 @@ class SubStepRunnerMixin:
             if sub_cfg.when:
                 try:
                     should_run = await evaluate_when(
-                        sub_cfg.when, context, page, conditions=self._conditions
+                        sub_cfg.when, context, self._sessions or page,
+                        conditions=self._conditions,
                     )
                 except Exception as e:
                     logger.warning(
@@ -129,7 +160,9 @@ class SubStepRunnerMixin:
                     continue
 
             action = self._factory.create(sub_cfg.action)
-            result = await action.execute(page, sub_cfg, resolver, context, behaviour)
+            target = await self._session_for(action, page)
+            result = await action.execute(target, sub_cfg, resolver, context, behaviour)
+            result.domain = action.domain
             results.append(result)
 
             if stop_on_failure and result.status != "passed":

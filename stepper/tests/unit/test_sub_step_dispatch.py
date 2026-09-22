@@ -159,21 +159,26 @@ class _Host(SubStepRunnerMixin):
         self._factory = factory
 
 
-def _factory(results=None):
+def _factory(results=None, domain="web"):
     """
-    An ActionFactory double. Records every (step, behaviour) it dispatches and
-    returns the scripted statuses in order.
+    An ActionFactory double. Records every (step, behaviour, session) it
+    dispatches and returns the scripted statuses in order.
+
+    The doubles carry a `domain` because every real ActionStrategy does — it is
+    what the mixin routes a sub-step's session by (M4). `session` is recorded
+    so a test can assert which one a sub-step actually received.
     """
     statuses = list(results or [])
     dispatched: list[dict] = []
 
     def create(action_name):
         async def execute(page, step, resolver, context, behaviour=None):
-            dispatched.append({"action": action_name, "step": step, "behaviour": behaviour})
+            dispatched.append({"action": action_name, "step": step,
+                               "behaviour": behaviour, "session": page})
             status = statuses.pop(0) if statuses else "passed"
             return StepResult(step=step, status=status)
 
-        return SimpleNamespace(execute=execute)
+        return SimpleNamespace(execute=execute, domain=domain)
 
     return SimpleNamespace(create=create), dispatched
 

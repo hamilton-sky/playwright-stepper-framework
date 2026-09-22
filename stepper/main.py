@@ -506,6 +506,13 @@ async def build_pipeline(prepared: PreparedRun, session, observers=None) -> Pipe
     elif cfg.workflow_path:
         logger.info("⚕ Heal cache disabled — every heal goes through the cascade")
 
+    # Dispatchers route their sub-steps by domain too, so they need the set.
+    # Late-bound for the same reason conditions are: an action is registered
+    # once at startup, a SessionSet belongs to one run.
+    for _name, action in prepared.registry.items():
+        if isinstance(action, SubStepRunnerMixin):
+            action.set_sessions(sessions)
+
     runner = StepRunner(
         sessions=sessions,
         action_factory=prepared.registry,

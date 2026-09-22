@@ -31,6 +31,7 @@ class RecordingAction(ActionStrategy):
     """
 
     action_name = "recording"
+    domain      = "web"   # these stand in for browser actions
     read_only = True
     status = "passed"
     error = ""
@@ -59,6 +60,7 @@ class SlowAction(ActionStrategy):
     """Sleeps, so concurrency is observable in wall-clock terms."""
 
     action_name = "slow"
+    domain      = "web"   # these stand in for browser actions
     read_only = True
 
     def __init__(self, delay=0.05):
@@ -71,6 +73,7 @@ class SlowAction(ActionStrategy):
 
 class ExplodingAction(ActionStrategy):
     action_name = "exploding"
+    domain      = "web"   # these stand in for browser actions
     read_only = True
 
     async def _execute(self, page, step, resolver, context, behaviour=None):
