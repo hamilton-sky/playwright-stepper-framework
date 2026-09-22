@@ -115,6 +115,7 @@ class StepResult:
     output: dict = field(default_factory=dict)  # step-produced data saved to results.json
     healed_element: dict | None = None          # {original, healed, annotated_screenshot}
     heal_attempts: int = 0                      # number of heal attempts made (0 = no healing needed)
+    domain: str | None = None                   # which domain's session this step ran against
 
 
 # ──────────────────────────────────────────────────────────
@@ -248,6 +249,19 @@ class ActionStrategy(ABC):
 
     #: Must match the "action" field in step JSON.
     action_name: ClassVar[str]
+
+    #: Which domain's session this action acts on — the key StepRunner looks up
+    #: in the run's SessionSet. Every browser action declares "web".
+    #:
+    #: None means session-agnostic: the action is handed None rather than
+    #: whatever session happens to be open. An action that declared it needs
+    #: nothing must not quietly come to depend on something. Only
+    #: load_test_data and run_workflow qualify — `wait` looks session-free
+    #: until you notice it waits on a selector.
+    #:
+    #: Glue actions do not set this: PageModule.register_actions() stamps it
+    #: from the PageModule's own `domain`.
+    domain: ClassVar[str | None] = None
 
     def __init_subclass__(cls, **kwargs) -> None:
         super().__init_subclass__(**kwargs)

@@ -1,7 +1,16 @@
 # Mixed-domain workflows — a browser step and a database step in one file
 
-**Status:** proposal. Nothing here is implemented. Verified against `6347371`
-(the merge of the universal-runner work).
+**Status:** M1 and M2 are implemented. M3–M6 are still proposal, verified
+against `6347371` (the merge of the universal-runner work).
+
+The four open questions in §9 are settled — see each one. Routing is live:
+
+```
+  passed   domain=web   'web: open the page'
+  passed   domain=noop  'noop: store a count'
+  passed   domain=web   'web: log in button'
+  Result: 6/6 passed  (0 failed)      # one real Chromium launch
+```
 
 The goal is one workflow that logs in through the UI, then asserts the row
 landed in the database — or calls an AWS API, or checks an HTTP endpoint —
@@ -218,15 +227,23 @@ domain there covers every site action in one line:
 action.domain = cls.domain          # "web" by default; "db" for a db module
 ```
 
-Engine actions declare it themselves. From an audit of the 23:
+Engine actions declare it themselves. The audit said 20 web and 3 agnostic.
+**It was wrong, and the correction matters:**
 
 ```
-  domain = "web"   20 actions   navigate click fill hover select screenshot
-                                scroll_to keyboard_press assert_* store*
+  domain = "web"   21 actions   navigate click fill hover select screenshot
+                                wait  scroll_to keyboard_press assert_* store*
                                 extract_data measure_performance visual_compare
                                 ensure_login paginate parallel for_each_item
-  domain = None     3 actions   wait  load_test_data  run_workflow
+  domain = None     2 actions   load_test_data  run_workflow
 ```
+
+`wait` looks session-free — one branch is a bare `asyncio.sleep(2)` — but the
+other calls `_wait_for(page, target)` for a selector or URL fragment. Declaring
+it agnostic would hand it `None` and break every
+`{"action": "wait", "wait_for": "..."}` step in the tree. This is exactly what
+§9 Q1 meant by "audit the three before choosing", and it is now pinned by
+`test_wait_is_a_web_action_despite_appearances`.
 
 ### 5.2 `SessionSet` — the new object
 
@@ -310,12 +327,47 @@ domain supplies a resolver — which is the web domain and, by design, only it.
 
 | | Ticket | Risk | Note |
 |---|---|---|---|
-| **M1** | Actions declare a domain | low | No behaviour change; a single-domain run is unaffected |
-| **M2** | `SessionSet`, lazy open, close-all | medium | `StepRunner` takes it in place of one session |
+| **M1** | Actions declare a domain — **LANDED** | low | No behaviour change; a single-domain run is unaffected |
+| **M2** | `SessionSet`, lazy open, close-all — **LANDED** | medium | `StepRunner` takes it *alongside* one session |
 | **M3** | Hooks and conditions per domain | medium | 5.3 is a bug fix; 5.4 revisits T4's signature |
 | **M4** | Dispatchers route sub-steps | medium-high | `parallel` tabs mode must refuse cross-domain |
 | **M5** | Plan-time domain discovery | low | `validate` reports the domains a workflow needs |
 | **M6** | The receipt: a real second domain | low | See below |
+
+### M1 and M2, as landed
+
+`ActionStrategy.domain` defaults to `None`, so a new engine action that forgets
+to declare one fails loudly rather than inheriting the browser by accident.
+`PageModule.register_actions()` — the funnel T5 built — stamps `cls.domain`
+onto every glue action, so a site action never repeats what its page declares
+and cannot drift from it.
+
+`SessionSet` lives in `engine/session.py` beside `SessionAdapter`. Opening is
+lazy and cached, closing is reverse-order through nested finallys, and
+`get(None)` returns `None` — the agnostic contract from §9 Q1.
+
+`StepRunner` gained `sessions=` **without losing `page=` or `session=`**. A
+single already-open session is wrapped by `SessionSet.single()`, which answers
+*every* domain with that one object — precisely how the loop behaved before
+routing existed. That is why all 912 pre-existing tests passed with no test
+file edited. `_page` became a property reading the primary session, so the heal
+loop and the `when` evaluator are unchanged until M3 moves them.
+
+`build_session_set()` builds an adapter for *every* registered domain and
+opens none. `build_pipeline` opens the primary eagerly — the browser launches
+at the same moment it always did — and `adopt()`s it so the set is the single
+owner. `run()` and `run_data_rows()` now close the set rather than one session,
+which removes the double-owner problem rather than working around it.
+
+One thing the ticket did not anticipate: a workflow naming a step from another
+domain used to work by accident (every action got the one session). Building
+the set from *all* registered domains keeps that working, and now correctly —
+`noop_set` receives a `NullSession` rather than a Playwright `Page`.
+
+**Verified:** 946 unit tests pass, up from 912, with no existing test modified;
+945 pass and 1 skips with Playwright made unimportable. A real Chromium run of
+a six-step workflow mixing web and noop steps passes 6/6 with one launch, and
+`run_data_rows` still shares one browser across two rows.
 
 ### M6 should be SQLite, not AWS
 
@@ -354,20 +406,18 @@ One deliberate exception: **hooks stop running for steps outside their domain**
 
 ## 9. Open questions to settle before M1
 
-1. **What does a session-agnostic action receive — `None`, or the "primary"
-   session?** Recommend `None`: an action that declared it needs nothing should
-   not silently come to depend on something. But it is a behaviour change for
-   any action that currently ignores `page` *by accident*, so audit the three
-   in 5.1 before choosing.
-2. **Is `domain` on the action, or on the step?** `StepConfig.extra` could
-   carry `"domain": "db"` per step, which needs no action changes at all — but
-   it moves a fact about the *action* into every workflow that uses it, and
-   lets two workflows disagree about what `db_assert_row` acts on.
-   Recommend the action.
-3. **Should `StepResult` record which domain a step ran against?** Cheap, and
-   it makes a mixed-run report readable. Probably yes; it is additive.
+1. ~~**What does a session-agnostic action receive?**~~ **Settled: `None`.**
+   The audit it asked for changed the answer's scope — `wait` turned out to
+   need a session, so only two actions are agnostic, not three. See 5.1.
+2. ~~**Is `domain` on the action, or on the step?**~~ **Settled: the action**,
+   stamped onto glue actions from their `PageModule`. One fact in one place.
+3. ~~**Should `StepResult` record the domain?**~~ **Settled: yes.**
+   `StepResult.domain` is additive and gives the routing tests something
+   concrete to assert rather than infer.
 4. **What happens when a workflow names a domain whose credentials are
    missing?** Fail at plan time with the domain named, not at first use.
+   *Still open — it belongs to M5.* M2 does the runtime half: an unregistered
+   domain raises `UnknownDomainError` naming it and listing what the run has.
 
 ---
 

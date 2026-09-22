@@ -26,6 +26,7 @@ class AssertCountAction(ActionStrategy):
     Exam requirement: assert_reading_list_count.
     """
     action_name = "assert_count"
+    domain      = "web"
     read_only   = True
 
     async def _execute(self, page, step: StepConfig, resolver,
@@ -67,6 +68,7 @@ class AssertCountAction(ActionStrategy):
 class AssertTextAction(ActionStrategy):
     """Assert that an element's text matches (or contains) an expected value."""
     action_name = "assert_text"
+    domain      = "web"
     read_only   = True
 
     async def _execute(self, page, step: StepConfig, resolver,
@@ -102,6 +104,7 @@ class AssertTextAction(ActionStrategy):
 class AssertVisibleAction(ActionStrategy):
     """Assert that an element is visible (or hidden if extra.hidden=true)."""
     action_name = "assert_visible"
+    domain      = "web"
     read_only   = True
 
     async def _execute(self, page, step: StepConfig, resolver,
@@ -140,6 +143,7 @@ class StoreCountAction(ActionStrategy):
     Useful for "count before + delta" assertions.
     """
     action_name = "store_count"
+    domain      = "web"
     read_only   = True
 
     async def _execute(self, page, step: StepConfig, resolver,
@@ -170,6 +174,7 @@ class StoreCountAction(ActionStrategy):
 class StoreAction(ActionStrategy):
     """Store an element's text (or attribute) in context under extra.key."""
     action_name = "store"
+    domain      = "web"
     read_only   = True
 
     async def _execute(self, page, step: StepConfig, resolver,

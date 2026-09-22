@@ -30,6 +30,7 @@ class MeasurePerformanceAction(ActionStrategy):
     Exam bonus requirement.
     """
     action_name = "measure_performance"
+    domain      = "web"
     read_only   = True
 
     def __init__(self):
@@ -110,6 +111,7 @@ class VisualCompareAction(ActionStrategy):
         }
     """
     action_name = "visual_compare"
+    domain      = "web"
     read_only   = True
 
     def __init__(self):
