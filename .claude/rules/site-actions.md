@@ -44,6 +44,36 @@ workflows use `ol_collect_books`.
 | `pt_select_hotel` | `hotel_results_action.py` | `HotelResultsPage` |
 | `pt_book_hotel` | `hotel_detail_action.py` | `HotelDetailPage` |
 
+### db (`stepper/sites/db/pages/`) — not a browser site
+
+The second real domain, and the first non-browser one with something to open.
+SQLite, from the standard library: no dependency, no credentials, no network.
+Its actions subclass `ActionStrategy` directly for the same reason noop's do —
+`GlueAction` exists to enforce resolver injection into POMs, and a database has
+no selectors to put in one.
+
+`page` here is the `sqlite3.Connection` the domain's session hands over.
+
+| Action name | Glue file | POM(s) used |
+|---|---|---|
+| `db_execute` | `db_page.py` | none |
+| `db_query` | `db_page.py` | none |
+| `db_assert_count` | `db_page.py` | none |
+
+**SQL values are bound, never interpolated.** `extra.params` goes to sqlite3 as
+parameters. A `{{name}}` inside a param reads a value an earlier step stored in
+the `ExecutionContext` — which is how a value a browser step scraped reaches a
+db step — and an unresolved reference *fails the step* rather than being written
+as a literal. See `stepper/sites/db/params.py` for why that differs from
+sub-step substitution, which deliberately leaves unknown tokens alone.
+
+The domain also registers one `when` condition, `db_row_exists`, tagged
+`domain="db"`. A run's condition vocabulary is the merge of every domain the
+plan uses (`main.plan_conditions`), not just the primary domain's.
+
+Its settings come from `stepper/sites/db/config.py` — `STEPPER_DB_PATH`, and
+`STEPPER_DB_TIMEOUT`. Deliberately not under `poms/`: a database has no pages.
+
 ### noop (`stepper/sites/_noop/pages/`) — not a real site
 
 A domain with no browser, no resolver and no POMs. It exists to keep the engine
@@ -66,6 +96,7 @@ directly, not `GlueAction`, because there is no POM layer to protect — see
 | OpenLibrary | `stepper/sites/openlibrary/workflows/` |
 | SauceDemo | `stepper/sites/saucedemo/workflows/` |
 | phpTravels | `stepper/sites/phptravels/workflows/` |
+| db | `stepper/sites/db/workflows/` |
 | noop | `stepper/sites/_noop/workflows/` |
 
 Run any workflow from the repo root:

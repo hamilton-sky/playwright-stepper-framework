@@ -140,6 +140,21 @@ jobs:
           --ci
           --ci-output reports/ci-sd-smoke.json
 
+      # The mixed-domain receipt: one run holding a browser session and a
+      # SQLite connection at once, sharing an ExecutionContext and a report.
+      # Hermetic — the page is a checked-in file:// fixture and the database is
+      # a temp file — so unlike the two above it needs no network and no
+      # credentials. It lives in this job only because it needs a browser; the
+      # db-only half runs in the unit job, via tests/unit/test_db_domain.py.
+      - name: Run mixed web+db workflow (no network, no credentials)
+        env:
+          STEPPER_DB_PATH: ${{ runner.temp }}/stepper-mixed.db
+        run: >
+          python stepper/main.py run db_web_mixed
+          --vars "{\"page_url\": \"file://$PWD/stepper/sites/db/fixtures/inventory.html\"}"
+          --ci
+          --ci-output reports/ci-db-web-mixed.json
+
       # Every test under stepper/tests/ (excluding unit/) drives an OpenLibrary
       # workflow, so the whole step depends on the credentials.
       - name: Run stepper integration tests

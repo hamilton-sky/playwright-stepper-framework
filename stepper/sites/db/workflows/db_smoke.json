@@ -1,0 +1,67 @@
+{
+  "name": "db — a domain with something real to open",
+  "description": "Seeds a table, reads a value back into the context, asserts a count, and gates a step on a db-tagged when-condition. No browser, no network, no credentials. Run it with: python stepper/main.py run db_smoke",
+  "domain": "db",
+  "variables": { "subject": "Dune" },
+  "steps": [
+    {
+      "action": "db_execute",
+      "description": "db: create the table if this is a first run",
+      "extra": {
+        "sql": "CREATE TABLE IF NOT EXISTS sightings (name TEXT PRIMARY KEY, seen_at TEXT)"
+      }
+    },
+    {
+      "action": "db_execute",
+      "description": "db: record one sighting",
+      "extra": {
+        "sql": "INSERT OR REPLACE INTO sightings (name, seen_at) VALUES (?, ?)",
+        "params": ["{{subject}}", "2026-01-01"]
+      }
+    },
+    {
+      "action": "db_query",
+      "description": "db: read the count back into the context",
+      "extra": {
+        "sql": "SELECT COUNT(*) FROM sightings WHERE name = ?",
+        "params": ["{{subject}}"],
+        "store_as": "sightings"
+      }
+    },
+    {
+      "action": "db_assert_count",
+      "description": "db: exactly one row for this subject",
+      "extra": {
+        "sql": "SELECT COUNT(*) FROM sightings WHERE name = ?",
+        "params": ["{{subject}}"],
+        "expected": 1
+      }
+    },
+    {
+      "action": "db_query",
+      "description": "db: runs only because the row is there",
+      "when": {
+        "db_row_exists": {
+          "sql": "SELECT 1 FROM sightings WHERE name = ?",
+          "params": ["{{subject}}"]
+        }
+      },
+      "extra": {
+        "sql": "SELECT seen_at FROM sightings WHERE name = ?",
+        "params": ["{{subject}}"],
+        "store_as": "seen_at"
+      }
+    },
+    {
+      "action": "db_query",
+      "description": "db: skipped — no row for a subject nobody recorded",
+      "when": {
+        "db_row_exists": {
+          "sql": "SELECT 1 FROM sightings WHERE name = ?",
+          "params": ["a subject nobody recorded"]
+        }
+      },
+      "extra": { "sql": "SELECT 1", "store_as": "unreachable" }
+    }
+  ]
+}

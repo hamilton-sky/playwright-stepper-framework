@@ -105,8 +105,26 @@ class ConditionRegistry:
         return self  # fluent, like ActionRegistry.register
 
     def extend(self, other: "ConditionRegistry") -> "ConditionRegistry":
-        """Copy another registry's evaluators in, keeping their order."""
-        self._evaluators.update(other._evaluators)
+        """
+        Copy another registry's evaluators in, keeping their order.
+
+        Two domains claiming the same condition name is refused rather than
+        resolved last-wins, for the reason ActionRegistry.register refuses a
+        duplicate action: names are one flat namespace, and the only symptom of
+        a silent overwrite is a `when` clause quietly asking the wrong session.
+        Re-adding the *same* evaluator under the same domain is fine — every
+        domain's registry starts from core_conditions(), so merging several
+        always re-adds the core predicates.
+        """
+        for name, (evaluator, domain) in other._evaluators.items():
+            existing = self._evaluators.get(name)
+            if existing is not None and existing != (evaluator, domain):
+                raise ValueError(
+                    f"Condition '{name}' is already registered to domain "
+                    f"{existing[1]!r}; {domain!r} cannot claim it too. "
+                    f"Condition names share one namespace across every domain."
+                )
+            self._evaluators[name] = (evaluator, domain)
         return self
 
     def domain_of(self, name: str) -> str | None:

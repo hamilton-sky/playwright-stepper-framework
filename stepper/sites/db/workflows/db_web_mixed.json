@@ -1,0 +1,66 @@
+{
+  "name": "db + web — one run, two sessions, one context",
+  "description": "Reads a value off a rendered page, writes it to SQLite, asserts it through SQL, and gates a browser step on a db-tagged when-condition. The page is a checked-in file:// fixture, so this needs no network and no server. Run it with: python stepper/main.py run db_web_mixed --vars \"{\\\"page_url\\\": \\\"file://$PWD/stepper/sites/db/fixtures/inventory.html\\\"}\"",
+  "domain": "web",
+  "variables": { "page_url": "" },
+  "steps": [
+    {
+      "action": "db_execute",
+      "description": "db: table for what the page reports",
+      "extra": {
+        "sql": "CREATE TABLE IF NOT EXISTS stock_takes (item TEXT PRIMARY KEY, on_hand TEXT)"
+      }
+    },
+    {
+      "action": "navigate",
+      "description": "web: open the local inventory page",
+      "url": "{{page_url}}"
+    },
+    {
+      "action": "store",
+      "description": "web: read the item name off the page",
+      "element": { "id": "item-name" },
+      "extra": { "key": "item" }
+    },
+    {
+      "action": "store",
+      "description": "web: read the count off the page",
+      "element": { "id": "item-count" },
+      "extra": { "key": "on_hand" }
+    },
+    {
+      "action": "db_execute",
+      "description": "db: write what the browser read — bound, never interpolated",
+      "extra": {
+        "sql": "INSERT OR REPLACE INTO stock_takes (item, on_hand) VALUES (?, ?)",
+        "params": ["{{item}}", "{{on_hand}}"]
+      }
+    },
+    {
+      "action": "db_assert_count",
+      "description": "db: the row the browser produced is there",
+      "extra": {
+        "sql": "SELECT COUNT(*) FROM stock_takes WHERE item = ? AND on_hand = ?",
+        "params": ["{{item}}", "{{on_hand}}"],
+        "expected": 1
+      }
+    },
+    {
+      "action": "click",
+      "description": "web: confirm, but only once the database agrees",
+      "element": { "role": "button", "name": "Confirm stock take", "css": "#confirm" },
+      "when": {
+        "db_row_exists": {
+          "sql": "SELECT 1 FROM stock_takes WHERE item = ?",
+          "params": ["{{item}}"]
+        }
+      }
+    },
+    {
+      "action": "assert_text",
+      "description": "web: the page reacted",
+      "element": { "id": "status" },
+      "extra": { "expected": "confirmed" }
+    }
+  ]
+}

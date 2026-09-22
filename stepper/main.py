@@ -41,6 +41,7 @@ from stepper.engine.session      import SessionSet
 
 from stepper.engine.actions.factory      import build_default_registry
 from stepper.engine.actions.sub_step_mixin import SubStepRunnerMixin
+from stepper.engine.runner.when_eval   import ConditionRegistry, core_conditions
 from stepper.engine.planner.domains      import domains_used
 from stepper.engine.planner.validator    import PlanValidator
 from stepper.engine.actions.strategies   import RunWorkflowAction
@@ -225,6 +226,9 @@ class PreparedRun:
     subflow_action: RunWorkflowAction
     #: Domains this run will open a session for, primary included (M5).
     domains: list = field(default_factory=list)
+    #: The `when` vocabulary of every domain above, merged (M6). The run
+    #: evaluates against exactly what the plan was validated against.
+    conditions: Any = None
 
 
 @dataclass
@@ -310,16 +314,32 @@ def build_action_registry(cfg: RunConfig, settings, screenshots_dir: Path):
         browser_launcher=launcher,
     )
     register_all_sites(registry, _stepper_root, screenshots_dir=screenshots_dir)
-
-    # Only now does cfg.domain resolve: a domain is registered by its own
-    # site's register.py, which register_all_sites has just run. Sub-steps
-    # inside for_each / ensure_login get the same `when` vocabulary as
-    # top-level steps.
-    conditions = get_domain(cfg.domain).conditions()
-    for _name, action in registry.items():
-        if isinstance(action, SubStepRunnerMixin):
-            action.set_conditions(conditions)
     return registry
+
+
+def plan_conditions(cfg: RunConfig, steps, registry) -> ConditionRegistry:
+    """
+    The `when` vocabulary of every domain this plan uses, merged.
+
+    Not just the primary domain's. A mixed workflow's db step may be guarded by
+    a db-tagged condition while the run's primary domain is the browser, and
+    until M6 that clause was rejected at plan time as an unknown condition —
+    the merge was the one piece M3's domain-tagged registry never got, because
+    the browser was the only domain with conditions to tag.
+
+    `ConditionRegistry.evaluate` already looks each condition's domain up in the
+    run's SessionSet, so merging is all that was missing: the routing was built
+    in M3 and the sessions in M2.
+
+    Only domains the plan actually uses are merged. A condition belonging to a
+    domain this workflow never touches stays unknown, which keeps the
+    did-you-mean useful and keeps a typo from resolving to some other domain's
+    vocabulary.
+    """
+    merged = core_conditions()
+    for name in plan_domains(cfg, steps, registry):
+        merged.extend(get_domain(name).conditions())
+    return merged
 
 
 def build_healer(cfg: RunConfig, registry):
@@ -368,8 +388,10 @@ def build_validated_registry(cfg: RunConfig, settings, screenshots_dir: Path, st
     """
     Build the complete action registry and check the plan against it.
 
-    Shared by prepare_run and validate_plan so a workflow that passes `validate`
-    cannot be rejected at run time by a differently-built registry.
+    Shared by prepare_run and plan_report so a workflow that passes `validate`
+    cannot be rejected at run time by a differently-built registry — and, since
+    M6, returns the merged condition registry for the same reason: the run must
+    evaluate `when` against exactly what the plan was validated against.
     """
     registry = build_action_registry(cfg, settings, screenshots_dir)
 
@@ -378,12 +400,17 @@ def build_validated_registry(cfg: RunConfig, settings, screenshots_dir: Path, st
     subflow_action = RunWorkflowAction(base_dir=cfg.base_dir)
     registry.register(subflow_action)
 
-    PlanValidator.validate(
-        steps, registry,
-        get_domain(cfg.domain).conditions(),
-        domains=domain_names(),
-    )
-    return registry, subflow_action
+    # Conditions are resolved here rather than inside build_action_registry
+    # because the merge needs the plan: which domains it uses decides which
+    # vocabularies apply. Sub-steps inside for_each / ensure_login get the same
+    # one as top-level steps.
+    conditions = plan_conditions(cfg, steps, registry)
+    for _name, action in registry.items():
+        if isinstance(action, SubStepRunnerMixin):
+            action.set_conditions(conditions)
+
+    PlanValidator.validate(steps, registry, conditions, domains=domain_names())
+    return registry, subflow_action, conditions
 
 
 @dataclass(frozen=True)
@@ -452,7 +479,7 @@ def plan_report(cfg: RunConfig, settings=None) -> PlanReport:
     cfg      = _with_workflow_domain(cfg)
     settings = settings if settings is not None else build_settings(cfg)
     steps    = plan_steps(cfg)
-    registry, _ = build_validated_registry(
+    registry, _, _ = build_validated_registry(
         cfg, settings, cfg.artifact_path("screenshots"), steps,
     )
     domains = plan_domains(cfg, steps, registry)
@@ -498,7 +525,7 @@ def prepare_run(cfg: RunConfig, resolver=None) -> PreparedRun:
     screenshots_dir = resolve_screenshots_dir(cfg, test_reporter)
     screenshots_dir.mkdir(parents=True, exist_ok=True)
 
-    registry, subflow_action = build_validated_registry(
+    registry, subflow_action, conditions = build_validated_registry(
         cfg, settings, screenshots_dir, steps
     )
 
@@ -514,7 +541,7 @@ def prepare_run(cfg: RunConfig, resolver=None) -> PreparedRun:
         cfg=cfg, steps=steps, settings=settings, resolver=resolver,
         reporter=reporter, test_reporter=test_reporter, registry=registry,
         screenshots_dir=screenshots_dir, subflow_action=subflow_action,
-        domains=domains,
+        domains=domains, conditions=conditions,
     )
 
 
@@ -620,7 +647,9 @@ async def build_pipeline(prepared: PreparedRun, session, observers=None) -> Pipe
         # session that is not a page.
         hooks={name: get_domain(name).hooks(prepared.screenshots_dir)
                for name in domain_names()},
-        conditions=get_domain(cfg.domain).conditions(),
+        conditions=(prepared.conditions
+                    if prepared.conditions is not None
+                    else get_domain(cfg.domain).conditions()),
     )
     runner.add_observer(LoggingObserver())
     for observer in observers or ():
