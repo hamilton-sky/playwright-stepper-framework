@@ -256,6 +256,11 @@ message queue — would likely find more.
   docs/                        this file, the two plans, and the guides
 ```
 
+[`docs/exam-submission.md`](exam-submission.md) is the original design
+narrative from the project's first week — a historical document, preserved as
+written, and the only place that records *why* the framework is shaped this way
+rather than what it currently does.
+
 Rule files under `.claude/rules/` are the per-area contracts; read the one for
 the layer you are changing before changing it. [`CLAUDE.md`](../CLAUDE.md)
 routes between them.

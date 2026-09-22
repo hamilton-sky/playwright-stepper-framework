@@ -612,6 +612,7 @@ Patterns used and where: [.claude/rules/design-patterns.md](.claude/rules/design
 | Design patterns | [.claude/rules/design-patterns.md](.claude/rules/design-patterns.md) |
 | Playwright pitfalls the POMs guard against | [docs/playwright-pitfalls.md](docs/playwright-pitfalls.md) |
 | How the engine stopped depending on the browser | [docs/universal-runner-plan.md](docs/universal-runner-plan.md) |
+| Why the framework is shaped this way — the original design narrative | [docs/exam-submission.md](docs/exam-submission.md) |
 | How one run came to hold several domains | [docs/mixed-domain-plan.md](docs/mixed-domain-plan.md) |
 
 ---
