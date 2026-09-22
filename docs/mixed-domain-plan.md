@@ -1,6 +1,6 @@
 # Mixed-domain workflows — a browser step and a database step in one file
 
-**Status:** M1, M2 and M3 are implemented. M4–M6 are still proposal, verified
+**Status:** M1–M4 are implemented. M5 and M6 are still proposal, verified
 against `6347371` (the merge of the universal-runner work).
 
 The four open questions in §9 are settled — see each one. Routing is live:
@@ -330,7 +330,7 @@ domain supplies a resolver — which is the web domain and, by design, only it.
 | **M1** | Actions declare a domain — **LANDED** | low | No behaviour change; a single-domain run is unaffected |
 | **M2** | `SessionSet`, lazy open, close-all — **LANDED** | medium | `StepRunner` takes it *alongside* one session |
 | **M3** | Hooks and conditions per domain — **LANDED** | medium | 5.3 is a bug fix; 5.4 revisits T4's signature |
-| **M4** | Dispatchers route sub-steps | medium-high | `parallel` tabs mode must refuse cross-domain |
+| **M4** | Dispatchers route sub-steps — **LANDED** | medium-high | `parallel` tabs mode must refuse cross-domain |
 | **M5** | Plan-time domain discovery | low | `validate` reports the domains a workflow needs |
 | **M6** | The receipt: a real second domain | low | See below |
 
@@ -416,6 +416,59 @@ step's `when` combines `url_contains` (needs the web session) with
 `context_greater_than` (needs none) in one clause.
 
 961 unit tests pass, up from 947; 960 pass and 1 skips with Playwright made
+unimportable.
+
+### M4, as landed
+
+`SubStepRunnerMixin` gained `set_sessions()`, late-bound by `build_pipeline`
+exactly as `set_conditions()` already was and for the same reason: a
+dispatcher is registered once at startup while a `SessionSet` belongs to one
+run. Registries are built per run, so an instance is never shared between
+runs. `_run_sub_steps` now resolves each sub-step's session from its own
+action's domain, falling back to the parent's session when no set is bound —
+which is what a direct caller or a test double gets. Sub-step results record
+their domain too.
+
+`parallel` **refuses the whole step** when a sub-step names another domain,
+naming every offender, which is what the write-action gate beside it already
+does. A parallel block that quietly does half its work is worse than one that
+fails:
+
+```
+parallel: sub-steps must be web actions, got ['noop_echo (domain=noop)'].
+Move them out of the parallel block, or run them before it.
+```
+
+The gate sits before the mode branch, so `tabs` and `isolated_browser` are
+both covered. A session-agnostic sub-step is still allowed — `load_test_data`
+reading a file in a parallel block is legitimate — and is handed `None` rather
+than a tab, per the M1 contract.
+
+Two dispatchers turned out to need nothing. `run_workflow` re-enters
+`StepRunner.run` through the callable bound at `build_pipeline`, so it
+inherited routing for free, as §4.5 predicted. `paginate` is not really a
+dispatcher: it navigates pages itself and invokes one fixed inner action
+(`extract_data`), both web, so there is nothing to route.
+
+The churn was test doubles again. `test_sub_step_dispatch`'s factory returned
+a `SimpleNamespace` with no `domain`, and `test_parallel_action`'s three
+`ActionStrategy` doubles declared none — so they defaulted to session-agnostic
+and were handed `None` instead of a tab. Both now declare what they stand in
+for, which they should have all along.
+
+**Verified** against a real browser, through the real `build_pipeline` wiring:
+
+```
+  passed   domain=web    web: open the page
+  passed   domain=web    loop, two domains inside
+  passed   domain=noop   noop: read it back
+```
+
+The loop ran a noop sub-step and a web sub-step per item; the top-level
+`noop_echo` reading the key the noop sub-step wrote is what proves the
+sub-step actually ran and shared the context.
+
+976 unit tests pass, up from 961; 975 pass and 1 skips with Playwright made
 unimportable.
 
 ### M6 should be SQLite, not AWS

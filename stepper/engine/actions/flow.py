@@ -357,13 +357,22 @@ class ParallelAction(ActionStrategy):
 
         sub_steps = [_dict_to_step_config(s) for s in sub_steps_raw]
 
-        # ── Safety gate — refuse write actions ───────────────────────────────
+        # ── Safety gates — refuse write actions, and foreign domains ─────────
         write_actions = []
+        foreign = []
         for s in sub_steps:
             try:
                 action = self._factory.create(s.action)
                 if not action.read_only:
                     write_actions.append(s.action)
+                # Both modes hand each sub-step a browser page — a new tab, or a
+                # page in an isolated browser. A sub-step from another domain
+                # has no use for one, and `tabs` mode would reach for
+                # page.context on a session that has none. Refuse the whole
+                # step, as the write-action gate above already does, rather
+                # than doing part of a parallel block and reporting success.
+                if action.domain not in (self.domain, None):
+                    foreign.append(f"{s.action} (domain={action.domain})")
             except ValueError:
                 write_actions.append(f"{s.action} (unknown)")
 
@@ -373,6 +382,16 @@ class ParallelAction(ActionStrategy):
                 error=(
                     f"parallel: write actions not allowed in parallel mode: "
                     f"{write_actions}. Only read_only=True actions are permitted."
+                )
+            )
+
+        if foreign:
+            return StepResult(
+                step=step, status="failed",
+                error=(
+                    f"parallel: sub-steps must be {self.domain} actions, got "
+                    f"{foreign}. Move them out of the parallel block, or run "
+                    f"them before it."
                 )
             )
 
@@ -410,7 +429,10 @@ class ParallelAction(ActionStrategy):
             tab = await browser_context.new_page()
             try:
                 action = self._factory.create(sub_step.action)
-                return await action.execute(tab, sub_step, resolver, context, behaviour)
+                # The gate above allows only this domain or a session-agnostic
+                # action; the latter is handed None like everywhere else.
+                target = tab if action.domain is not None else None
+                return await action.execute(target, sub_step, resolver, context, behaviour)
             except Exception as e:
                 return StepResult(step=sub_step, status="failed", error=str(e))
             finally:
