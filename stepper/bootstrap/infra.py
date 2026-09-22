@@ -1,6 +1,8 @@
 from __future__ import annotations
+import asyncio
 import importlib
 import json
+import time
 import logging
 import os
 import sys
@@ -55,6 +57,85 @@ async def launch_browser(pw, cfg_browser: str, headless: bool, slow_mo: int):
         **browser_launch_kwargs(),
     )
 
+
+
+# ── Attaching to a running Electron app ──────────────────────────────────────
+
+ELECTRON_PORT_VAR = "STEPPER_ELECTRON_CDP_PORT"
+
+
+class ElectronConnectError(RuntimeError):
+    """Playwright could not attach to Electron over CDP within the timeout."""
+
+
+def electron_port_open(port: int, timeout_s: float = 0.25) -> bool:
+    """
+    Is anything listening on the CDP port?
+
+    A plain TCP connect, because that is the question: `connect_over_cdp` on a
+    closed port spends the whole retry window discovering what a socket answers
+    in milliseconds. Used by the preflight, which is why it must be cheap.
+
+    This says nothing about *what* is listening — only that the refusal case is
+    certain. Same rule as browser_preflight: report what is definite.
+    """
+    import socket
+
+    try:
+        with socket.create_connection(("localhost", port), timeout=timeout_s):
+            return True
+    except OSError:
+        return False
+
+
+async def connect_electron_cdp(port: int, timeout_ms: int = 30_000):
+    """
+    Attach to a running Electron app over the Chrome DevTools Protocol.
+
+    Returns `(playwright, browser)` — both of them, because whoever called this
+    has to release both, and a function that hands back only the browser is how
+    the Playwright handle gets leaked. ElectronSession is that caller.
+
+    Electron must already be running with `--remote-debugging-port=<port>`;
+    nothing here starts it. Retries until the deadline because an app that is
+    still booting refuses the connection, and because a connected browser can
+    briefly report no contexts at all — "attached but nothing to drive yet" is
+    a transient state, not success.
+
+    The deadline is wall-clock rather than a countdown of sleep intervals: a
+    connect attempt that itself blocks for seconds would otherwise stretch a
+    30-second timeout well past it.
+    """
+    from stepper.engine.browser.anti_detection import AntiDetection
+
+    async_playwright = AntiDetection.get_playwright()
+    pw = await async_playwright().start()
+
+    deadline = time.monotonic() + timeout_ms / 1000
+    last: Exception | None = None
+    try:
+        while True:
+            try:
+                browser = await pw.chromium.connect_over_cdp(f"http://localhost:{port}")
+                if browser.contexts:
+                    logger.info("Attached to Electron over CDP on port %d", port)
+                    return pw, browser
+                last = ElectronConnectError("connected, but the app exposes no context yet")
+                await browser.close()
+            except Exception as exc:                       # noqa: BLE001 — retried
+                last = exc
+            if time.monotonic() >= deadline:
+                break
+            await asyncio.sleep(0.5)
+    except BaseException:
+        await pw.stop()
+        raise
+
+    await pw.stop()
+    raise ElectronConnectError(
+        f"Could not attach to Electron on CDP port {port} within {timeout_ms}ms. "
+        f"Is it running with --remote-debugging-port={port}? Last error: {last}"
+    )
 
 # ── Can the browser even launch? ──────────────────────────────────────────────
 

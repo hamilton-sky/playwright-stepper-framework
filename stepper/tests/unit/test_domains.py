@@ -26,9 +26,20 @@ from stepper.main import PreparedRun, RunConfig, build_pipeline, build_session
 
 # ── The registry ──────────────────────────────────────────────────────────────
 
-def test_the_web_domain_ships_registered():
+def test_the_web_domain_ships_registered(monkeypatch):
+    """
+    The factory is a dispatcher rather than WebSession itself: the web domain
+    can also attach to a running Electron app over CDP, which is the same DOM
+    and the same actions from a different source. So this asserts what it
+    *builds* by default, not which callable is registered — see
+    test_electron_session.py for the other branch.
+    """
+    from stepper.bootstrap.infra import ELECTRON_PORT_VAR
+
+    monkeypatch.delenv(ELECTRON_PORT_VAR, raising=False)
+
     assert "web" in domain_names()
-    assert get_domain("web").session is WebSession
+    assert isinstance(get_domain("web").session(None, None), WebSession)
 
 
 def test_the_web_domain_supplies_the_browser_hooks():

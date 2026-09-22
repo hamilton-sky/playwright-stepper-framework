@@ -73,6 +73,12 @@ changed is underneath it.
       preflight   what is missing here, checked before anything opens
 ```
 
+A domain's session is not one fixed class. `web` launches a browser, or
+attaches to a running Electron app over CDP when `STEPPER_ELECTRON_CDP_PORT`
+is set — same DOM, same actions, same cascade, different source for the `Page`.
+Teardown differs and that is the point: a launched browser is closed, an
+attached app is disconnected from and left alone.
+
 A domain declares itself from its own folder under `stepper/sites/`.
 `register_all_sites` finds it by globbing `sites/*/register.py`. **No central
 file lists the domains** — adding one edits nothing outside its own directory.
