@@ -30,6 +30,7 @@ from stepper.engine.runner.step_runner import StepRunner
 
 class PassingAction(ActionStrategy):
     action_name = "scripted"
+    domain      = "web"
 
     def __init__(self):
         self.calls = 0
@@ -102,7 +103,7 @@ def step(action="scripted", description="a step", **kwargs):
 async def test_before_runs_ahead_of_the_action_and_after_behind_it(make_runner):
     log: list = []
     action = PassingAction()
-    runner = make_runner(action, hooks=[RecordingHook(log)])
+    runner = make_runner(action, hooks={"web": [RecordingHook(log)]})
 
     await runner.run([step()])
 
@@ -114,7 +115,7 @@ async def test_every_hook_fires_in_the_order_it_was_given(make_runner):
     log: list = []
     runner = make_runner(
         PassingAction(),
-        hooks=[RecordingHook(log, "first"), RecordingHook(log, "second")],
+        hooks={"web": [RecordingHook(log, "first"), RecordingHook(log, "second")]},
     )
 
     await runner.run([step()])
@@ -127,7 +128,7 @@ async def test_every_hook_fires_in_the_order_it_was_given(make_runner):
 
 async def test_hooks_are_told_which_step_they_are_on(make_runner):
     log: list = []
-    runner = make_runner(PassingAction(), hooks=[RecordingHook(log)])
+    runner = make_runner(PassingAction(), hooks={"web": [RecordingHook(log)]})
 
     await runner.run([step(description="one"), step(description="two")])
 
@@ -136,7 +137,7 @@ async def test_hooks_are_told_which_step_they_are_on(make_runner):
 
 async def test_after_sees_the_finished_result(make_runner):
     log: list = []
-    runner = make_runner(PassingAction(), hooks=[RecordingHook(log)])
+    runner = make_runner(PassingAction(), hooks={"web": [RecordingHook(log)]})
 
     await runner.run([step()])
 
@@ -151,7 +152,7 @@ async def test_a_before_hook_returning_a_result_stops_the_action(make_runner, re
             return StepResult(step=step, status="failed", error="blocked by Wall")
 
     action = PassingAction()
-    runner = make_runner(action, hooks=[Wall()])
+    runner = make_runner(action, hooks={"web": [Wall()]})
 
     results, _ = await runner.run([step()])
 
@@ -166,7 +167,7 @@ async def test_an_aborted_step_still_hard_stops_the_run(make_runner):
         async def before(self, session, step, idx):
             return StepResult(step=step, status="failed", error="blocked")
 
-    runner = make_runner(PassingAction(), hooks=[Wall()])
+    runner = make_runner(PassingAction(), hooks={"web": [Wall()]})
 
     results, _ = await runner.run([step(description="one"), step(description="two")])
 
@@ -180,7 +181,7 @@ async def test_an_aborting_hook_skips_the_hooks_after_it(make_runner):
         async def before(self, session, step, idx):
             return StepResult(step=step, status="failed", error="blocked")
 
-    runner = make_runner(PassingAction(), hooks=[Wall(), RecordingHook(log)])
+    runner = make_runner(PassingAction(), hooks={"web": [Wall(), RecordingHook(log)]})
 
     await runner.run([step()])
 
@@ -195,7 +196,7 @@ async def test_a_before_hook_that_raises_is_ignored_and_the_step_runs(make_runne
             raise RuntimeError("hook exploded")
 
     action = PassingAction()
-    runner = make_runner(action, hooks=[Broken()])
+    runner = make_runner(action, hooks={"web": [Broken()]})
 
     results, _ = await runner.run([step()])
 
@@ -208,7 +209,7 @@ async def test_an_after_hook_that_raises_does_not_fail_the_step(make_runner):
         async def after(self, session, step, result, idx):
             raise RuntimeError("hook exploded")
 
-    runner = make_runner(PassingAction(), hooks=[Broken()])
+    runner = make_runner(PassingAction(), hooks={"web": [Broken()]})
 
     results, _ = await runner.run([step()])
 
@@ -222,7 +223,7 @@ async def test_one_broken_hook_does_not_stop_the_others(make_runner):
         async def before(self, session, step, idx):
             raise RuntimeError("hook exploded")
 
-    runner = make_runner(PassingAction(), hooks=[Broken(), RecordingHook(log)])
+    runner = make_runner(PassingAction(), hooks={"web": [Broken(), RecordingHook(log)]})
 
     await runner.run([step()])
 
@@ -239,7 +240,7 @@ async def test_an_empty_hook_list_touches_the_session_not_at_all(make_runner):
     coupling was invisible rather than absent.
     """
     session = NoSession()
-    runner = make_runner(PassingAction(), session=session, hooks=[], screenshots_dir=None)
+    runner = make_runner(PassingAction(), session=session, hooks={"web": []}, screenshots_dir=None)
 
     results, _ = await runner.run([step()])
 
@@ -248,7 +249,7 @@ async def test_an_empty_hook_list_touches_the_session_not_at_all(make_runner):
 
 
 async def test_an_empty_hook_list_writes_no_screenshot_even_with_a_dir(make_runner, tmp_path):
-    runner = make_runner(PassingAction(), hooks=[], screenshots_dir=tmp_path)
+    runner = make_runner(PassingAction(), hooks={"web": []}, screenshots_dir=tmp_path)
 
     results, _ = await runner.run([step()])
 
@@ -268,7 +269,7 @@ def test_omitting_hooks_installs_none(reporter):
     runner = StepRunner(page=MagicMock(), action_factory=FakeFactory(PassingAction()),
                         reporter=reporter)
 
-    assert runner._hooks == []
+    assert runner._hooks == {}
 
 
 def test_the_web_domain_is_where_the_browser_pair_comes_from():
@@ -307,7 +308,7 @@ async def test_hooks_reach_the_runner_that_injects_a_pre_step(make_runner):
     quietly reinstate the browser pair on a non-browser run.
     """
     log: list = []
-    runner = make_runner(PassingAction(), hooks=[RecordingHook(log)])
+    runner = make_runner(PassingAction(), hooks={"web": [RecordingHook(log)]})
 
     from stepper.engine.interfaces import ExecutionContext
     await runner._try_inject_pre_step("scripted", step(), ExecutionContext())

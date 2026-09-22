@@ -68,26 +68,51 @@ class UnknownConditionError(ValueError):
 
 class ConditionRegistry:
     """
-    name -> evaluator, plus the combinators.
+    name -> (evaluator, domain), plus the combinators.
 
     Insertion order is the evaluation order: a condition dict carrying more
     than one recognised key is decided by whichever was registered first, which
     is what the if/elif ladder did by its own line order.
+
+    Each condition records which domain's session it needs, so one `when` may
+    name conditions from two domains at once:
+
+        { "all": [ { "url_contains": "/receipt" },
+                   { "db_row_exists": { "table": "orders" } } ] }
+
+    The registry looks each session up and hands the evaluator that one object,
+    which is why an evaluator's signature stays (session, spec, context) rather
+    than taking the whole set and reaching into it. See M3 of
+    docs/mixed-domain-plan.md.
     """
 
     def __init__(self, evaluators: dict[str, ConditionEvaluator] | None = None):
-        self._evaluators: dict[str, ConditionEvaluator] = dict(evaluators or {})
+        # name -> (evaluator, domain). A plain dict of evaluators registers
+        # them all as domain-free, which is what the core predicates are.
+        self._evaluators: dict[str, tuple[ConditionEvaluator, str | None]] = {
+            name: (fn, None) for name, fn in (evaluators or {}).items()
+        }
 
-    def register(self, name: str, evaluator: ConditionEvaluator) -> "ConditionRegistry":
+    def register(self, name: str, evaluator: ConditionEvaluator,
+                 domain: str | None = None) -> "ConditionRegistry":
+        """
+        Add a condition. `domain` names the session it needs, or None when it
+        reads only the ExecutionContext — which every core predicate does.
+        """
         if name in COMBINATORS:
             raise ValueError(f"'{name}' is a combinator and cannot be overridden")
-        self._evaluators[name] = evaluator
+        self._evaluators[name] = (evaluator, domain)
         return self  # fluent, like ActionRegistry.register
 
     def extend(self, other: "ConditionRegistry") -> "ConditionRegistry":
         """Copy another registry's evaluators in, keeping their order."""
         self._evaluators.update(other._evaluators)
         return self
+
+    def domain_of(self, name: str) -> str | None:
+        """Which domain's session a registered condition needs."""
+        entry = self._evaluators.get(name)
+        return entry[1] if entry else None
 
     def names(self) -> list[str]:
         """Every recognised key, combinators included."""
@@ -120,29 +145,38 @@ class ConditionRegistry:
         return unknown
 
     async def evaluate(self, condition: dict, context: ExecutionContext,
-                       session=None) -> bool:
+                       sessions=None) -> bool:
         """
         True → run the step. False → skip it.
+
+        `sessions` is the run's SessionSet. A bare session is accepted too and
+        wrapped, so a caller holding one object — a test, or the loop before
+        routing existed — still works and every condition sees that object.
 
         An empty or absent condition is vacuously true, as it always was.
         """
         if not condition:
             return True
 
-        for name, evaluator in self._evaluators.items():
+        from stepper.engine.session import SessionSet
+        if not isinstance(sessions, SessionSet):
+            sessions = SessionSet.single(sessions)
+
+        for name, (evaluator, domain) in self._evaluators.items():
             if name in condition:
+                session = await sessions.get(domain)
                 result = await evaluator(session, condition[name], context)
                 logger.debug(f"when.{name} → {result}")
                 return result
 
         if "not" in condition:
-            result = not await self.evaluate(condition["not"], context, session)
+            result = not await self.evaluate(condition["not"], context, sessions)
             logger.debug(f"when.not → {result}")
             return result
 
         if "all" in condition:
             for sub in condition["all"]:
-                if not await self.evaluate(sub, context, session):
+                if not await self.evaluate(sub, context, sessions):
                     logger.debug("when.all → False (short-circuit)")
                     return False
             logger.debug("when.all → True")
@@ -150,7 +184,7 @@ class ConditionRegistry:
 
         if "any" in condition:
             for sub in condition["any"]:
-                if await self.evaluate(sub, context, session):
+                if await self.evaluate(sub, context, sessions):
                     logger.debug("when.any → True (short-circuit)")
                     return True
             logger.debug("when.any → False")
