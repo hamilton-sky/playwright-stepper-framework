@@ -37,6 +37,7 @@ class ExtractDataAction(ActionStrategy):
     Stores result in context["extracted_data"] = [list of values]
     """
     action_name = "extract_data"
+    domain      = "web"
     read_only   = True
 
     async def _execute(self, page, step: StepConfig, resolver,
@@ -138,6 +139,7 @@ class LoadTestDataAction(ActionStrategy):
       path: str   # path to a JSON file containing a list of dicts
     """
     action_name = "load_test_data"
+    domain      = None  # session-agnostic
 
     async def _execute(self, page, step: StepConfig, resolver,
                        context: ExecutionContext, behaviour=None) -> StepResult:

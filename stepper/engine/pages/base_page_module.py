@@ -64,12 +64,17 @@ class PageModule(ABC):
         missing from the other ten, so the rule held where it was least needed
         and not where a new site would trip over it.
 
+        Also stamps each action with this module's `domain`, so a site action
+        never has to repeat what its page already declares — and so a site
+        cannot accidentally register a web action into a non-web domain.
+
         Returns the actions, so a caller that needs one back — to alias it,
         say — does not have to construct it separately.
         """
         prefix = f"{cls.site}_"
         for action in actions:
             name = action.action_name
+            action.domain = cls.domain
             if name not in cls.unprefixed_actions and not name.startswith(prefix):
                 raise ValueError(
                     f"{type(action).__name__}.action_name must start with "

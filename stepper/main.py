@@ -35,7 +35,8 @@ if _repo_root not in sys.path:
 from stepper.bootstrap.settings  import load_env, load_settings_safe
 from stepper.bootstrap.infra     import build_resolver, register_all_sites
 from stepper.bootstrap.reporting import build_reporters, serve_allure
-from stepper.bootstrap.session   import get_domain
+from stepper.bootstrap.session   import domain_names, get_domain
+from stepper.engine.session      import SessionSet
 
 from stepper.engine.actions.factory      import build_default_registry
 from stepper.engine.actions.sub_step_mixin import SubStepRunnerMixin
@@ -230,8 +231,10 @@ class Pipeline:
     runner: StepRunner
     context: Any
     page: Any
-    #: The adapter that opened it. Closing the pipeline means closing this.
+    #: The primary domain's adapter, for callers that want just that one.
     session: Any = None
+    #: Every domain's session, keyed by name. Closing the run means closing this.
+    sessions: Any = None
 
     @property
     def cfg(self) -> RunConfig:
@@ -442,6 +445,30 @@ def build_session(prepared: PreparedRun, shared=None):
     )
 
 
+def build_session_set(prepared: PreparedRun, shared=None) -> SessionSet:
+    """
+    An unopened session for every registered domain, keyed by name.
+
+    Every domain gets an adapter because constructing one is free and opening
+    is lazy: a web run that never reaches a non-web step never opens anything
+    but the browser. What this buys is that a workflow may name a step from
+    another domain — which the shared action registry has always allowed — and
+    get that domain's session rather than whatever the run happened to open.
+
+    `shared` belongs to the primary domain only. It is how run_data_rows
+    reuses one browser across rows; a secondary domain has no rows to share.
+    """
+    cfg = prepared.cfg
+    adapters = {
+        name: get_domain(name).session(
+            cfg, prepared.settings, prepared.test_reporter,
+            shared=shared if name == cfg.domain else None,
+        )
+        for name in domain_names()
+    }
+    return SessionSet(adapters, primary=cfg.domain)
+
+
 async def build_pipeline(prepared: PreparedRun, session, observers=None) -> Pipeline:
     """
     Open a session and bind a prepared run to it.
@@ -450,11 +477,27 @@ async def build_pipeline(prepared: PreparedRun, session, observers=None) -> Pipe
     can hold the runner and drive it directly. `observers` are added alongside
     the default LoggingObserver, which is how a UI streams step events.
 
-    The caller owns the session's lifetime: this opens it, and whoever passed it
-    in is responsible for `await session.close()`.
+    Takes either a SessionSet — the normal path — or a single SessionAdapter,
+    which is wrapped in a set holding every other domain lazily. Either way the
+    primary domain opens here, at the same moment the browser always launched.
+
+    The caller owns the sessions' lifetime: this opens the primary, and whoever
+    passed the set in is responsible for `await sessions.close_all()`.
     """
-    cfg    = prepared.cfg
-    target = await session.open()
+    cfg = prepared.cfg
+    if isinstance(session, SessionSet):
+        sessions = session
+        primary  = None
+    else:
+        sessions = SessionSet(
+            {name: get_domain(name).session(cfg, prepared.settings,
+                                            prepared.test_reporter, shared=None)
+             for name in domain_names() if name != cfg.domain},
+            primary=cfg.domain,
+        )
+        primary = session
+        sessions.adopt(cfg.domain, session, await session.open())
+    target = await sessions.get(cfg.domain)
 
     heal_cache = None
     if cfg.workflow_path and cfg.use_heal_cache:
@@ -464,7 +507,7 @@ async def build_pipeline(prepared: PreparedRun, session, observers=None) -> Pipe
         logger.info("⚕ Heal cache disabled — every heal goes through the cascade")
 
     runner = StepRunner(
-        session=target,
+        sessions=sessions,
         action_factory=prepared.registry,
         resolver=prepared.resolver,
         reporter=prepared.reporter,
@@ -482,8 +525,8 @@ async def build_pipeline(prepared: PreparedRun, session, observers=None) -> Pipe
     prepared.subflow_action.bind(runner.run)
 
     return Pipeline(prepared=prepared, runner=runner,
-                    context=getattr(session, "context", None),
-                    page=target, session=session)
+                    context=getattr(primary, "context", None),
+                    page=target, session=primary, sessions=sessions)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -585,12 +628,12 @@ async def run(
 
         steps    = validate_plan(cfg)               # opens nothing at all
         prepared = prepare_run(cfg)
-        session  = build_session(prepared)
-        pipeline = await build_pipeline(prepared, session, observers=[my_observer])
+        sessions = build_session_set(prepared)
+        pipeline = await build_pipeline(prepared, sessions, observers=[my_observer])
         try:
             results = await execute_pipeline(pipeline)
         finally:
-            await session.close()
+            await sessions.close_all()
     """
     cfg = RunConfig(
         workflow_path=workflow_path,
@@ -611,13 +654,13 @@ async def run(
     # Nothing is launched until build_pipeline opens the session, and closing it
     # is what flushes a recorded video — so it has to happen even when the run
     # raised, and even when build_pipeline itself did.
-    session = build_session(prepared)
+    sessions = build_session_set(prepared)
     try:
         with _tee_logs_to_run_file(prepared.test_reporter):
-            pipeline = await build_pipeline(prepared, session, observers=observers)
+            pipeline = await build_pipeline(prepared, sessions, observers=observers)
             results = await execute_pipeline(pipeline)
     finally:
-        await session.close()
+        await sessions.close_all()
 
     if cfg.allure_serve:
         serve_allure(_stepper_root)
@@ -724,14 +767,14 @@ async def run_data_rows(cfg: RunConfig, rows: list[dict], cli_vars: dict) -> Non
 
             row_cfg  = replace(cfg, variables=merged, allure_serve=False)
             prepared = prepare_run(row_cfg, resolver=resolver)
-            session  = build_session(prepared, shared=shared)
+            sessions = build_session_set(prepared, shared=shared)
             with _tee_logs_to_run_file(prepared.test_reporter):
                 try:
-                    pipeline = await build_pipeline(prepared, session)
+                    pipeline = await build_pipeline(prepared, sessions)
                     await execute_pipeline(pipeline)
                 finally:
                     # Closes this row's context; the shared browser outlives it.
-                    await session.close()
+                    await sessions.close_all()
 
 
 def main() -> None:

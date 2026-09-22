@@ -29,6 +29,7 @@ class NavigateAction(ActionStrategy):
     Handles both absolute URLs and relative paths.
     """
     action_name = "navigate"
+    domain      = "web"
 
     async def _execute(self, page, step: StepConfig, resolver,
                        context: ExecutionContext, behaviour=None) -> StepResult:
@@ -51,6 +52,7 @@ class ClickAction(ActionStrategy):
     Applies the confidence gate before acting.
     """
     action_name = "click"
+    domain      = "web"
 
     async def _execute(self, page, step: StepConfig, resolver,
                        context: ExecutionContext, behaviour=None) -> StepResult:
@@ -97,6 +99,7 @@ class FillAction(ActionStrategy):
     Presses Enter after filling to submit if no wait_for is specified.
     """
     action_name = "fill"
+    domain      = "web"
 
     async def _execute(self, page, step: StepConfig, resolver,
                        context: ExecutionContext, behaviour=None) -> StepResult:
@@ -128,6 +131,7 @@ class HoverAction(ActionStrategy):
     read_only because hover produces no side-effects on its own.
     """
     action_name = "hover"
+    domain      = "web"
     read_only   = True
 
     async def _execute(self, page, step: StepConfig, resolver,
@@ -166,6 +170,7 @@ class SelectAction(ActionStrategy):
         "extra": { "label": "Newest first" } }
     """
     action_name = "select"
+    domain      = "web"
 
     async def _execute(self, page, step: StepConfig, resolver,
                        context: ExecutionContext, behaviour=None) -> StepResult:
@@ -203,6 +208,7 @@ class SelectAction(ActionStrategy):
 class WaitAction(ActionStrategy):
     """Wait for a selector, URL fragment, or fixed seconds."""
     action_name = "wait"
+    domain      = "web"
 
     async def _execute(self, page, step: StepConfig, resolver,
                        context: ExecutionContext, behaviour=None) -> StepResult:
@@ -217,6 +223,7 @@ class WaitAction(ActionStrategy):
 class ScrollToAction(ActionStrategy):
     """Scroll a located element into the viewport. Used by healer step injection."""
     action_name = "scroll_to"
+    domain      = "web"
     read_only   = True
 
     async def _execute(self, page, step: StepConfig, resolver,
@@ -236,6 +243,7 @@ class ScrollToAction(ActionStrategy):
 class KeyboardPressAction(ActionStrategy):
     """Press a keyboard key, optionally focused on a resolved element."""
     action_name = "keyboard_press"
+    domain      = "web"
 
     async def _execute(self, page, step: StepConfig, resolver,
                        context: ExecutionContext, behaviour=None) -> StepResult:
@@ -261,6 +269,7 @@ class KeyboardPressAction(ActionStrategy):
 class ScreenshotAction(ActionStrategy):
     """Take a screenshot and save it to screenshots/."""
     action_name = "screenshot"
+    domain      = "web"
     read_only   = True
 
     def __init__(self, screenshots_dir: Path = Path("artifacts/screenshots")):

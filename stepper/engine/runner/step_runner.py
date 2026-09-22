@@ -27,6 +27,7 @@ from stepper.engine.interfaces import (
 from stepper.engine.runner.when_eval import ConditionRegistry, core_conditions
 from stepper.engine.runner.hooks import StepHook
 from stepper.engine.resolvers.null_resolver import NullResolver
+from stepper.engine.session import SessionSet
 from stepper.engine.browser.human_behaviour import HumanBehaviour
 from stepper.engine.healer.interfaces import HealerStrategy
 from stepper.engine.healer.dom_snapshot import DOMSnapshotCascade
@@ -103,14 +104,17 @@ class StepRunner:
         cache: HealCache | None = None,
         hooks: list[StepHook] | None = None,
         session=None,
+        sessions: SessionSet | None = None,
         conditions: ConditionRegistry | None = None,
     ):
         """
-        page / session
-            The thing actions act on. `page` is the historical name and still
-            works; `session` is the same slot under the name a non-web domain
-            would use. The runner never inspects it — see engine/session.py.
-            The internal attribute stays _page until T3 moves the bootstrap.
+        page / session / sessions
+            What actions act on. `sessions` is a SessionSet — domain -> session,
+            opened on first use — and per step the runner asks the action which
+            domain it needs and looks that up. `page` and `session` remain: one
+            already-open object, wrapped in a set that answers every domain with
+            it, which is exactly how this loop behaved before routing existed.
+            `_page` still reads back the primary session.
 
         resolver
             Optional. A domain with no elements to find passes nothing and gets
@@ -137,7 +141,9 @@ class StepRunner:
         if reporter is None:
             raise TypeError("StepRunner requires reporter=")
 
-        self._page            = page if page is not None else session
+        self._sessions        = sessions if sessions is not None else SessionSet.single(
+            page if page is not None else session
+        )
         self._factory         = action_factory
         self._resolver        = resolver if resolver is not None else NullResolver()
         self._reporter        = reporter
@@ -152,6 +158,18 @@ class StepRunner:
             self._screenshots_dir = None
         self._hooks: list[StepHook] = list(hooks) if hooks else []
         self._conditions = conditions if conditions is not None else core_conditions()
+
+    @property
+    def _page(self):
+        """
+        The run's primary session.
+
+        Read by the heal loop's DOM snapshots and by the `when` evaluator, both
+        of which are web-only and move behind the domain in M3/M4. A property
+        rather than a field so it stays correct when the primary opens after
+        the runner is built.
+        """
+        return self._sessions.primary
 
     def add_observer(self, observer: StepObserver):
         self._observers.append(observer)
@@ -275,11 +293,16 @@ class StepRunner:
         t0 = time.monotonic()
         max_attempts = 1 + max(0, step.retry)
         result: StepResult = StepResult(step=step, status="failed", error="no attempts made")
+        domain: str | None = None
         for attempt in range(max_attempts):
             try:
                 action = self._factory.create(step.action)
+                # The action names its domain; the set hands back that domain's
+                # session, opening it if this is the first step to need it.
+                domain = action.domain
+                target = await self._sessions.get(domain)
                 self._resolver.set_context_description(step.description)
-                result = await action.execute(self._page, step, self._resolver, ctx, self._behaviour)
+                result = await action.execute(target, step, self._resolver, ctx, self._behaviour)
             except Exception as e:
                 logger.error(f"Step {idx+1} raised: {e}")
                 result = StepResult(step=step, status="failed", error=str(e))
@@ -295,6 +318,7 @@ class StepRunner:
             await asyncio.sleep(delay_s)
 
         result.duration_ms = round((time.monotonic() - t0) * 1000, 1)
+        result.domain = domain
         return result
 
     async def _run_heal_loop(
@@ -320,7 +344,7 @@ class StepRunner:
                     healed_step = dataclasses.replace(step, element=cached_cfg)
                     replacement_steps = [healed_step]
                     replacement_runner = StepRunner(
-                        page=self._page,
+                        sessions=self._sessions,
                         action_factory=self._factory,
                         resolver=self._resolver,
                         reporter=self._reporter,
@@ -408,7 +432,7 @@ class StepRunner:
 
                 # Run replacements without healer to prevent infinite recursion
                 replacement_runner = StepRunner(
-                    page=self._page,
+                    sessions=self._sessions,
                     action_factory=self._factory,
                     resolver=self._resolver,
                     reporter=self._reporter,
@@ -493,7 +517,7 @@ class StepRunner:
                 continue_on_failure=True,
             )
             injection_runner = StepRunner(
-                page=self._page,
+                sessions=self._sessions,
                 action_factory=self._factory,
                 resolver=self._resolver,
                 reporter=self._reporter,

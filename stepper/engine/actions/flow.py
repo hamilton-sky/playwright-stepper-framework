@@ -36,6 +36,7 @@ class ForEachItemAction(SubStepRunnerMixin, ActionStrategy):
     Metadata (dict items): {{item.<key>}} for any key in the item dict
     """
     action_name = "for_each_item"
+    domain      = "web"
 
     def __init__(self, action_factory, screenshots_dir: Path = Path("artifacts/screenshots"),
                  conditions=None):
@@ -102,6 +103,7 @@ class EnsureLoginAction(SubStepRunnerMixin, ActionStrategy):
       logged_in_selector: str   # selector to confirm logged-in state (optional)
     """
     action_name = "ensure_login"
+    domain      = "web"
 
     def __init__(self, action_factory, conditions=None):
         self._factory = action_factory
@@ -199,6 +201,7 @@ class PaginateAction(ActionStrategy):
     Stores result in context["paginated_data"] = [accumulated values]
     """
     action_name = "paginate"
+    domain      = "web"
 
     def __init__(self, action_factory):
         self._factory = action_factory
@@ -336,6 +339,7 @@ class ParallelAction(ActionStrategy):
     ALL sub-steps pass. First failure is reported as the parallel step error.
     """
     action_name = "parallel"
+    domain      = "web"
     read_only   = True   # parallel itself is read-only (enforces it on children)
 
     def __init__(self, action_factory, browser_launcher=None):
@@ -441,6 +445,7 @@ class RunWorkflowAction(ActionStrategy):
       base_dir: str    # optional base dir for relative paths
     """
     action_name = "run_workflow"
+    domain      = None  # session-agnostic
 
     def __init__(self, run_steps_callable=None, base_dir: Path | None = None):
         self._run_steps = run_steps_callable
