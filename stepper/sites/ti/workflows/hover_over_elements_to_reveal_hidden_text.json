@@ -1,0 +1,11 @@
+{
+  "name": "The Internet — hover over elements to reveal hidden text",
+  "description": "Navigate to the hovers page, hover over the first user avatar to reveal the profile link, then click it.",
+  "continue_on_failure": true,
+  "steps": [
+    {
+      "action": "ti_hover_user",
+      "description": "Navigate to /hovers, hover first avatar to reveal profile link, then click it"
+    }
+  ]
+}

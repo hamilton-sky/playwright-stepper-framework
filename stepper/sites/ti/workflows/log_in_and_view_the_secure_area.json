@@ -1,0 +1,16 @@
+{
+  "name": "The Internet — log in and view the secure area",
+  "description": "Logs in with valid credentials and verifies the secure area is accessible.",
+  "continue_on_failure": true,
+  "steps": [
+    {
+      "action": "ti_login",
+      "description": "Log in to the-internet with TI_USER and TI_PASS credentials.",
+      "continue_on_failure": false
+    },
+    {
+      "action": "ti_view_secure",
+      "description": "Wait for the secure area page and capture the flash message."
+    }
+  ]
+}

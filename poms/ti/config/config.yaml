@@ -1,0 +1,8 @@
+# the-internet.herokuapp.com is a public testing sandbox and prints these on the
+# login page itself — the same reason SauceDemo's config.yaml carries
+# standard_user / secret_sauce. They gate nothing.
+#
+# TI_USER / TI_PASS override them, and are where a real credential would go.
+base_url: "https://the-internet.herokuapp.com"
+username: "tomsmith"
+password: "SuperSecretPassword!"
