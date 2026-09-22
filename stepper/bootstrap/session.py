@@ -34,6 +34,7 @@ domain with nothing to share uses `no_shared`, which yields None.
 from __future__ import annotations
 
 import logging
+import os
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -126,6 +127,112 @@ class WebSession:
                     await self._pw.stop()
 
 
+# ── Attaching to Electron instead of launching a browser ─────────────────────
+
+def electron_cdp_port() -> int | None:
+    """
+    The CDP port to attach to, or None when this run should launch a browser.
+
+    One environment variable rather than a field on every site's Settings:
+    `Settings` is deliberately per-site (see poms/shared/config.py on why), and
+    "attach to a desktop app instead of launching chromium" is a property of the
+    *invocation*, not of SauceDemo or OpenLibrary. It reads the same way as
+    BROWSER_EXECUTABLE_PATH, which is the other escape hatch of this shape.
+
+        STEPPER_ELECTRON_CDP_PORT=9222 python stepper/main.py run pathly_smoke
+    """
+    from stepper.bootstrap.infra import ELECTRON_PORT_VAR
+
+    raw = os.environ.get(ELECTRON_PORT_VAR, "").strip()
+    if not raw:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        logger.warning("%s=%r is not a port number — launching a browser instead",
+                       ELECTRON_PORT_VAR, raw)
+        return None
+
+
+class ElectronSession:
+    """
+    SessionAdapter for a *running* Electron app, attached to over CDP.
+
+    Still the **web** domain. Electron renders a DOM, so every web action, every
+    POM and the whole resolver cascade apply unchanged — the only thing that
+    differs is where the Page comes from. Giving it a domain of its own would
+    mean `click` and `fill`, which declare `domain = "web"`, routing to a
+    browser this run never wanted.
+
+    The lifecycle is the mirror image of WebSession's, and that is the point of
+    keeping it an adapter. WebSession *launched* everything it holds, so it
+    closes everything. This one attached to a process someone else started:
+
+        it owns    the Playwright handle and the CDP connection
+        it does not own    the app, its context, or any page in it
+
+    So close() disconnects and stops Playwright, and touches nothing else.
+    Closing `contexts[0]` here would close the window the person is watching.
+    """
+
+    domain = "web"
+
+    def __init__(self, cfg, settings, test_reporter=None, *, shared=None,
+                 port: int | None = None):
+        self._cfg      = cfg
+        self._settings = settings
+        self._port     = port if port is not None else electron_cdp_port()
+        self._timeout_ms = int(os.environ.get("STEPPER_ELECTRON_TIMEOUT_MS", "30000"))
+        self._pw      = None
+        self._browser = None
+        self.context  = None
+        self.page     = None
+
+    async def open(self):
+        from stepper.bootstrap.infra import connect_electron_cdp
+
+        self._pw, self._browser = await connect_electron_cdp(self._port, self._timeout_ms)
+        self.context = self._browser.contexts[0]
+        # An Electron window is already a page. Opening a new one would put a
+        # blank tab in front of the app rather than driving what is on screen.
+        self.page = (self.context.pages[0] if self.context.pages
+                     else await self.context.new_page())
+        return self.page
+
+    async def close(self) -> None:
+        """
+        Disconnect. Deliberately not symmetric with WebSession.close.
+
+        Nested finallys for the same reason WebSession uses them: the second
+        step still runs when the first raises, and the first failure still
+        propagates.
+        """
+        try:
+            if self._browser is not None:
+                # For a CDP-attached browser this severs the connection; it does
+                # not terminate the application we attached to.
+                await self._browser.close()
+        finally:
+            self.context = self.page = self._browser = None
+            if self._pw is not None:
+                await self._pw.stop()
+                self._pw = None
+
+
+def web_session(cfg, settings, test_reporter=None, *, shared=None):
+    """
+    The web domain's session: a launched browser, or a running Electron app.
+
+    One factory rather than two domains, for the reason ElectronSession's
+    docstring gives. `shared` belongs to the launched-browser path only — there
+    is no browser to reuse across runs when each run attaches to the same
+    already-running app.
+    """
+    if electron_cdp_port() is not None:
+        return ElectronSession(cfg, settings, test_reporter)
+    return WebSession(cfg, settings, test_reporter, shared=shared)
+
+
 @asynccontextmanager
 async def web_shared_browser(cfg, settings):
     """One Playwright browser for several runs in one invocation."""
@@ -175,7 +282,16 @@ def web_preflight(cfg=None, settings=None) -> list[str]:
     asserting facts about one site's environment would put site knowledge in
     the wrong layer.
     """
-    from stepper.bootstrap.infra import browser_preflight
+    from stepper.bootstrap.infra import (ELECTRON_PORT_VAR, browser_preflight,
+                                         electron_port_open)
+
+    port = electron_cdp_port()
+    if port is not None:
+        if electron_port_open(port):
+            return []
+        return [f"nothing is listening on CDP port {port} ({ELECTRON_PORT_VAR} is set), "
+                f"so there is no Electron app to attach to — start it with "
+                f"--remote-debugging-port={port}"]
     return browser_preflight(getattr(settings, "browser", None) or "chromium")
 
 
@@ -262,7 +378,7 @@ def web_conditions() -> ConditionRegistry:
 
 register_domain(Domain(
     name="web",
-    session=WebSession,
+    session=web_session,
     hooks=default_web_hooks,
     shared=web_shared_browser,
     conditions=web_conditions,

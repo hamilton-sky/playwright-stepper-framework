@@ -109,6 +109,12 @@ python stepper/main.py run db_smoke
 # measurement rather than a replay of the committed heal_cache.json.
 python stepper/main.py run sd_heal_test --heal 2 --no-heal-cache --show
 
+# Drive a running Electron app instead of launching a browser. Still the web
+# domain — same actions, same POMs, same resolver cascade; only the page's
+# source differs. Start Electron with --remote-debugging-port=<port> first;
+# nothing here launches it, and `run` refuses at plan time if nothing answers.
+STEPPER_ELECTRON_CDP_PORT=9222 python stepper/main.py run <workflow>
+
 # Run against a browser Playwright did not download for itself. Needed when the
 # machine ships a prebuilt chromium of a different revision than the pinned
 # playwright expects — the launch otherwise dies asking for `playwright install`.

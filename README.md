@@ -178,6 +178,21 @@ That workflow ships as `db_web_mixed.json` and runs in CI against a real
 browser with **no network and no credentials**: the page is a checked-in
 `file://` fixture and the database is a temp file.
 
+### The same domain, a different session
+
+A domain's session is not one fixed thing. The **web** domain launches a
+browser by default, or attaches over CDP to an Electron desktop app that is
+already running:
+
+```bash
+STEPPER_ELECTRON_CDP_PORT=9222 python stepper/main.py run <workflow>
+```
+
+Electron renders a DOM, so every web action, every POM and the whole resolver
+cascade apply unchanged — only where the `Page` comes from differs. Teardown
+does not: a launched browser is closed, an app we merely attached to is
+disconnected from and left running.
+
 ### What a domain supplies
 
 ```
