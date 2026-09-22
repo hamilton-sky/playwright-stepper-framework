@@ -1,11 +1,16 @@
 # Stepper Framework
 
-A JSON-driven browser automation engine built on Playwright + Python.
+A JSON-driven automation engine in Python, built on Playwright but no longer bound to it.
 
 Workflows are declarative: a JSON file names *what* to do, the engine decides *how* to run
 it — retries, conditional branching, context passing, parallelism and reporting — and a
 three-layer architecture keeps every CSS selector in the page-object layer, out of both the
 engine and the JSON.
+
+Each action declares the **domain** it acts on, and the engine hands it that domain's
+session. For the three browser sites that is a Playwright `Page`; for the `db` domain it is
+a `sqlite3.Connection`. One workflow can use both: a step can read a value off a rendered
+page and a later step can assert it through SQL, sharing one context and one report.
 
 When a selector breaks, the resolver cascade and the self-healing pipeline try to find the
 element anyway, escalating from free local strategies to paid AI only when they have to.
@@ -102,7 +107,34 @@ spelling.
 Every element identifier lives in a `Locator` value object inside a POM's `Locators` inner
 class. Workflow JSON contains action names and parameters only — never a CSS selector.
 
+### The fourth axis: domains
+
+The three layers say *where* code lives. A **domain** says *what a step acts on*.
+
+```
+  ┌────────────────────────────────────────────────────────────┐
+  │  StepRunner — steps, results, retry, healing, observers    │
+  │  knows nothing about browsers, pages or selectors          │
+  └──────────────────────────┬─────────────────────────────────┘
+                             │ per step: which domain?
+        ┌────────────────────┼────────────────────┐
+        ▼                    ▼                    ▼
+   ┌─────────┐         ┌───────────┐        ┌──────────┐
+   │   web   │         │    db     │        │   noop   │
+   │  Page   │         │Connection │        │  object  │
+   └─────────┘         └───────────┘        └──────────┘
+```
+
+A domain supplies its own session, hooks, `when` vocabulary and preflight check, and
+declares itself from its own folder under `stepper/sites/` — no central file lists them.
+Sessions open on first use and close in reverse order, so a db-only workflow never launches
+a browser.
+
+The POM layer stays browser-only. A non-browser domain has no selectors, so it has no POMs
+and its actions subclass `ActionStrategy` directly rather than `GlueAction`.
+
 Full diagrams: [ARCHITECTURE.md](ARCHITECTURE.md).
+Where things stand: [docs/state-of-the-stepper.md](docs/state-of-the-stepper.md).
 Layer rules: [.claude/rules/three-layer-contract.md](.claude/rules/three-layer-contract.md).
 
 ---
@@ -237,8 +269,10 @@ Declared once at the top; every step inherits unless it overrides. Step always w
 
 ### Variables
 
-`variables{}` are substituted at **plan time**; context values written by earlier steps are
-substituted at **runtime**, so `{{gap}}` resolves to whatever the previous step stored:
+`variables{}` are substituted at **plan time**, from the workflow's own block. Anything an
+earlier step stored is substituted at **runtime**, from the `ExecutionContext` — so
+`{{gap}}` resolves to the count a previous step wrote, and `{{item}}` to a value `store`
+captured off the page:
 
 ```json
 { "action": "ol_collect_books",
@@ -247,7 +281,13 @@ substituted at **runtime**, so `{{gap}}` resolves to whatever the previous step 
 ```
 
 A pure `"{{key}}"` reference preserves its type (int, bool); mixed strings like
-`"page_{{n}}"` are string-substituted. Override any variable without touching the JSON:
+`"page_{{n}}"` are string-substituted. Runtime substitution reaches `url`, `input_value`,
+`element`, `extra`, `when` and `description`, and **fails the step** when the context has
+no such name — unlike plan-time substitution, which leaves an unknown token alone. The
+difference is where the output goes: a stray token in a log line is a nuisance, one in an
+action's arguments is not.
+
+Override any variable without touching the JSON:
 
 ```bash
 python stepper/main.py run ol_regression_roundtrip \
@@ -365,7 +405,7 @@ The trade-off it demonstrates:
 ## Testing
 
 ```bash
-# Unit — fast, mocked, no browser or credentials. 79 tests.
+# Unit — no browser, no network, no credentials. 1064 tests, ~12s.
 pytest stepper/tests/unit/
 
 # Stepper integration — real browser
@@ -375,8 +415,16 @@ pytest stepper/tests/ --ignore=stepper/tests/unit
 cd examples/plain_pom && pytest tests/
 ```
 
+The unit suite is browser-free as a *contract*, not a convenience. Two tests run in
+subprocesses and assert that a non-browser workflow never puts Playwright into
+`sys.modules`, and the suite passes unchanged with Playwright uninstalled (14 tests skip),
+with no browsers installed, and with no `PLAYWRIGHT_BROWSERS_PATH` set. Tests that need to
+know about a browser build own their own browsers directory rather than reading the
+machine's.
+
 CI runs the unit suite as a fast gate, then smoke workflows and integration tests against
-a real browser. See [.github/workflows/ci.yml](.github/workflows/ci.yml).
+a real browser. The mixed web+db workflow runs there too, with no network and no
+credentials. See [.github/workflows/ci.yml](.github/workflows/ci.yml).
 
 ---
 
@@ -417,6 +465,7 @@ Patterns used and where: [.claude/rules/design-patterns.md](.claude/rules/design
 
 | Topic | Where |
 |---|---|
+| **Where things stand, and what is known to be wrong** | **[docs/state-of-the-stepper.md](docs/state-of-the-stepper.md)** |
 | **Pointing Stepper at your own app** | **[docs/adding-your-app.md](docs/adding-your-app.md)** |
 | Architecture diagrams and data flow | [ARCHITECTURE.md](ARCHITECTURE.md) |
 | Engine responsibility map | [stepper/engine/ARCHITECTURE.md](stepper/engine/ARCHITECTURE.md) |
@@ -428,6 +477,8 @@ Patterns used and where: [.claude/rules/design-patterns.md](.claude/rules/design
 | Site action reference | [.claude/rules/site-actions.md](.claude/rules/site-actions.md) |
 | Design patterns | [.claude/rules/design-patterns.md](.claude/rules/design-patterns.md) |
 | Playwright pitfalls the POMs guard against | [docs/playwright-pitfalls.md](docs/playwright-pitfalls.md) |
+| How the engine stopped depending on the browser | [docs/universal-runner-plan.md](docs/universal-runner-plan.md) |
+| How one run came to hold several domains | [docs/mixed-domain-plan.md](docs/mixed-domain-plan.md) |
 
 ---
 

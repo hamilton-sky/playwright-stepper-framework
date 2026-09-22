@@ -47,6 +47,87 @@ Rules: [three-layer-contract.md](.claude/rules/three-layer-contract.md) ·
 
 ---
 
+## The fourth axis — domains
+
+The three layers say **where code lives**. A domain says **what a step acts on**.
+
+Everything above describes the browser path, which is most of the tree. It is not the
+only path. `StepRunner` holds no page: it holds a `SessionSet`, and per step it asks the
+action which domain it belongs to and looks that domain's session up.
+
+```mermaid
+flowchart TD
+    R["<b>StepRunner</b><br/>steps, results, retry, healing, observers<br/><i>knows nothing about browsers or selectors</i>"]
+    S["<b>SessionSet</b><br/>lazy open · reverse-order close"]
+    W["<b>web</b><br/>Playwright Page"]
+    D["<b>db</b><br/>sqlite3 Connection"]
+    N["<b>noop</b><br/>a bare object"]
+
+    R -->|"which domain is this action?"| S
+    S --> W
+    S --> D
+    S --> N
+
+    style R fill:#e6f4ea,stroke:#34a853,color:#111
+    style S fill:#e8f0fe,stroke:#4285f4,color:#111
+    style W fill:#fef7e0,stroke:#fbbc04,color:#111
+    style D fill:#fef7e0,stroke:#fbbc04,color:#111
+    style N fill:#f1f3f4,stroke:#9aa0a6,color:#111
+```
+
+A domain supplies five things. Only `session` is required:
+
+```
+  session     (cfg, settings, reporter, *, shared) -> SessionAdapter
+  hooks       (screenshots_dir) -> list[StepHook]        what runs around its steps
+  shared      (cfg, settings) -> async ctx manager       reused across runs
+  conditions  () -> ConditionRegistry                    its own `when` vocabulary
+  preflight   (cfg, settings) -> list[str]               what is missing here
+```
+
+Four things that used to be global are now per-domain — the session, the hooks, the
+`when` vocabulary, the preflight. One thing deliberately is **not**: the
+`ExecutionContext` is shared by every step of every domain. That is how a value a
+browser step scraped reaches a database step in the same run.
+
+A domain declares itself from its own folder. `register_all_sites` globs
+`sites/*/register.py`, so **no central file lists the domains** and adding one edits
+nothing outside its own directory:
+
+```python
+# stepper/sites/db/register.py
+DB_DOMAIN = Domain(name="db", session=SqliteSession, hooks=no_hooks,
+                   shared=no_shared, conditions=db_conditions, preflight=db_preflight)
+
+def register(registry, screenshots_dir=None) -> None:
+    DbPage.register(registry)
+    register_domain(DB_DOMAIN)
+```
+
+**Plan time knows the domains before anything opens.** `validate` walks a workflow —
+sub-steps included — maps each action to its domain, and prints the result; `run`
+additionally asks each domain's preflight what is missing and refuses before a browser
+launches or a connection opens.
+
+```
+  OK    sd_happy_path     6 steps  [web]
+  OK    db_web_mixed      8 steps  [db, web]
+  OK ?  sd_smoke_test     5 steps  [web]     ← valid, but no browser on this machine
+```
+
+**The POM layer stays browser-only.** A non-browser domain has no selectors, so it has
+no POMs, and its actions subclass `ActionStrategy` directly rather than `GlueAction` —
+`GlueAction` exists to enforce resolver injection into POMs, and there is nothing to
+inject into. The three-layer contract above is unchanged for every domain that does have
+pages.
+
+How this came about, ticket by ticket, with what deviated from the plan:
+[docs/universal-runner-plan.md](docs/universal-runner-plan.md) ·
+[docs/mixed-domain-plan.md](docs/mixed-domain-plan.md).
+Where things stand now: [docs/state-of-the-stepper.md](docs/state-of-the-stepper.md).
+
+---
+
 ## Repository map
 
 ```

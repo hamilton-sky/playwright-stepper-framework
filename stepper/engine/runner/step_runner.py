@@ -24,6 +24,8 @@ from stepper.engine.interfaces import (
     StepConfig, StepResult, StepObserver,
     ActionFactory, ReporterStrategy, ExecutionContext
 )
+from stepper.engine.runner.interpolation import (context_lookup, has_reference,
+                                                 names_in, resolve)
 from stepper.engine.runner.when_eval import ConditionRegistry, core_conditions
 from stepper.engine.runner.hooks import StepHook
 from stepper.engine.resolvers.null_resolver import NullResolver
@@ -202,6 +204,32 @@ class StepRunner:
         heal_suggestions: list[dict] = []
 
         for idx, step in enumerate(steps):
+            # Resolve {{name}} against the context before anything reads the
+            # step. Plan-time substitution covered the variables{} block; this
+            # covers whatever an earlier step stored.
+            #
+            # It has to happen here rather than inside _run_step: `when` is
+            # evaluated below, and the observers fire above it, so resolving
+            # later would leave a condition comparing against the literal
+            # "{{v}}" and a log line printing a token the report does not have.
+            #
+            # A name the context cannot answer stops the step. Dispatching it
+            # would pass "{{item}}" into an action as an argument, and the
+            # failure that follows names neither the step nor the reference.
+            step, missing = _resolve_context_vars(step, ctx)
+            if missing:
+                error  = _unresolved_error(missing, ctx)
+                result = StepResult(step=step, status="failed", error=error)
+                self._notify_start(idx, step)
+                self._notify_log(f"✗ Step {idx+1} — {error}", "error")
+                self._reporter.record_step(result)
+                self._notify_done(idx, result)
+                results.append(result)
+                if step.continue_on_failure:
+                    continue
+                self._notify_log(f"✗ Hard stop at step {idx+1}: {error}", "error")
+                break
+
             self._notify_start(idx, step)
 
             # Evaluate `when` condition — skip if false
@@ -258,10 +286,9 @@ class StepRunner:
     async def _run_step(
         self, idx: int, step: StepConfig, steps: list[StepConfig], ctx: ExecutionContext
     ) -> tuple[StepResult, list[dict], ExecutionContext]:
-        # Resolve any remaining {{key}} placeholders against runtime context.
-        # Plan-time substitution covers variables{}; this covers context.counts
-        # so JSON can write "limit": "{{gap}}" and get the runtime value.
-        step = _resolve_count_vars(step, ctx)
+        # {{name}} was resolved in run(), before `when` was evaluated and
+        # before the observers saw the step. Sub-runners that call _run_step
+        # directly go through run() too, so there is no second path in.
 
         # Pre-step hooks — this step's domain only. Any may abort the step by
         # returning a result; the web domain's CaptchaHook is the one that does.
@@ -577,54 +604,59 @@ class StepRunner:
 
 # ── Runtime context variable resolution ──────────────────────────────────────
 
-def _resolve_count_vars(step: StepConfig, ctx: ExecutionContext) -> StepConfig:
+#: Step fields a `{{name}}` may appear in. Everything a workflow author writes
+#: as data, which is every field except the engine's own controls (retry,
+#: heal, continue_on_failure and the rest are numbers and booleans from JSON,
+#: never templates).
+#:
+#: `when` is included so a condition can compare against a stored value —
+#: {"context_equals": {"key": "count", "value": "{{target}}"}} — which is
+#: otherwise impossible. Conditions read the context directly for their *keys*;
+#: this is about their operands.
+_TEMPLATED_FIELDS = ("url", "input_value", "element", "extra", "when", "description")
+
+
+def _resolve_context_vars(
+    step: StepConfig, ctx: ExecutionContext
+) -> tuple[StepConfig, list[str]]:
     """
-    Substitute {{key}} placeholders that reference ctx.counts values set at runtime.
+    Substitute `{{name}}` in a step from the run's ExecutionContext.
 
-    Scope: only ctx.counts — e.g. "limit": "{{gap}}" resolves to the integer stored
-    by ol_ensure_count. Other context fields (collected_items, extracted_data, etc.)
-    are handled by ForEachItemAction directly via its own substitution pass.
+    Returns `(step, missing)`. The step is a new StepConfig when anything
+    changed and the original otherwise — callers may run the same StepConfig
+    more than once (run_data_rows repeats a workflow per row), so mutating it
+    would bake the first pass's values into every later one.
 
-    Plan-time substitution (JsonFilePlanner) handles the variables{} block.
-
-    Returns a new StepConfig if any substitution occurred; the original otherwise.
-    Type preservation: a pure "{{key}}" reference returns the typed value (int/bool).
+    `missing` names every reference the context could not answer. The caller
+    fails the step rather than dispatching it: see runner/interpolation.py for
+    why this pass is strict where the other two are forgiving.
     """
-    if not ctx.counts:
-        return step
+    lookup = context_lookup(ctx)
+    changed: dict = {}
+    missing: list[str] = []
 
-    # Cheap scan: skip deepcopy entirely when no template tokens are present.
-    def _has_template(obj) -> bool:
-        if isinstance(obj, str):
-            return "{{" in obj
-        if isinstance(obj, dict):
-            return any(_has_template(v) for v in obj.values())
-        if isinstance(obj, list):
-            return any(_has_template(v) for v in obj)
-        return False
+    for field in _TEMPLATED_FIELDS:
+        value = getattr(step, field, None)
+        if not has_reference(value):
+            continue
+        resolved, absent = resolve(value, lookup)
+        missing.extend(absent)
+        if resolved != value:
+            changed[field] = resolved
 
-    if not _has_template(step.extra):
-        return step
+    if not changed:
+        return step, list(dict.fromkeys(missing))
+    return dataclasses.replace(step, **changed), list(dict.fromkeys(missing))
 
-    def _sub(obj):
-        if isinstance(obj, str):
-            if obj.startswith("{{") and obj.endswith("}}"):
-                key = obj[2:-2].strip()
-                if key in ctx.counts:
-                    return ctx.counts[key]   # preserves int type
-            for k, v in ctx.counts.items():
-                obj = obj.replace(f"{{{{{k}}}}}", str(v))
-            return obj
-        if isinstance(obj, dict):
-            return {k: _sub(v) for k, v in obj.items()}
-        if isinstance(obj, list):
-            return [_sub(item) for item in obj]
-        return obj
 
-    resolved_extra = _sub(copy.deepcopy(step.extra))
-    if resolved_extra == step.extra:
-        return step
-    return dataclasses.replace(step, extra=resolved_extra)
+def _unresolved_error(missing: list[str], ctx: ExecutionContext) -> str:
+    known = names_in(ctx)
+    return (
+        f"unresolved reference(s) {missing}. The context holds: "
+        f"{known or '(nothing yet)'}. A {{{{name}}}} left at run time reads a "
+        f"value an earlier step stored; the workflow's own `variables` are "
+        f"substituted by the planner before the run instead."
+    )
 
 
 # ── Built-in Observers ────────────────────────────────────────────────────────

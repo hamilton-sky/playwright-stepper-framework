@@ -13,6 +13,16 @@ settings. Adding directories is the whole registration mechanism.
 
 ---
 
+> **Adding a non-browser domain instead?** This guide is about pointing Stepper
+> at a *web app*: six files, POM layer and glue layer. A domain with no pages —
+> a database, an HTTP API, a queue — is a different and smaller shape. It has no
+> POMs, because POMs exist to be the single home of CSS selectors and it has
+> none, and its actions subclass `ActionStrategy` directly rather than
+> `GlueAction`. See `stepper/sites/db/` for a worked example: session,
+> preflight, `when` conditions, actions, config and workflows, all declared
+> from one folder that no other file references.
+
+
 ## The shape of it
 
 Six files, two directory trees:
