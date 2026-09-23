@@ -53,6 +53,8 @@ class CheckoutCompletePage(BasePage):
         except Exception:
             return False
 
-    async def go_back_home(self) -> None:
-        await self._interact(self.Locators.BACK_HOME, "click")
+    async def go_back_home(self) -> bool:
+        if not await self._interact(self.Locators.BACK_HOME, "click"):
+            return False
         await self._driver.wait_for_load_state("domcontentloaded")
+        return True

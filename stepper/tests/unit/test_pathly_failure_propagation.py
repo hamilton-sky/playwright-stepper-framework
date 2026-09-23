@@ -14,66 +14,26 @@ This is the same failure the db domain hit from the other direction: a step
 that compares an unresolved value against itself, agrees, and passes. A report
 nobody can trust is worse than a red one.
 
-Three rules here, all guarding the same property — a Pathly step may not claim
+Two rules here, guarding the same property — a Pathly step may not claim
 something it did not establish:
 
-  1. static     — no POM method discards _interact's result
-  2. behavioural — no glue action returns "passed" when it is False
-  3. reporting  — the two actions whose job is to report a fact
-                  (pathly_assert_projects, pathly_read_routing) must not pass
-                  vacuously or drop the value they read
+  1. behavioural — no glue action returns "passed" when _interact said False
+  2. reporting   — the two actions whose job is to report a fact
+                   (pathly_assert_projects, pathly_read_routing) must not pass
+                   vacuously or drop the value they read
 
-All three fail against the code they were written for.
+Both fail against the code they were written for. The static rule that used to
+sit above them — no POM may discard _interact's result — is now repo-wide in
+test_failure_propagation.py, because every site had the same defect.
 """
 from __future__ import annotations
 
-import ast
 import asyncio
-from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
 
 from stepper.engine.interfaces import ExecutionContext, StepConfig
-
-_REPO_ROOT = Path(__file__).resolve().parents[3]
-_PATHLY_POMS = _REPO_ROOT / "poms" / "pathly" / "pages"
-
-
-# ── The static rule: no POM method throws the flag away ───────────────────────
-
-def _discarded_interacts(path: Path) -> list[str]:
-    """`await self._interact(...)` used as a bare statement, its result unread."""
-    tree = ast.parse(path.read_text(encoding="utf-8"))
-    found = []
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Expr) or not isinstance(node.value, ast.Await):
-            continue
-        call = node.value.value
-        if (isinstance(call, ast.Call)
-                and isinstance(call.func, ast.Attribute)
-                and call.func.attr == "_interact"):
-            found.append(f"{path.relative_to(_REPO_ROOT)}:{node.lineno}")
-    return found
-
-
-def _pathly_pom_files() -> list[Path]:
-    return sorted(p for p in _PATHLY_POMS.glob("*.py") if p.name != "__init__.py")
-
-
-def test_pathly_pom_discovery_did_not_break():
-    assert len(_pathly_pom_files()) == 4, "the rule below would pass vacuously"
-
-
-def test_no_pathly_pom_discards_an_interact_result():
-    offenders = [hit for path in _pathly_pom_files() for hit in _discarded_interacts(path)]
-
-    assert not offenders, (
-        "_interact returns False rather than raising when the element is not "
-        "there. Discarding it means the POM reports success for something that "
-        "never happened.\nReturn it — `return await self._interact(...)` — and "
-        "let the glue decide.\n  " + "\n  ".join(offenders)
-    )
 
 
 # ── The behavioural rule: the glue turns False into a failed step ─────────────

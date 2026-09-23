@@ -60,22 +60,26 @@ class CheckoutInfoPage(BasePage):
 
     # ── Form interactions ─────────────────────────────────────────────────────
 
-    async def fill_first_name(self, value: str) -> None:
-        await self._interact(self.Locators.FIRST_NAME, "fill", value=value)
+    async def fill_first_name(self, value: str) -> bool:
+        return await self._interact(self.Locators.FIRST_NAME, "fill", value=value)
 
-    async def fill_last_name(self, value: str) -> None:
-        await self._interact(self.Locators.LAST_NAME, "fill", value=value)
+    async def fill_last_name(self, value: str) -> bool:
+        return await self._interact(self.Locators.LAST_NAME, "fill", value=value)
 
-    async def fill_zip_code(self, value: str) -> None:
-        await self._interact(self.Locators.ZIP_CODE, "fill", value=value)
+    async def fill_zip_code(self, value: str) -> bool:
+        return await self._interact(self.Locators.ZIP_CODE, "fill", value=value)
 
-    async def submit(self) -> None:
-        await self._interact(self.Locators.CONTINUE, "click")
+    async def submit(self) -> bool:
+        if not await self._interact(self.Locators.CONTINUE, "click"):
+            return False
         await self._driver.wait_for_load_state("domcontentloaded")
+        return True
 
-    async def cancel(self) -> None:
-        await self._interact(self.Locators.CANCEL, "click")
+    async def cancel(self) -> bool:
+        if not await self._interact(self.Locators.CANCEL, "click"):
+            return False
         await self._driver.wait_for_load_state("domcontentloaded")
+        return True
 
     async def get_error_message(self) -> str | None:
         return await self._get_text_or_none(self.Locators.ERROR_MSG)

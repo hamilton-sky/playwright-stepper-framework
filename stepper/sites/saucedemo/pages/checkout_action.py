@@ -83,7 +83,13 @@ class SDCheckoutPage(PageModule):
                                             page=page, resolver=resolver,
                                             behaviour=behaviour)
                 await cart_page.open()
-                await cart_page.proceed_to_checkout()
+                if not await cart_page.proceed_to_checkout():
+                    return StepResult(
+                        step=step, status="failed",
+                        error="sd_checkout: proceed_to_checkout() did not act — the selector "
+                              "matched nothing, or the element was present but "
+                              "not interactable",
+                    )
                 logger.info("sd_checkout — proceeded to checkout info page")
 
                 # ── Step 2: fill shipping info ────────────────────────────────
@@ -91,10 +97,34 @@ class SDCheckoutPage(PageModule):
                                             page=page, resolver=resolver,
                                             behaviour=behaviour)
                 await info_page.wait_for_ready()
-                await info_page.fill_first_name(shipping["first_name"])
-                await info_page.fill_last_name(shipping["last_name"])
-                await info_page.fill_zip_code(shipping["zip"])
-                await info_page.submit()
+                if not await info_page.fill_first_name(shipping["first_name"]):
+                    return StepResult(
+                        step=step, status="failed",
+                        error="sd_checkout: fill_first_name() did not act — the selector "
+                              "matched nothing, or the element was present but "
+                              "not interactable",
+                    )
+                if not await info_page.fill_last_name(shipping["last_name"]):
+                    return StepResult(
+                        step=step, status="failed",
+                        error="sd_checkout: fill_last_name() did not act — the selector "
+                              "matched nothing, or the element was present but "
+                              "not interactable",
+                    )
+                if not await info_page.fill_zip_code(shipping["zip"]):
+                    return StepResult(
+                        step=step, status="failed",
+                        error="sd_checkout: fill_zip_code() did not act — the selector "
+                              "matched nothing, or the element was present but "
+                              "not interactable",
+                    )
+                if not await info_page.submit():
+                    return StepResult(
+                        step=step, status="failed",
+                        error="sd_checkout: submit() did not act — the selector "
+                              "matched nothing, or the element was present but "
+                              "not interactable",
+                    )
                 logger.info("sd_checkout — shipping info submitted")
 
                 # ── Step 3: review order → finish ─────────────────────────────
@@ -106,7 +136,13 @@ class SDCheckoutPage(PageModule):
                 if total is not None:
                     context.set_count("order_total_cents", int(total * 100))
                     logger.info("sd_checkout — order total: $%.2f", total)
-                await overview_page.finish()
+                if not await overview_page.finish():
+                    return StepResult(
+                        step=step, status="failed",
+                        error="sd_checkout: finish() did not act — the selector "
+                              "matched nothing, or the element was present but "
+                              "not interactable",
+                    )
 
                 # ── Step 4: verify confirmation ───────────────────────────────
                 complete_page = self._build_pom(CheckoutCompletePage, driver, settings.base_url,

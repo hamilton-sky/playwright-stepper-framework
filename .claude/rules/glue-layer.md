@@ -112,6 +112,38 @@ settings = load_settings()
 Every site's `config.py` exposes `load_settings()`. (Older docs said `get_settings()`
 — no site has ever defined that name.)
 
+### A step that did not act must not report "passed"
+
+POM methods return whether they acted (see
+[pom-layer.md](pom-layer.md)). The glue is where that becomes a step status:
+
+```python
+if not await login_page.fill_username(username):
+    return StepResult(
+        step=step, status="failed",
+        error="sd_login: fill_username() did not act — the selector matched "
+              "nothing, or the element was present but not interactable",
+    )
+```
+
+Name the action and the method that missed. A run log then points at the step
+rather than at the framework — the difference between *"the Click Here link was
+not clicked"* and *"Timeout 30000ms exceeded while waiting for event page"*.
+
+Every site in this tree once returned `passed` unconditionally, and it hid real
+defects: a Pathly smoke test reported ten passed steps against an app whose
+wizard never opened, `ti_hover_user` reported green on a selector matching zero
+elements, and `ti`'s login flow reported 2/2 on a **wrong password**.
+
+An action whose job is to *report* a fact has the same duty from the other
+side: `if flash:` made "no flash" indistinguishable from "flash", and
+`extra.get("expected_names", [])` made an assertion pass vacuously when the key
+was misspelled. Validate the input, fail on the absent fact.
+
+`stepper/tests/unit/test_failure_propagation.py` fails the build on both
+halves. If ignoring a result really is deliberate, assign it (`_ = await ...`)
+so the choice is visible.
+
 ### What glue files must NOT do
 
 - No raw Playwright selectors (no `page.locator("#foo")` directly)

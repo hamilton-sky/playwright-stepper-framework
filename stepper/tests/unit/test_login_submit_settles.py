@@ -88,12 +88,30 @@ async def test_the_click_happens_before_the_wait(page, driver):
     """Waiting first would wait on the pre-submit page and prove nothing."""
     order: list[str] = []
 
-    page._interact = AsyncMock(side_effect=lambda *a, **kw: order.append("click"))  # type: ignore[method-assign]
+    def _click(*a, **kw):
+        order.append("click")
+        return True          # _interact reports whether the click landed
+
+    page._interact = AsyncMock(side_effect=_click)  # type: ignore[method-assign]
     driver.wait_for_selector = AsyncMock(side_effect=lambda *a, **kw: order.append("wait"))
 
     await page.submit()
 
     assert order == ["click", "wait"]
+
+
+async def test_a_click_that_missed_does_not_wait_for_a_page_that_is_not_coming(page, driver):
+    """
+    The other half of the ordering rule. _interact answers False when the
+    element is not there, and there is then no navigation to settle: waiting
+    anyway spends the full timeout and fails for the wrong reason, the way
+    ti_open_new_window did on its popup.
+    """
+    page._interact = AsyncMock(return_value=False)  # type: ignore[method-assign]
+    driver.wait_for_selector = AsyncMock()
+
+    assert await page.submit() is False
+    driver.wait_for_selector.assert_not_awaited()
 
 
 async def test_a_timeout_does_not_raise_out_of_the_pom(page, driver):

@@ -66,17 +66,19 @@ class LoginPage(BasePage):
             return False
         return "/account/login" not in self._driver.current_url
 
-    async def fill_username(self, value: str) -> None:
-        await self._interact(self.Locators.USERNAME, "fill", value=value)
+    async def fill_username(self, value: str) -> bool:
+        return await self._interact(self.Locators.USERNAME, "fill", value=value)
 
-    async def fill_password(self, value: str) -> None:
-        await self._interact(self.Locators.PASSWORD, "fill", value=value)
+    async def fill_password(self, value: str) -> bool:
+        return await self._interact(self.Locators.PASSWORD, "fill", value=value)
 
-    async def submit(self) -> None:
+    async def submit(self) -> bool:
         import asyncio
-        await self._interact(self.Locators.SUBMIT, "click", js_click=True)
+        if not await self._interact(self.Locators.SUBMIT, "click", js_click=True):
+            return False
         await self._driver.wait_for_load_state("domcontentloaded")
         for _ in range(20):
             if "/account/login" not in self._driver.current_url:
                 break
             await asyncio.sleep(0.5)
+        return True

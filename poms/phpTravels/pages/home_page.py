@@ -106,56 +106,62 @@ class HomePage(BasePage):
 
     # ── Tab navigation ────────────────────────────────────────────────────────
 
-    async def select_hotels_tab(self) -> None:
-        await self._interact(self.Locators.TAB_HOTELS, "click")
+    async def select_hotels_tab(self) -> bool:
+        return await self._interact(self.Locators.TAB_HOTELS, "click")
 
-    async def select_flights_tab(self) -> None:
-        await self._interact(self.Locators.TAB_FLIGHTS, "click")
+    async def select_flights_tab(self) -> bool:
+        return await self._interact(self.Locators.TAB_FLIGHTS, "click")
 
-    async def select_tours_tab(self) -> None:
-        await self._interact(self.Locators.TAB_TOURS, "click")
+    async def select_tours_tab(self) -> bool:
+        return await self._interact(self.Locators.TAB_TOURS, "click")
 
     # ── Hotels form ───────────────────────────────────────────────────────────
 
-    async def fill_hotel_destination(self, value: str) -> None:
-        await self._interact(self.Locators.HOTEL_DESTINATION, "fill", value=value)
+    async def fill_hotel_destination(self, value: str) -> bool:
+        if not await self._interact(self.Locators.HOTEL_DESTINATION, "fill", value=value):
+            return False
         try:
             await self._driver.wait_for_selector(
                 self.Locators.SUGGESTION_LIST, timeout=5_000
             )
         except Exception:
             pass
+        return True
 
-    async def select_first_hotel_suggestion(self) -> None:
-        await self._interact(self.Locators.SUGGESTION_ITEM, "click")
+    async def select_first_hotel_suggestion(self) -> bool:
+        return await self._interact(self.Locators.SUGGESTION_ITEM, "click")
 
-    async def fill_hotel_checkin(self, date: str) -> None:
-        await self._interact(self.Locators.HOTEL_CHECKIN, "fill", value=date)
+    async def fill_hotel_checkin(self, date: str) -> bool:
+        return await self._interact(self.Locators.HOTEL_CHECKIN, "fill", value=date)
 
-    async def fill_hotel_checkout(self, date: str) -> None:
-        await self._interact(self.Locators.HOTEL_CHECKOUT, "fill", value=date)
+    async def fill_hotel_checkout(self, date: str) -> bool:
+        return await self._interact(self.Locators.HOTEL_CHECKOUT, "fill", value=date)
 
     async def fill_hotel_adults(self, count: str) -> None:
         await self._select_option(self.Locators.HOTEL_ADULTS, count)
 
-    async def submit_hotel_search(self) -> None:
-        await self._interact(self.Locators.HOTEL_SEARCH_BTN, "click")
+    async def submit_hotel_search(self) -> bool:
+        if not await self._interact(self.Locators.HOTEL_SEARCH_BTN, "click"):
+            return False
         await self._driver.wait_for_load_state("domcontentloaded")
+        return True
 
     # ── Flights form ──────────────────────────────────────────────────────────
 
-    async def fill_flight_origin(self, value: str) -> None:
-        await self._interact(self.Locators.FLIGHT_ORIGIN, "fill", value=value)
+    async def fill_flight_origin(self, value: str) -> bool:
+        return await self._interact(self.Locators.FLIGHT_ORIGIN, "fill", value=value)
 
-    async def fill_flight_destination(self, value: str) -> None:
-        await self._interact(self.Locators.FLIGHT_DESTINATION, "fill", value=value)
+    async def fill_flight_destination(self, value: str) -> bool:
+        return await self._interact(self.Locators.FLIGHT_DESTINATION, "fill", value=value)
 
-    async def fill_flight_depart_date(self, date: str) -> None:
-        await self._interact(self.Locators.FLIGHT_DEPART_DATE, "fill", value=date)
+    async def fill_flight_depart_date(self, date: str) -> bool:
+        return await self._interact(self.Locators.FLIGHT_DEPART_DATE, "fill", value=date)
 
-    async def fill_flight_return_date(self, date: str) -> None:
-        await self._interact(self.Locators.FLIGHT_RETURN_DATE, "fill", value=date)
+    async def fill_flight_return_date(self, date: str) -> bool:
+        return await self._interact(self.Locators.FLIGHT_RETURN_DATE, "fill", value=date)
 
-    async def submit_flight_search(self) -> None:
-        await self._interact(self.Locators.FLIGHT_SEARCH_BTN, "click")
+    async def submit_flight_search(self) -> bool:
+        if not await self._interact(self.Locators.FLIGHT_SEARCH_BTN, "click"):
+            return False
         await self._driver.wait_for_load_state("domcontentloaded")
+        return True

@@ -21,57 +21,21 @@ Two defects stacked, and the second hid the first:
      returned "passed" unconditionally, so a flow that navigated nowhere
      reported 1/1 green.
 
-Same family as Pathly's — see test_pathly_failure_propagation.py. The rules
-below are the `ti` half.
+Same family as Pathly's — see test_pathly_failure_propagation.py.
+
+The static rule that used to live here — no POM may discard _interact's result
+— is now repo-wide in test_failure_propagation.py, together with its glue half.
+What stays here is what only this site can say: that the avatar selector is the
+one that works, and that each of these actions turns a miss into a failed step.
 """
 from __future__ import annotations
 
-import ast
 import asyncio
-from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
 
 from stepper.engine.interfaces import ExecutionContext, StepConfig
-
-_REPO_ROOT = Path(__file__).resolve().parents[3]
-_TI_POMS = _REPO_ROOT / "poms" / "ti" / "pages"
-
-
-# ── The static rule ───────────────────────────────────────────────────────────
-
-def _discarded_interacts(path: Path) -> list[str]:
-    """`await self._interact(...)` as a bare statement, its result unread."""
-    tree = ast.parse(path.read_text(encoding="utf-8"))
-    return [
-        f"{path.relative_to(_REPO_ROOT)}:{node.lineno}"
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Expr) and isinstance(node.value, ast.Await)
-        and isinstance(node.value.value, ast.Call)
-        and isinstance(node.value.value.func, ast.Attribute)
-        and node.value.value.func.attr == "_interact"
-    ]
-
-
-def _ti_pom_files() -> list[Path]:
-    return sorted(p for p in _TI_POMS.glob("*.py")
-                  if p.name not in {"__init__.py", "base_page.py"})
-
-
-def test_ti_pom_discovery_did_not_break():
-    assert len(_ti_pom_files()) == 8, "the rule below would pass vacuously"
-
-
-def test_no_ti_pom_discards_an_interact_result():
-    offenders = [hit for path in _ti_pom_files() for hit in _discarded_interacts(path)]
-
-    assert not offenders, (
-        "_interact returns False rather than raising when the element is not "
-        "there. Discarding it is what let a 0-match selector report success.\n"
-        "Return it — `return await self._interact(...)` — and let the glue "
-        "decide.\n  " + "\n  ".join(offenders)
-    )
 
 
 # ── The selector that started it ──────────────────────────────────────────────
