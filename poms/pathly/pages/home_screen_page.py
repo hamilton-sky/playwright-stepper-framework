@@ -60,22 +60,22 @@ class HomeScreenPage(BasePage):
     async def open(self) -> None:
         """No-op: the CDP session attaches to whatever the app is showing."""
 
-    async def click_new_project(self) -> None:
-        await self._interact(self.Locators.NEW_PROJECT_BTN, "click")
+    async def click_new_project(self) -> bool:
+        return await self._interact(self.Locators.NEW_PROJECT_BTN, "click")
 
-    async def open_tab(self, tab: str) -> None:
+    async def open_tab(self, tab: str) -> bool:
         tabs = {"projects": self.Locators.TAB_PROJECTS,
                 "getting-started": self.Locators.TAB_GETTING_STARTED,
                 "settings": self.Locators.TAB_SETTINGS}
         if tab not in tabs:
             raise ValueError(f"Unknown tab {tab!r}. Expected one of {sorted(tabs)}.")
-        await self._interact(tabs[tab], "click")
+        return await self._interact(tabs[tab], "click")
 
-    async def set_view(self, view: str) -> None:
+    async def set_view(self, view: str) -> bool:
         views = {"grid": self.Locators.VIEW_GRID_BTN, "list": self.Locators.VIEW_LIST_BTN}
         if view not in views:
             raise ValueError(f"Unknown view {view!r}. Expected 'grid' or 'list'.")
-        await self._interact(views[view], "click")
+        return await self._interact(views[view], "click")
 
     async def get_project_names(self) -> list[str]:
         cards = self._page.locator(self.Locators.PROJECT_CARDS)

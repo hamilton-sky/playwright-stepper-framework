@@ -36,7 +36,13 @@ class PathlyTopBar(PageModule):
                     TopBarPage, driver, "electron://pathly-topbar",
                     page=page, resolver=resolver, behaviour=behaviour,
                 )
-                await topbar.navigate_to_panel(panel)
+                if not await topbar.navigate_to_panel(panel):
+                    return StepResult(
+                        step=step, status="failed",
+                        error="pathly_navigate_panel: the element did not resolve on the "
+                              "attached page — wrong screen, or the "
+                              "data-testid is missing from Pathly Studio",
+                    )
                 return StepResult(step=step, status="passed")
             except ValueError as e:
                 return StepResult(step=step, status="failed", error=str(e))
@@ -61,7 +67,13 @@ class PathlyTopBar(PageModule):
                     TopBarPage, driver, "electron://pathly-topbar",
                     page=page, resolver=resolver, behaviour=behaviour,
                 )
-                await topbar.toggle_chat()
+                if not await topbar.toggle_chat():
+                    return StepResult(
+                        step=step, status="failed",
+                        error="pathly_toggle_chat: the element did not resolve on the "
+                              "attached page — wrong screen, or the "
+                              "data-testid is missing from Pathly Studio",
+                    )
                 return StepResult(step=step, status="passed")
             except Exception as e:
                 logger.error("pathly_toggle_chat failed: %s", e)

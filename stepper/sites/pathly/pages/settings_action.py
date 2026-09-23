@@ -36,7 +36,13 @@ class PathlySettings(PageModule):
                     SettingsPage, driver, "electron://pathly-settings",
                     page=page, resolver=resolver, behaviour=behaviour,
                 )
-                await settings.set_routing_engine(engine)
+                if not await settings.set_routing_engine(engine):
+                    return StepResult(
+                        step=step, status="failed",
+                        error="pathly_set_routing: the element did not resolve on the "
+                              "attached page — wrong screen, or the "
+                              "data-testid is missing from Pathly Studio",
+                    )
                 return StepResult(step=step, status="passed")
             except ValueError as e:
                 return StepResult(step=step, status="failed", error=str(e))
@@ -85,7 +91,13 @@ class PathlySettings(PageModule):
                     SettingsPage, driver, "electron://pathly-settings",
                     page=page, resolver=resolver, behaviour=behaviour,
                 )
-                await settings.save_settings()
+                if not await settings.save_settings():
+                    return StepResult(
+                        step=step, status="failed",
+                        error="pathly_save_settings: the element did not resolve on the "
+                              "attached page — wrong screen, or the "
+                              "data-testid is missing from Pathly Studio",
+                    )
                 return StepResult(step=step, status="passed")
             except Exception as e:
                 logger.error("pathly_save_settings failed: %s", e)

@@ -67,7 +67,13 @@ class PathlyHomeScreen(PageModule):
                     HomeScreenPage, driver, "electron://pathly-homescreen",
                     page=page, resolver=resolver, behaviour=behaviour,
                 )
-                await home.click_new_project()
+                if not await home.click_new_project():
+                    return StepResult(
+                        step=step, status="failed",
+                        error="pathly_new_project: the element did not resolve on the "
+                              "attached page — wrong screen, or the "
+                              "data-testid is missing from Pathly Studio",
+                    )
                 return StepResult(step=step, status="passed")
             except Exception as e:
                 logger.error("pathly_new_project failed: %s", e)

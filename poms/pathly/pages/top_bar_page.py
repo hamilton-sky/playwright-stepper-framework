@@ -52,7 +52,7 @@ class TopBarPage(BasePage):
     async def open(self) -> None:
         """No-op: the CDP session attaches to whatever the app is showing."""
 
-    async def navigate_to_panel(self, panel: str) -> None:
+    async def navigate_to_panel(self, panel: str) -> bool:
         """
         Settings is reached through the sidebar, the other two through the top
         bar — the app puts them in different places, so this does too.
@@ -64,13 +64,13 @@ class TopBarPage(BasePage):
             raise ValueError(
                 f"Invalid panel {panel!r}. Expected one of {sorted(panels)}."
             )
-        await self._interact(panels[panel], "click")
+        return await self._interact(panels[panel], "click")
 
-    async def toggle_sidebar(self) -> None:
-        await self._interact(self.Locators.SIDEBAR_TOGGLE, "click")
+    async def toggle_sidebar(self) -> bool:
+        return await self._interact(self.Locators.SIDEBAR_TOGGLE, "click")
 
-    async def toggle_chat(self) -> None:
-        await self._interact(self.Locators.CHAT_TOGGLE, "click")
+    async def toggle_chat(self) -> bool:
+        return await self._interact(self.Locators.CHAT_TOGGLE, "click")
 
-    async def toggle_theme(self) -> None:
-        await self._interact(self.Locators.THEME_TOGGLE, "click")
+    async def toggle_theme(self) -> bool:
+        return await self._interact(self.Locators.THEME_TOGGLE, "click")

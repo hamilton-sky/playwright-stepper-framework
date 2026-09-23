@@ -3,7 +3,8 @@
   "description": "Smoke-test the FlowWizard end-to-end: open → template → name → navigate → save.",
   "variables": { "flow_name": "test-automation-flow" },
   "steps": [
-    { "action": "wait", "description": "Wait for Electron renderer", "extra": { "ms": 1000 } },
+    { "action": "wait", "description": "Wait for the sidebar to be ready",
+      "wait_for": "[data-testid=\"sidebar-flows-add-btn\"]" },
     { "action": "pathly_open_wizard", "description": "Click '+' in User Flows sidebar section" },
     { "action": "pathly_wizard_select_template", "description": "Select standard-pipeline template", "extra": { "template_id": "standard-pipeline" } },
     { "action": "pathly_wizard_set_name", "description": "Enter flow name", "extra": { "name": "{{flow_name}}" } },

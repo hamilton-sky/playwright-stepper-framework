@@ -38,7 +38,13 @@ class PathlyWizard(PageModule):
                     WizardPage, driver, "electron://pathly-wizard",
                     page=page, resolver=resolver, behaviour=behaviour,
                 )
-                await wizard.open_wizard()
+                if not await wizard.open_wizard():
+                    return StepResult(
+                        step=step, status="failed",
+                        error="pathly_open_wizard: the element did not resolve on the "
+                              "attached page — wrong screen, or the "
+                              "data-testid is missing from Pathly Studio",
+                    )
                 return StepResult(step=step, status="passed")
             except Exception as e:
                 logger.error("pathly_open_wizard failed: %s", e)
@@ -67,7 +73,13 @@ class PathlyWizard(PageModule):
                     WizardPage, driver, "electron://pathly-wizard",
                     page=page, resolver=resolver, behaviour=behaviour,
                 )
-                await wizard.select_template(template_id)
+                if not await wizard.select_template(template_id):
+                    return StepResult(
+                        step=step, status="failed",
+                        error="pathly_wizard_select_template: the element did not resolve on the "
+                              "attached page — wrong screen, or the "
+                              "data-testid is missing from Pathly Studio",
+                    )
                 return StepResult(step=step, status="passed")
             except Exception as e:
                 logger.error("pathly_wizard_select_template failed: %s", e)
@@ -96,7 +108,13 @@ class PathlyWizard(PageModule):
                     WizardPage, driver, "electron://pathly-wizard",
                     page=page, resolver=resolver, behaviour=behaviour,
                 )
-                await wizard.set_name(name)
+                if not await wizard.set_name(name):
+                    return StepResult(
+                        step=step, status="failed",
+                        error="pathly_wizard_set_name: the element did not resolve on the "
+                              "attached page — wrong screen, or the "
+                              "data-testid is missing from Pathly Studio",
+                    )
                 return StepResult(step=step, status="passed")
             except Exception as e:
                 logger.error("pathly_wizard_set_name failed: %s", e)
@@ -119,7 +137,13 @@ class PathlyWizard(PageModule):
                     WizardPage, driver, "electron://pathly-wizard",
                     page=page, resolver=resolver, behaviour=behaviour,
                 )
-                await wizard.click_next()
+                if not await wizard.click_next():
+                    return StepResult(
+                        step=step, status="failed",
+                        error="pathly_wizard_next: the element did not resolve on the "
+                              "attached page — wrong screen, or the "
+                              "data-testid is missing from Pathly Studio",
+                    )
                 return StepResult(step=step, status="passed")
             except Exception as e:
                 logger.error("pathly_wizard_next failed: %s", e)
@@ -142,7 +166,13 @@ class PathlyWizard(PageModule):
                     WizardPage, driver, "electron://pathly-wizard",
                     page=page, resolver=resolver, behaviour=behaviour,
                 )
-                await wizard.click_save()
+                if not await wizard.click_save():
+                    return StepResult(
+                        step=step, status="failed",
+                        error="pathly_wizard_save: the element did not resolve on the "
+                              "attached page — wrong screen, or the "
+                              "data-testid is missing from Pathly Studio",
+                    )
                 return StepResult(step=step, status="passed")
             except Exception as e:
                 logger.error("pathly_wizard_save failed: %s", e)

@@ -53,7 +53,7 @@ class SettingsPage(BasePage):
         text = await self._page.locator(self.Locators.ROUTING_LLM_CSS).inner_text()
         return "llm" if "●" in text else "python-fsm"
 
-    async def set_routing_engine(self, engine: str) -> None:
+    async def set_routing_engine(self, engine: str) -> bool:
         if engine not in ("llm", "python", "python-fsm"):
             raise ValueError(
                 f"Invalid routing engine {engine!r}. "
@@ -61,10 +61,10 @@ class SettingsPage(BasePage):
             )
         target = (self.Locators.ROUTING_LLM if engine == "llm"
                   else self.Locators.ROUTING_PYTHON)
-        await self._interact(target, "click")
+        return await self._interact(target, "click")
 
-    async def set_fsm_command(self, cmd: str) -> None:
-        await self._interact(self.Locators.FSM_COMMAND_INPUT, "fill", value=cmd)
+    async def set_fsm_command(self, cmd: str) -> bool:
+        return await self._interact(self.Locators.FSM_COMMAND_INPUT, "fill", value=cmd)
 
-    async def save_settings(self) -> None:
-        await self._interact(self.Locators.SAVE_BTN, "click")
+    async def save_settings(self) -> bool:
+        return await self._interact(self.Locators.SAVE_BTN, "click")

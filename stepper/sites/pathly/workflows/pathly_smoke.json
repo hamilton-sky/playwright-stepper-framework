@@ -5,7 +5,8 @@
     "project_name": "my-test-project"
   },
   "steps": [
-    { "action": "wait", "description": "Wait for HomeScreen to be ready", "extra": { "timeout": 5000 } },
+    { "action": "wait", "description": "Wait for the HomeScreen to be ready",
+      "wait_for": "[data-testid=\"homescreen-tab-projects\"]" },
     { "action": "pathly_open_project", "description": "Open project {{project_name}}", "extra": { "project_name": "{{project_name}}" } },
     { "action": "pathly_navigate_panel", "description": "Navigate to flow panel", "extra": { "panel": "flow" } },
     { "action": "screenshot", "description": "Screenshot flow panel" },

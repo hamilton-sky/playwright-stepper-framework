@@ -73,26 +73,34 @@ class WizardPage(BasePage):
             description=f"{template_id} template tile in the wizard",
         )
 
-    async def open_wizard(self) -> None:
-        await self._interact(self.Locators.FLOWS_ADD_BTN, "click")
+    # Every interaction below returns _interact's success flag rather than
+    # discarding it. _interact never raises: a missing selector, a resolver
+    # confidence below CONFIDENCE_WARN, or a click that does not land all come
+    # back as False. Swallowing that here is what let pathly_wizard_smoke —
+    # open → template → name → next x4 → save → screenshot, with no assertion
+    # anywhere — report ten passed steps against an app whose wizard never
+    # opened. The POM still does not assert; it reports, and the glue decides.
 
-    async def select_template(self, template_id: str) -> None:
-        await self._interact(self._template_locator(template_id), "click")
+    async def open_wizard(self) -> bool:
+        return await self._interact(self.Locators.FLOWS_ADD_BTN, "click")
 
-    async def set_name(self, name: str) -> None:
-        await self._interact(self.Locators.INPUT_NAME, "fill", value=name)
+    async def select_template(self, template_id: str) -> bool:
+        return await self._interact(self._template_locator(template_id), "click")
 
-    async def set_description(self, description: str) -> None:
-        await self._interact(self.Locators.INPUT_DESCRIPTION, "fill", value=description)
+    async def set_name(self, name: str) -> bool:
+        return await self._interact(self.Locators.INPUT_NAME, "fill", value=name)
 
-    async def click_next(self) -> None:
-        await self._interact(self.Locators.BTN_NEXT, "click")
+    async def set_description(self, description: str) -> bool:
+        return await self._interact(self.Locators.INPUT_DESCRIPTION, "fill", value=description)
 
-    async def click_back(self) -> None:
-        await self._interact(self.Locators.BTN_BACK, "click")
+    async def click_next(self) -> bool:
+        return await self._interact(self.Locators.BTN_NEXT, "click")
 
-    async def click_cancel(self) -> None:
-        await self._interact(self.Locators.BTN_CANCEL, "click")
+    async def click_back(self) -> bool:
+        return await self._interact(self.Locators.BTN_BACK, "click")
 
-    async def click_save(self) -> None:
-        await self._interact(self.Locators.BTN_SAVE, "click")
+    async def click_cancel(self) -> bool:
+        return await self._interact(self.Locators.BTN_CANCEL, "click")
+
+    async def click_save(self) -> bool:
+        return await self._interact(self.Locators.BTN_SAVE, "click")

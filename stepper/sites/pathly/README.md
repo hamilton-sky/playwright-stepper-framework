@@ -43,8 +43,38 @@ source. Adding an element to this harness is two changes in two repositories:
 2. **Here** — add a `Locator` to the matching POM's `Locators` class, a method
    that calls `self._interact(...)`, and a glue action that calls that method.
 
-If a testid is missing the resolver falls through rather than failing loudly,
-so a silently skipped step usually means step 1 was not done.
+If a testid is missing, the resolver finds nothing and `_interact` returns
+False — it does not raise. Each glue action here checks that flag and reports
+the step **failed**, naming the action:
+
+```
+✗ pathly_open_wizard: the element did not resolve on the attached page
+  — wrong screen, or the data-testid is missing from Pathly Studio
+```
+
+That check is the difference between a red run and a green lie. Without it
+`pathly_wizard_smoke` — nine interactions and a screenshot, no assertion
+anywhere — reported ten passed steps against an app whose wizard never opened.
+`stepper/tests/unit/test_pathly_failure_propagation.py` holds both halves of
+the rule: no POM method may discard `_interact`'s result, and no glue action
+may return `passed` when it is False.
+
+## Waiting for a screen
+
+A `wait` step takes `wait_for` — a selector or a URL fragment — as a top-level
+field, not a duration inside `extra`:
+
+```json
+{ "action": "wait", "description": "Wait for the HomeScreen to be ready",
+  "wait_for": "[data-testid=\"homescreen-tab-projects\"]" }
+```
+
+`WaitAction` reads `wait_for` and `input_value` and nothing else. A `wait` step
+carrying `extra: {"timeout": 5000}` or `extra: {"ms": 1000}` does not wait five
+seconds or one — the fields are ignored and it sleeps a flat two. Both of these
+workflows shipped that way until the readiness selectors above replaced them.
+Name the element you are waiting for; a number would be a guess about a machine
+you are not on.
 
 ## What this site can drive
 
