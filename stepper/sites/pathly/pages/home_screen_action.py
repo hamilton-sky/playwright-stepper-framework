@@ -83,15 +83,28 @@ class PathlyHomeScreen(PageModule):
         """Assert which projects the home screen lists."""
 
         action_name = "pathly_assert_projects"
+        read_only   = True
 
         async def _execute(
             self, page, step: StepConfig,
             resolver, context: ExecutionContext, behaviour=None,
         ) -> StepResult:
+            # Checked before the run, not defaulted to []. An absent or
+            # misspelled key used to make `missing` empty, so the assertion
+            # passed whatever the home screen showed — the one behaviour an
+            # assertion must not have. A bare string is rejected for the same
+            # reason: `n not in actual` would iterate its characters.
+            expected_names = step.extra.get("expected_names")
+            if (not isinstance(expected_names, list) or not expected_names
+                    or not all(isinstance(n, str) for n in expected_names)):
+                return StepResult(
+                    step=step, status="failed",
+                    error="pathly_assert_projects: extra.expected_names must be a "
+                          f"non-empty list of project names, got {expected_names!r}",
+                )
             try:
                 from poms.pathly.pages.home_screen_page import HomeScreenPage
 
-                expected_names = step.extra.get("expected_names", [])
                 driver = self._driver(page)
                 home = self._build_pom(
                     HomeScreenPage, driver, "electron://pathly-homescreen",
@@ -102,9 +115,11 @@ class PathlyHomeScreen(PageModule):
                 if missing:
                     return StepResult(
                         step=step, status="failed",
-                        error=f"pathly_assert_projects: missing projects: {missing}",
+                        error=f"pathly_assert_projects: missing projects: {missing} "
+                              f"— the home screen lists {actual}",
                     )
-                return StepResult(step=step, status="passed")
+                return StepResult(step=step, status="passed",
+                                  output={"pathly_projects": actual})
             except Exception as e:
                 logger.error("pathly_assert_projects failed: %s", e)
                 return StepResult(step=step, status="failed", error=str(e))

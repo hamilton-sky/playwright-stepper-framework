@@ -54,11 +54,18 @@ class PathlySettings(PageModule):
         """Read the selected routing engine into the context."""
 
         action_name = "pathly_read_routing"
+        read_only   = True
+
+        #: Where the value lands when the step does not name a key. A later
+        #: step reads it back as `{{pathly_routing_engine}}` — context.store
+        #: writes the generic _data map, which is what context_lookup reads.
+        DEFAULT_KEY = "pathly_routing_engine"
 
         async def _execute(
             self, page, step: StepConfig,
             resolver, context: ExecutionContext, behaviour=None,
         ) -> StepResult:
+            key = step.extra.get("key") or self.DEFAULT_KEY
             try:
                 from poms.pathly.pages.settings_page import SettingsPage
 
@@ -68,8 +75,12 @@ class PathlySettings(PageModule):
                     page=page, resolver=resolver, behaviour=behaviour,
                 )
                 engine = await settings.get_routing_engine()
-                logger.info("pathly_read_routing: current engine = %s", engine)
-                return StepResult(step=step, status="passed")
+                # The docstring says "into the context", so put it there — and
+                # into output, so it also reaches results.json. StoreAction does
+                # both for the same reason; a read nobody can reach is a log line.
+                context.store(key, engine)
+                logger.info("✓ pathly_read_routing: %s=%r", key, engine)
+                return StepResult(step=step, status="passed", output={key: engine})
             except Exception as e:
                 logger.error("pathly_read_routing failed: %s", e)
                 return StepResult(step=step, status="failed", error=str(e))
