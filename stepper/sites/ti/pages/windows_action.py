@@ -34,7 +34,13 @@ class TiWindowsPage(PageModule):
                 await pom.open()
 
                 async with page.context.expect_page() as new_page_info:
-                    await pom.click_click_here()
+                    if not await pom.click_click_here():
+                        return StepResult(
+                            step=step, status="failed",
+                            error="ti_open_new_window: the Click Here link was not "
+                                  "clicked — the element did not resolve on the "
+                                  "page, or it is present but not interactable",
+                        )
 
                 new_page = await new_page_info.value
                 await new_page.wait_for_load_state("domcontentloaded")

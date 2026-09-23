@@ -32,8 +32,8 @@ class SecurePage(BasePage):
         except Exception:
             pass
 
-    async def click_logout(self) -> None:
-        await self._interact(self.Locators.LOGOUT, "click")
+    async def click_logout(self) -> bool:
+        return await self._interact(self.Locators.LOGOUT, "click")
 
     async def is_secure(self) -> bool:
         count = await self._driver.locator_count(self.Locators.SECURE_HEADING)

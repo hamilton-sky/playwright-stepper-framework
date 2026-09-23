@@ -40,15 +40,33 @@ class TiJsAlertsPage(PageModule):
 
                 # JS Alert — accept
                 page.once("dialog", lambda d: d.accept())
-                await pom.click_js_alert_btn()
+                if not await pom.click_js_alert_btn():
+                    return StepResult(
+                        step=step, status="failed",
+                        error="ti_handle_alerts: the JS Alert button was not clicked "
+                              "(the selector matches nothing, or the element is "
+                              "present but not interactable)",
+                    )
 
                 # JS Confirm — dismiss
                 page.once("dialog", lambda d: d.dismiss())
-                await pom.click_js_confirm_btn()
+                if not await pom.click_js_confirm_btn():
+                    return StepResult(
+                        step=step, status="failed",
+                        error="ti_handle_alerts: the JS Confirm button was not clicked "
+                              "(the selector matches nothing, or the element is "
+                              "present but not interactable)",
+                    )
 
                 # JS Prompt — accept (empty input)
                 page.once("dialog", lambda d: d.accept())
-                await pom.click_js_prompt_btn()
+                if not await pom.click_js_prompt_btn():
+                    return StepResult(
+                        step=step, status="failed",
+                        error="ti_handle_alerts: the JS Prompt button was not clicked "
+                              "(the selector matches nothing, or the element is "
+                              "present but not interactable)",
+                    )
 
                 logger.info("ti_handle_alerts ✓ — handled alert, confirm, prompt")
                 return StepResult(step=step, status="passed")

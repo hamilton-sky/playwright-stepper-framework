@@ -32,10 +32,30 @@ class TiLogoutPage(PageModule):
                                            behaviour=behaviour)
 
                 await pom.wait_for_ready()
-                await pom.click_logout()
+                if not await pom.click_logout():
+                    return StepResult(
+                        step=step, status="failed",
+                        error="ti_logout: the Logout link was not clicked — the "
+                              "element did not resolve on the page, or it is "
+                              "present but not interactable",
+                    )
 
-                logger.info("ti_logout ✓ — logged out from secure area")
-                return StepResult(step=step, status="passed")
+                # Its docstring says "and confirm the flash message", so confirm
+                # it. the-internet redirects to /login and renders
+                # "You logged out of the secure area!" there; landing anywhere
+                # else means the click went somewhere unexpected.
+                await page.wait_for_load_state("domcontentloaded")
+                flash = await pom.get_flash_message()
+                if not flash:
+                    return StepResult(
+                        step=step, status="failed",
+                        error="ti_logout: clicked Logout but no confirmation flash "
+                              f"followed (url: {page.url})",
+                    )
+
+                logger.info("ti_logout ✓ — %s", flash)
+                return StepResult(step=step, status="passed",
+                                  output={"ti_logout_flash": flash})
 
             except Exception as e:
                 logger.error("ti_logout failed: %s", e)

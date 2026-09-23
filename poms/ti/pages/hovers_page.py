@@ -10,9 +10,17 @@ logger = logging.getLogger(__name__)
 class HoversPage(BasePage):
 
     class Locators:
+        # nth-of-type, not nth-child. The generator wrote
+        # `.figure:nth-child(1) img`, which reads as "the first .figure" and is
+        # not: :nth-child(1) means "is the first child of its parent AND is a
+        # .figure", and the-internet puts an <h3> and a <br> ahead of them —
+        # the figures are children 3, 4 and 5. It matched 0 elements, so the
+        # hover never fired, .figcaption stayed display:none, and the click on
+        # the revealed link could not land. Same family as the checkbox
+        # selector in checkboxes_page.py: plausible CSS that matches nothing.
         USER_AVATAR_1 = Locator(
             role="img", name="User Avatar",
-            css=".figure:nth-child(1) img",
+            css=".figure:nth-of-type(1) img",
             description="first user avatar image (hover to reveal profile link)",
         )
         VIEW_PROFILE_1 = Locator(
@@ -33,10 +41,17 @@ class HoversPage(BasePage):
         except Exception:
             pass
 
-    async def hover_user_avatar_1(self) -> None:
+    async def hover_user_avatar_1(self) -> bool:
+        """
+        True if the avatar was there to hover. `query_selector` returns None
+        for a selector that matches nothing, and the old `if el:` turned that
+        into a silent no-op — which is how the wrong selector above survived.
+        """
         el = await self._driver.query_selector(self.Locators.USER_AVATAR_1.css)
-        if el:
-            await el.hover()
+        if not el:
+            return False
+        await el.hover()
+        return True
 
-    async def click_view_profile_1(self) -> None:
-        await self._interact(self.Locators.VIEW_PROFILE_1, "click")
+    async def click_view_profile_1(self) -> bool:
+        return await self._interact(self.Locators.VIEW_PROFILE_1, "click")

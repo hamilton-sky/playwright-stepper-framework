@@ -40,14 +40,14 @@ class LoginPage(BasePage):
         except Exception:
             pass
 
-    async def fill_username(self, value: str) -> None:
-        await self._interact(self.Locators.USERNAME, "fill", value=value)
+    async def fill_username(self, value: str) -> bool:
+        return await self._interact(self.Locators.USERNAME, "fill", value=value)
 
-    async def fill_password(self, value: str) -> None:
-        await self._interact(self.Locators.PASSWORD, "fill", value=value)
+    async def fill_password(self, value: str) -> bool:
+        return await self._interact(self.Locators.PASSWORD, "fill", value=value)
 
-    async def click_login(self) -> None:
-        await self._interact(self.Locators.LOGIN, "click")
+    async def click_login(self) -> bool:
+        return await self._interact(self.Locators.LOGIN, "click")
 
     async def open(self) -> None:
         await self._driver.goto(self.url)
