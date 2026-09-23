@@ -32,8 +32,20 @@ class TiCheckboxesPage(PageModule):
                                            behaviour=behaviour)
 
                 await pom.open()
-                await pom.click_checkbox_1()
-                await pom.click_checkbox_2()
+                if not await pom.click_checkbox_1():
+                    return StepResult(
+                        step=step, status="failed",
+                        error="ti_toggle_checkboxes: checkbox 1 was not clicked "
+                              "(the selector matches nothing, or the element is "
+                              "present but not interactable)",
+                    )
+                if not await pom.click_checkbox_2():
+                    return StepResult(
+                        step=step, status="failed",
+                        error="ti_toggle_checkboxes: checkbox 2 was not clicked "
+                              "(the selector matches nothing, or the element is "
+                              "present but not interactable)",
+                    )
 
                 logger.info("ti_toggle_checkboxes ✓ — toggled both checkboxes")
                 return StepResult(step=step, status="passed")

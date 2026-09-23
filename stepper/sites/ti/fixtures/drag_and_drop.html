@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html><head><title>The Internet</title>
+<style>
+  #columns .column { float: left; width: 150px; height: 150px; border: 1px solid #ccc; margin: 4px; }
+  #columns header { display: block; text-align: center; font-size: 2em; }
+</style>
+</head>
+<body>
+  <div class="example">
+    <h3>Drag and Drop</h3>
+    <div id="columns">
+      <div class="column" id="column-a" draggable="true"><header>A</header></div>
+      <div class="column" id="column-b" draggable="true"><header>B</header></div>
+    </div>
+  </div>
+  <script>
+    // HTML5 drag-and-drop, the same shape the-internet uses: dropping one
+    // column on the other swaps their headers. Without this the drag is a
+    // no-op and get_column_order() can never show a change — the assertion
+    // would be vacuous rather than wrong, which is harder to notice.
+    var dragged = null;
+    document.querySelectorAll('#columns .column').forEach(function (col) {
+      col.addEventListener('dragstart', function (e) {
+        dragged = this;
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/html', this.innerHTML);
+      });
+      col.addEventListener('dragover', function (e) { e.preventDefault(); return false; });
+      col.addEventListener('drop', function (e) {
+        e.preventDefault(); e.stopPropagation();
+        if (dragged && dragged !== this) {
+          var mine = this.innerHTML;
+          this.innerHTML = dragged.innerHTML;
+          dragged.innerHTML = mine;
+        }
+        return false;
+      });
+    });
+  </script>
+</body></html>

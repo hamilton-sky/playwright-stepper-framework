@@ -32,8 +32,20 @@ class TiHoversPage(PageModule):
                                            behaviour=behaviour)
 
                 await pom.open()
-                await pom.hover_user_avatar_1()
-                await pom.click_view_profile_1()
+                if not await pom.hover_user_avatar_1():
+                    return StepResult(
+                        step=step, status="failed",
+                        error="ti_hover_user: the first avatar was not there to hover "
+                              "(the selector matches nothing, or the element is "
+                              "present but not interactable)",
+                    )
+                if not await pom.click_view_profile_1():
+                    return StepResult(
+                        step=step, status="failed",
+                        error="ti_hover_user: the revealed profile link was not clicked "
+                              "(the selector matches nothing, or the element is "
+                              "present but not interactable)",
+                    )
 
                 logger.info("ti_hover_user ✓ — hovered avatar and clicked profile link")
                 return StepResult(step=step, status="passed")

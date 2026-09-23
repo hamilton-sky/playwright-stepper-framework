@@ -1,5 +1,6 @@
 """sites/ti/pages/windows_action.py — Stepper glue for the-internet new window."""
 from __future__ import annotations
+import asyncio
 import logging
 
 from stepper.engine.interfaces import StepConfig, StepResult, ExecutionContext
@@ -33,10 +34,44 @@ class TiWindowsPage(PageModule):
 
                 await pom.open()
 
-                async with page.context.expect_page() as new_page_info:
-                    await pom.click_click_here()
+                # A plain listener rather than expect_page(), for one
+                # reason: returning from inside `async with expect_page()`
+                # does not skip __aexit__, so a click that never landed still
+                # waited out the full event timeout — 47s — and the timeout
+                # then replaced "the Click Here link was not clicked" with a
+                # bare 'Timeout exceeded while waiting for event "page"',
+                # pointing at the framework instead of at the selector.
+                #
+                # context.on() registers synchronously, so there is no window
+                # in which a popup could be missed; the failure path returns
+                # the moment the click reports it missed, and only the success
+                # path waits.
+                loop  = asyncio.get_running_loop()
+                popup = loop.create_future()
 
-                new_page = await new_page_info.value
+                def _on_page(new: object) -> None:
+                    if not popup.done():
+                        popup.set_result(new)
+
+                page.context.on("page", _on_page)
+                try:
+                    if not await pom.click_click_here():
+                        return StepResult(
+                            step=step, status="failed",
+                            error="ti_open_new_window: the Click Here link was not "
+                                  "clicked (the selector matches nothing, or the "
+                                  "element is present but not interactable)",
+                        )
+                    new_page = await asyncio.wait_for(popup, timeout=15)
+                except asyncio.TimeoutError:
+                    return StepResult(
+                        step=step, status="failed",
+                        error="ti_open_new_window: the link was clicked but no new "
+                              "window opened within 15s",
+                    )
+                finally:
+                    page.context.remove_listener("page", _on_page)
+
                 await new_page.wait_for_load_state("domcontentloaded")
                 logger.info("ti_open_new_window ✓ — new window at %s", new_page.url)
                 return StepResult(step=step, status="passed")

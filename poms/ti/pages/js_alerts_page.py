@@ -36,14 +36,14 @@ class JsAlertsPage(BasePage):
         except Exception:
             pass
 
-    async def click_js_alert_btn(self) -> None:
-        await self._interact(self.Locators.JS_ALERT_BTN, "click")
+    async def click_js_alert_btn(self) -> bool:
+        return await self._interact(self.Locators.JS_ALERT_BTN, "click")
 
-    async def click_js_confirm_btn(self) -> None:
-        await self._interact(self.Locators.JS_CONFIRM_BTN, "click")
+    async def click_js_confirm_btn(self) -> bool:
+        return await self._interact(self.Locators.JS_CONFIRM_BTN, "click")
 
-    async def click_js_prompt_btn(self) -> None:
-        await self._interact(self.Locators.JS_PROMPT_BTN, "click")
+    async def click_js_prompt_btn(self) -> bool:
+        return await self._interact(self.Locators.JS_PROMPT_BTN, "click")
 
     async def get_result(self) -> str | None:
         el = await self._driver.query_selector(self.Locators.RESULT)

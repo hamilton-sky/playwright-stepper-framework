@@ -32,11 +32,23 @@ class TiSecurePage(PageModule):
                                               behaviour=behaviour)
 
                 await secure_page.wait_for_ready()
-                flash = await secure_page.get_flash_message()
-                if flash:
-                    logger.info("ti_view_secure ✓ — flash: %s", flash)
 
-                return StepResult(step=step, status="passed")
+                # This step's whole job is to confirm the secure area was
+                # reached. `if flash:` meant no flash was indistinguishable
+                # from a flash — a bad password lands on /login and this still
+                # reported passed, so the login flow above it could not fail.
+                flash = await secure_page.get_flash_message()
+                if not flash:
+                    return StepResult(
+                        step=step, status="failed",
+                        error="ti_view_secure: no success flash on the page — the "
+                              f"secure area was not reached (url: {page.url})",
+                    )
+
+                key = step.extra.get("key") or "ti_secure_flash"
+                context.store(key, flash)
+                logger.info("ti_view_secure ✓ — flash: %s", flash)
+                return StepResult(step=step, status="passed", output={key: flash})
 
             except Exception as e:
                 logger.error("ti_view_secure failed: %s", e)

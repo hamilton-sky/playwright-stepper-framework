@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html><head><title>The Internet</title></head>
+<body>
+  <div class="example">
+    <h3>JavaScript Alerts</h3>
+    <ul>
+      <li><button onclick="jsAlert()">Click for JS Alert</button></li>
+      <li><button onclick="jsConfirm()">Click for JS Confirm</button></li>
+      <li><button onclick="jsPrompt()">Click for JS Prompt</button></li>
+    </ul>
+    <p id="result"></p>
+  </div>
+  <script>
+    function jsAlert()   { alert("I am a JS Alert"); setResult("You successfully clicked an alert"); }
+    function jsConfirm() { var r = confirm("I am a JS Confirm"); setResult("You clicked: " + (r ? "Ok" : "Cancel")); }
+    function jsPrompt()  { var r = prompt("I am a JS prompt"); setResult("You entered: " + r); }
+    function setResult(t){ document.getElementById("result").textContent = t; }
+  </script>
+</body></html>

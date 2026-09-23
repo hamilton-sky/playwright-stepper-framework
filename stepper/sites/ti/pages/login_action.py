@@ -50,9 +50,27 @@ class TiLoginPage(PageModule):
 
                 logger.info("ti_login — logging in as %s", username)
                 await login_page.open()
-                await login_page.fill_username(username)
-                await login_page.fill_password(password)
-                await login_page.click_login()
+                if not await login_page.fill_username(username):
+                    return StepResult(
+                        step=step, status="failed",
+                        error="ti_login: the username field was not filled "
+                              "(the selector matches nothing, or the element is "
+                              "present but not interactable)",
+                    )
+                if not await login_page.fill_password(password):
+                    return StepResult(
+                        step=step, status="failed",
+                        error="ti_login: the password field was not filled "
+                              "(the selector matches nothing, or the element is "
+                              "present but not interactable)",
+                    )
+                if not await login_page.click_login():
+                    return StepResult(
+                        step=step, status="failed",
+                        error="ti_login: the Login button was not clicked "
+                              "(the selector matches nothing, or the element is "
+                              "present but not interactable)",
+                    )
 
                 logger.info("ti_login ✓ — submitted login form")
                 return StepResult(step=step, status="passed")

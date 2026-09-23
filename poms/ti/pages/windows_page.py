@@ -28,5 +28,5 @@ class WindowsPage(BasePage):
         except Exception:
             pass
 
-    async def click_click_here(self) -> None:
-        await self._interact(self.Locators.CLICK_HERE, "click")
+    async def click_click_here(self) -> bool:
+        return await self._interact(self.Locators.CLICK_HERE, "click")

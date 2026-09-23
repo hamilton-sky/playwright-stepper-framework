@@ -82,8 +82,22 @@ drag-and-drop, hover-reveal and window switching.
 | `ti_hover_user` | `hovers_action.py` | `HoversPage` |
 | `ti_drag_and_drop` | `drag_and_drop_action.py` | `DragAndDropPage` |
 
-`TI_BASE_URL` points the whole site elsewhere, which is how its workflows were
-run against local fixtures without reaching the network.
+`TI_BASE_URL` points the whole site elsewhere. That is how all eight run
+without reaching the network — `stepper/sites/ti/fixtures/` holds a local
+stand-in for the-internet and a server for it, and CI runs every flow against
+it on loopback:
+
+```bash
+python stepper/sites/ti/fixtures/server.py --port 8099 &
+TI_BASE_URL=http://127.0.0.1:8099 python stepper/main.py run <workflow>
+```
+
+Six of the eight had never been run before that existed, and running them found
+`HoversPage`'s `.figure:nth-child(1) img` — 0 matches, because the-internet
+puts an `<h3>` and a `<br>` ahead of the figures, so they are children 3, 4 and
+5. The flow reported 1/1 passed anyway, which is the part that mattered: every
+`ti` action returned `passed` unconditionally. Both are fixed, and
+`stepper/tests/unit/test_ti_failure_propagation.py` holds the rule.
 
 ### db (`stepper/sites/db/pages/`) — not a browser site
 

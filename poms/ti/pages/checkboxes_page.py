@@ -37,8 +37,8 @@ class CheckboxesPage(BasePage):
         except Exception:
             pass
 
-    async def click_checkbox_1(self) -> None:
-        await self._interact(self.Locators.CHECKBOX_1, "click")
+    async def click_checkbox_1(self) -> bool:
+        return await self._interact(self.Locators.CHECKBOX_1, "click")
 
-    async def click_checkbox_2(self) -> None:
-        await self._interact(self.Locators.CHECKBOX_2, "click")
+    async def click_checkbox_2(self) -> bool:
+        return await self._interact(self.Locators.CHECKBOX_2, "click")

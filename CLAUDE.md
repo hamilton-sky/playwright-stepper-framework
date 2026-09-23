@@ -30,7 +30,8 @@ playwright-stepper-framework/
 │       ├── openlibrary/pages/
 │       ├── saucedemo/pages/
 │       ├── phptravels/pages/
-│       ├── ti/                       # the-internet — generated from a crawl
+│       ├── ti/                       # the-internet — generated from a crawl;
+│       │                             #   fixtures/ serves it locally, no network
 │       ├── pathly/                   # Pathly Studio — Electron, attached over CDP
 │       ├── db/                       # Non-browser domain — SQLite, stdlib only
 │       └── */workflows/*.json        # Declarative workflow definitions
@@ -111,6 +112,12 @@ python stepper/main.py run db_smoke
 # the embed-direct rung calls no provider. --no-heal-cache is what makes this a
 # measurement rather than a replay of the committed heal_cache.json.
 python stepper/main.py run sd_heal_test --heal 2 --no-heal-cache --show
+
+# The eight the-internet flows, against checked-in fixtures on loopback. No
+# network and no credentials — the live host is denied by this environment's
+# egress policy, which is why six of the eight had never run at all.
+python stepper/sites/ti/fixtures/server.py --port 8099 &
+TI_BASE_URL=http://127.0.0.1:8099 python stepper/main.py run hover_over_elements_to_reveal_hidden_text
 
 # Drive a running Electron app instead of launching a browser. Still the web
 # domain — same actions, same POMs, same resolver cascade; only the page's

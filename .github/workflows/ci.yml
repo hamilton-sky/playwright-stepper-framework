@@ -155,6 +155,62 @@ jobs:
           --ci
           --ci-output reports/ci-db-web-mixed.json
 
+      # The eight the-internet flows, against checked-in fixtures on loopback.
+      # Hermetic for the same reason the step above is — no network, no
+      # credentials — and here that is the whole point: the live host is denied
+      # by this environment's egress policy, which is why six of these eight
+      # had never run at all. Running them found a selector that matched
+      # nothing and a flow that reported green anyway.
+      - name: Run the-internet workflows against local fixtures
+        env:
+          TI_BASE_URL: http://127.0.0.1:8099
+        run: |
+          python stepper/sites/ti/fixtures/server.py --port 8099 &
+          server_pid=$!
+          trap 'kill $server_pid 2>/dev/null || true' EXIT
+
+          # Liveness before readiness. A probe on its own is not enough: if the
+          # port is already taken the server exits and curl happily answers
+          # from whatever else is listening, so the flows would run against an
+          # unknown origin and any failure would look like a selector bug.
+          ready=no
+          for _ in $(seq 1 40); do
+            if ! kill -0 $server_pid 2>/dev/null; then
+              echo "::error title=ti fixtures::the fixture server exited during startup (is port 8099 already in use?)"
+              exit 1
+            fi
+            if curl -sf --noproxy '*' http://127.0.0.1:8099/checkboxes >/dev/null; then
+              ready=yes; break
+            fi
+            sleep 0.25
+          done
+          if [ "$ready" != yes ]; then
+            echo "::error title=ti fixtures::the fixture server never came up on 127.0.0.1:8099"
+            exit 1
+          fi
+
+          # Every flow runs even when one fails, so a red build names all of
+          # them rather than only the first.
+          failed=""
+          for wf in check_and_uncheck_checkboxes \
+                    trigger_and_dismiss_javascript_alerts \
+                    select_an_option_from_the_dropdown \
+                    drag_and_drop_columns \
+                    hover_over_elements_to_reveal_hidden_text \
+                    open_a_new_window_and_switch_to_it \
+                    log_in_and_view_the_secure_area \
+                    log_out_from_secure_area; do
+            echo "── $wf ──"
+            if ! python stepper/main.py run "$wf" --ci --ci-output "reports/ci-ti-$wf.json"; then
+              failed="$failed $wf"
+            fi
+          done
+
+          if [ -n "$failed" ]; then
+            echo "::error title=ti workflows failed::$failed"
+            exit 1
+          fi
+
       # Every test under stepper/tests/ (excluding unit/) drives an OpenLibrary
       # workflow, so the whole step depends on the credentials.
       - name: Run stepper integration tests

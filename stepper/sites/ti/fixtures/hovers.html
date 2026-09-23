@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html><head><title>The Internet</title>
+<style>
+  /* the-internet reveals the caption on hover, in CSS — no JS.
+     This is what makes ti_hover_user a real test: the link is in the DOM
+     from the start but not clickable until the pointer is over .figure. */
+  .figcaption { display: none; }
+  .figure:hover .figcaption { display: block; }
+  .figure { display: inline-block; }
+</style>
+</head>
+<body>
+  <div class="example">
+    <h3>Hovers</h3>
+    <br>
+    <div class="figure">
+      <img alt="User Avatar" src="data:image/gif;base64,R0lGODlhAQABAIAAAMLCwgAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==" width="120" height="120">
+      <div class="figcaption"><h5>name: user1</h5><a href="/users/1">View profile</a></div>
+    </div>
+    <div class="figure">
+      <img alt="User Avatar" src="data:image/gif;base64,R0lGODlhAQABAIAAAMLCwgAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==" width="120" height="120">
+      <div class="figcaption"><h5>name: user2</h5><a href="/users/2">View profile</a></div>
+    </div>
+    <div class="figure">
+      <img alt="User Avatar" src="data:image/gif;base64,R0lGODlhAQABAIAAAMLCwgAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==" width="120" height="120">
+      <div class="figcaption"><h5>name: user3</h5><a href="/users/3">View profile</a></div>
+    </div>
+  </div>
+</body></html>
