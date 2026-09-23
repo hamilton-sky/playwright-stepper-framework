@@ -231,3 +231,134 @@ def test_view_secure_stores_the_flash_it_confirmed(monkeypatch):
     assert result.status == "passed"
     assert ctx.get("ti_secure_flash") == "You logged into a secure area!"
     assert result.output == {"ti_secure_flash": "You logged into a secure area!"}
+
+
+# ── ti_open_new_window: report the miss, don't wait out a popup ───────────────
+#
+# The first version of the guard returned from inside
+# `async with page.context.expect_page()`. Returning does not skip __aexit__,
+# so a click that never landed still waited out the event timeout — measured at
+# 47s — and the timeout then replaced the specific error with a bare
+# 'Timeout 30000ms exceeded while waiting for event "page"', which points at
+# the framework rather than at the selector. Codex caught it on PR #31.
+
+class _ExpectPage:
+    """
+    Playwright's expect_page(), in the one respect that matters here: __aexit__
+    waits for the event and raises when it does not come — and it runs whether
+    the block was left normally or by a `return`.
+
+    Scaled down to 0.3s so the test stays fast. Present so a regression to the
+    old shape fails on the behaviour (a swallowed error) rather than on a
+    missing attribute.
+    """
+
+    def __init__(self, fired):
+        self._fired = fired
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        await asyncio.sleep(0.3)
+        if not self._fired:
+            raise TimeoutError('Timeout 30000ms exceeded while waiting for event "page"')
+        return False
+
+    @property
+    def value(self):
+        async def _v():
+            return self._fired[0]
+        return _v()
+
+
+class _FakeContext:
+    """Records listeners; `fire` delivers a popup the way Playwright would."""
+
+    def __init__(self):
+        self.handlers: list = []
+        self.fired: list = []
+
+    def on(self, event, fn):
+        assert event == "page"
+        self.handlers.append(fn)
+
+    def remove_listener(self, event, fn):
+        self.handlers.remove(fn)
+
+    def fire(self, new_page):
+        self.fired.append(new_page)
+        for fn in list(self.handlers):
+            fn(new_page)
+
+    def expect_page(self, timeout=None):
+        return _ExpectPage(self.fired)
+
+
+def _windows_action(click_returns: bool, popup_on_click):
+    from stepper.sites.ti.pages.windows_action import TiWindowsPage
+    from poms.ti.pages.windows_page import WindowsPage
+
+    action = TiWindowsPage.TiOpenNewWindowAction()
+    action._driver = lambda _page: MagicMock()
+
+    ctx_obj = _FakeContext()
+    page = MagicMock()
+    page.context = ctx_obj
+
+    async def _open(self):
+        return None
+
+    async def _click(self):
+        if popup_on_click:
+            ctx_obj.fire(popup_on_click)
+        return click_returns
+
+    return action, page, WindowsPage, _open, _click
+
+
+def test_open_new_window_reports_the_miss_without_waiting(monkeypatch):
+    import time
+
+    action, page, cls, _open, _click = _windows_action(False, None)
+    monkeypatch.setattr(cls, "open", _open)
+    monkeypatch.setattr(cls, "click_click_here", _click)
+
+    step = StepConfig(action=action.action_name, description="probe")
+    started = time.monotonic()
+    result = asyncio.run(action.execute(page, step, MagicMock(),
+                                        ExecutionContext(), None))
+    elapsed = time.monotonic() - started
+
+    assert result.status == "failed"
+    assert "was not clicked" in result.error, (
+        "the specific error must survive — a popup timeout in its place sends "
+        f"the reader to the framework instead of the selector. Got: {result.error!r}"
+    )
+    assert "Timeout" not in result.error
+    assert elapsed < 2, (
+        f"returned in {elapsed:.1f}s; a missed click must not wait out the "
+        f"popup timeout (this path used to cost 47s)"
+    )
+    assert page.context.handlers == [], "the listener must be removed on every path"
+
+
+def test_open_new_window_passes_when_the_popup_arrives(monkeypatch):
+    new_page = MagicMock()
+    new_page.url = "http://127.0.0.1/windows/new"
+
+    async def _loaded(*a, **k):
+        return None
+
+    new_page.wait_for_load_state = _loaded
+
+    action, page, cls, _open, _click = _windows_action(True, new_page)
+    monkeypatch.setattr(cls, "open", _open)
+    monkeypatch.setattr(cls, "click_click_here", _click)
+
+    step = StepConfig(action=action.action_name, description="probe")
+    result = asyncio.run(action.execute(page, step, MagicMock(),
+                                        ExecutionContext(), None))
+
+    assert result.status == "passed"
+    assert page.context.handlers == [], "the listener must be removed on every path"
