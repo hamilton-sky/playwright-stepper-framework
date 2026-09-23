@@ -362,3 +362,112 @@ def test_open_new_window_passes_when_the_popup_arrives(monkeypatch):
 
     assert result.status == "passed"
     assert page.context.handlers == [], "the listener must be removed on every path"
+
+
+# ── ti_handle_alerts: a missed click must not leave a dialog handler behind ───
+#
+# page.once() removes itself when it FIRES. A click that never landed raised no
+# dialog, so the handler stayed attached — and with retry > 0 the next attempt
+# registered a second one. Two handlers then race to answer the same dialog and
+# the loser hits "Dialog has already been handled". Codex caught it on PR #31.
+
+class _FakeDialog:
+    """Answers only when its coroutine is actually awaited, as Playwright's is."""
+
+    def __init__(self):
+        self.answered: str | None = None
+
+    async def accept(self, prompt_text=None):
+        self.answered = "accept"
+
+    async def dismiss(self):
+        self.answered = "dismiss"
+
+
+class _FakePage:
+    """Tracks dialog listeners the way Playwright's EventEmitter does."""
+
+    def __init__(self):
+        self.listeners: list = []
+        self.url = "http://127.0.0.1/javascript_alerts"
+        self.context = _FakeContext()
+        self.dialog = _FakeDialog()
+
+    def once(self, event, fn):
+        assert event == "dialog"
+        self.listeners.append(fn)
+
+    def remove_listener(self, event, fn):
+        # Playwright tolerates removing a handler that already fired; so do we.
+        if fn in self.listeners:
+            self.listeners.remove(fn)
+
+
+def _alerts_action(click_results, monkeypatch):
+    from poms.ti.pages.js_alerts_page import JsAlertsPage
+    from stepper.sites.ti.pages.js_alerts_action import TiJsAlertsPage
+
+    action = TiJsAlertsPage.TiHandleAlertsAction()
+    action._driver = lambda _page: MagicMock()
+
+    page = _FakePage()
+    results = iter(click_results)
+
+    async def _open(self):
+        return None
+
+    def _clicker():
+        async def _click(self):
+            landed = next(results)
+            if landed:
+                # A real click raises the dialog, so fire the handler the way
+                # Playwright's emitter does — and await what it returns.
+                # dialog.accept() is a coroutine in the async API: a handler
+                # that calls it without returning it answers nothing and the
+                # page blocks. That bug passed an earlier version of this test,
+                # which only checked the bookkeeping.
+                for fn in list(page.listeners):
+                    page.listeners.remove(fn)
+                    returned = fn(page.dialog)
+                    if returned is not None:
+                        await returned
+                assert page.dialog.answered, (
+                    "the dialog handler did not answer the dialog — it must "
+                    "RETURN dialog.accept()/dismiss(), not just call it"
+                )
+            return landed
+        return _click
+
+    monkeypatch.setattr(JsAlertsPage, "open", _open)
+    for name in ("click_js_alert_btn", "click_js_confirm_btn", "click_js_prompt_btn"):
+        monkeypatch.setattr(JsAlertsPage, name, _clicker())
+
+    step = StepConfig(action=action.action_name, description="probe")
+    result = asyncio.run(action.execute(page, step, MagicMock(),
+                                        ExecutionContext(), None))
+    return result, page
+
+
+@pytest.mark.parametrize("clicks, miss_at", [
+    pytest.param([False, False, False], "JS Alert", id="first-click-misses"),
+    pytest.param([True, False, False], "JS Confirm", id="second-click-misses"),
+    pytest.param([True, True, False], "JS Prompt", id="third-click-misses"),
+])
+def test_a_missed_alert_click_leaves_no_dialog_handler(clicks, miss_at, monkeypatch):
+    result, page = _alerts_action(clicks, monkeypatch)
+
+    assert result.status == "failed"
+    assert miss_at in result.error, f"the error should name which button: {result.error!r}"
+    assert page.listeners == [], (
+        f"{len(page.listeners)} dialog handler(s) left attached after the "
+        f"{miss_at} click missed. On a retry the next attempt adds another, and "
+        f"two handlers answering one dialog means the loser hits 'Dialog has "
+        f"already been handled'."
+    )
+
+
+def test_all_three_dialogs_handled_leaves_no_handler(monkeypatch):
+    result, page = _alerts_action([True, True, True], monkeypatch)
+
+    assert result.status == "passed"
+    assert page.listeners == []

@@ -39,7 +39,7 @@ from __future__ import annotations
 import argparse
 import re
 from http.cookies import SimpleCookie
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
@@ -155,7 +155,14 @@ def main() -> None:
     ap.add_argument("--host", default="127.0.0.1")
     args = ap.parse_args()
 
-    server = HTTPServer((args.host, args.port), Handler)
+    # Threading, not the plain HTTPServer. With HTTP/1.1 keep-alive a browser
+    # holds its connection open, and a single-threaded server then blocks every
+    # other request behind it — including the second page ti_open_new_window
+    # opens, whose goto() simply timed out. It happened to work while each flow
+    # used one page at a time, which is the kind of luck a fixture should not
+    # depend on.
+    server = ThreadingHTTPServer((args.host, args.port), Handler)
+    server.daemon_threads = True
     print(f"the-internet fixtures on http://{args.host}:{args.port}", flush=True)
     server.serve_forever()
 

@@ -22,6 +22,23 @@ class TiJsAlertsPage(PageModule):
 
         action_name = "ti_handle_alerts"
 
+        @staticmethod
+        def _dialog_handler(respond: str):
+            """
+            One dialog responder, as a named function so it can be removed
+            again — a lambda would be a fresh object every call.
+
+            It must *return* the coroutine. In the async API `dialog.accept()`
+            does not answer the dialog, it builds a coroutine, and Playwright's
+            emitter schedules whatever the handler returns. Dropping it leaves
+            the dialog unanswered, which blocks the page: the next click times
+            out and the guard above reports "the button was not clicked" — true,
+            but for a reason three steps removed from the cause.
+            """
+            def _handle(dialog):
+                return getattr(dialog, respond)()
+            return _handle
+
         async def _execute(
             self, page, step: StepConfig,
             resolver, context: ExecutionContext, behaviour=None,
@@ -38,35 +55,34 @@ class TiJsAlertsPage(PageModule):
 
                 await pom.open()
 
-                # JS Alert — accept
-                page.once("dialog", lambda d: d.accept())
-                if not await pom.click_js_alert_btn():
-                    return StepResult(
-                        step=step, status="failed",
-                        error="ti_handle_alerts: the JS Alert button was not clicked "
-                              "(the selector matches nothing, or the element is "
-                              "present but not interactable)",
-                    )
+                # Each click is paired with the handler for the dialog it
+                # raises, and the handler comes off again whether or not the
+                # click landed. page.once() only removes itself when it
+                # *fires*: a missed click used to leave it attached, and with
+                # retry > 0 the next attempt registered a second one — two
+                # handlers racing to accept the same dialog, the loser hitting
+                # "Dialog has already been handled". Codex caught it on #31.
+                for label, click, respond in (
+                    ("JS Alert",   pom.click_js_alert_btn,   "accept"),
+                    ("JS Confirm", pom.click_js_confirm_btn, "dismiss"),
+                    ("JS Prompt",  pom.click_js_prompt_btn,  "accept"),
+                ):
+                    handler = self._dialog_handler(respond)
+                    page.once("dialog", handler)
+                    try:
+                        clicked = await click()
+                    finally:
+                        # A no-op once the handler has fired and removed
+                        # itself; Playwright tolerates both states.
+                        page.remove_listener("dialog", handler)
 
-                # JS Confirm — dismiss
-                page.once("dialog", lambda d: d.dismiss())
-                if not await pom.click_js_confirm_btn():
-                    return StepResult(
-                        step=step, status="failed",
-                        error="ti_handle_alerts: the JS Confirm button was not clicked "
-                              "(the selector matches nothing, or the element is "
-                              "present but not interactable)",
-                    )
-
-                # JS Prompt — accept (empty input)
-                page.once("dialog", lambda d: d.accept())
-                if not await pom.click_js_prompt_btn():
-                    return StepResult(
-                        step=step, status="failed",
-                        error="ti_handle_alerts: the JS Prompt button was not clicked "
-                              "(the selector matches nothing, or the element is "
-                              "present but not interactable)",
-                    )
+                    if not clicked:
+                        return StepResult(
+                            step=step, status="failed",
+                            error=f"ti_handle_alerts: the {label} button was not "
+                                  f"clicked (the selector matches nothing, or the "
+                                  f"element is present but not interactable)",
+                        )
 
                 logger.info("ti_handle_alerts ✓ — handled alert, confirm, prompt")
                 return StepResult(step=step, status="passed")
