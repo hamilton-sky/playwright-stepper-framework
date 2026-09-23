@@ -75,11 +75,29 @@ class PTHotelDetailPage(PageModule):
                     hotel_name, checkin, checkout, adults, children,
                 )
 
-                await detail.fill_checkin_date(checkin)
-                await detail.fill_checkout_date(checkout)
+                if not await detail.fill_checkin_date(checkin):
+                    return StepResult(
+                        step=step, status="failed",
+                        error="pt_book_hotel: fill_checkin_date() did not act — the selector "
+                              "matched nothing, or the element was present but "
+                              "not interactable",
+                    )
+                if not await detail.fill_checkout_date(checkout):
+                    return StepResult(
+                        step=step, status="failed",
+                        error="pt_book_hotel: fill_checkout_date() did not act — the selector "
+                              "matched nothing, or the element was present but "
+                              "not interactable",
+                    )
                 await detail.fill_adults(adults)
                 await detail.fill_children(children)
-                await detail.submit_booking()
+                if not await detail.submit_booking():
+                    return StepResult(
+                        step=step, status="failed",
+                        error="pt_book_hotel: submit_booking() did not act — the selector "
+                              "matched nothing, or the element was present but "
+                              "not interactable",
+                    )
 
                 booking_ref = await detail.get_booking_reference()
                 confirmed   = await detail.is_booking_confirmed()

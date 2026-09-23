@@ -50,13 +50,13 @@ class LoginPage(BasePage):
         except Exception:
             pass
 
-    async def fill_username(self, value: str) -> None:
-        await self._interact(self.Locators.USERNAME, "fill", value=value)
+    async def fill_username(self, value: str) -> bool:
+        return await self._interact(self.Locators.USERNAME, "fill", value=value)
 
-    async def fill_password(self, value: str) -> None:
-        await self._interact(self.Locators.PASSWORD, "fill", value=value)
+    async def fill_password(self, value: str) -> bool:
+        return await self._interact(self.Locators.PASSWORD, "fill", value=value)
 
-    async def submit(self) -> None:
+    async def submit(self) -> bool:
         """
         Click Login and wait until the submit has actually resolved.
 
@@ -73,8 +73,10 @@ class LoginPage(BasePage):
         credentials. Neither appearing inside the timeout leaves the caller to
         decide, exactly as before.
         """
-        await self._interact(self.Locators.SUBMIT, "click")
+        if not await self._interact(self.Locators.SUBMIT, "click"):
+            return False
         await self._settle_after_submit()
+        return True
 
     async def _settle_after_submit(self, timeout: int = 10_000) -> None:
         """Wait for the post-submit page to declare itself, success or failure."""

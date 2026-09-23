@@ -78,13 +78,49 @@ class PTHotelSearchPage(PageModule):
                 )
 
                 await home.open()
-                await home.select_hotels_tab()
-                await home.fill_hotel_destination(destination)
-                await home.select_first_hotel_suggestion()
-                await home.fill_hotel_checkin(checkin)
-                await home.fill_hotel_checkout(checkout)
+                if not await home.select_hotels_tab():
+                    return StepResult(
+                        step=step, status="failed",
+                        error="pt_search_hotels: select_hotels_tab() did not act — the selector "
+                              "matched nothing, or the element was present but "
+                              "not interactable",
+                    )
+                if not await home.fill_hotel_destination(destination):
+                    return StepResult(
+                        step=step, status="failed",
+                        error="pt_search_hotels: fill_hotel_destination() did not act — the selector "
+                              "matched nothing, or the element was present but "
+                              "not interactable",
+                    )
+                if not await home.select_first_hotel_suggestion():
+                    return StepResult(
+                        step=step, status="failed",
+                        error="pt_search_hotels: select_first_hotel_suggestion() did not act — the selector "
+                              "matched nothing, or the element was present but "
+                              "not interactable",
+                    )
+                if not await home.fill_hotel_checkin(checkin):
+                    return StepResult(
+                        step=step, status="failed",
+                        error="pt_search_hotels: fill_hotel_checkin() did not act — the selector "
+                              "matched nothing, or the element was present but "
+                              "not interactable",
+                    )
+                if not await home.fill_hotel_checkout(checkout):
+                    return StepResult(
+                        step=step, status="failed",
+                        error="pt_search_hotels: fill_hotel_checkout() did not act — the selector "
+                              "matched nothing, or the element was present but "
+                              "not interactable",
+                    )
                 await home.fill_hotel_adults(adults)
-                await home.submit_hotel_search()
+                if not await home.submit_hotel_search():
+                    return StepResult(
+                        step=step, status="failed",
+                        error="pt_search_hotels: submit_hotel_search() did not act — the selector "
+                              "matched nothing, or the element was present but "
+                              "not interactable",
+                    )
 
                 logger.info("pt_search_hotels ✓ — on results page")
                 return StepResult(step=step, status="passed")

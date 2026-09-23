@@ -95,11 +95,11 @@ class HotelDetailPage(BasePage):
 
     # ── Booking form ──────────────────────────────────────────────────────────
 
-    async def fill_checkin_date(self, date: str) -> None:
-        await self._interact(self.Locators.CHECKIN_DATE, "fill", value=date)
+    async def fill_checkin_date(self, date: str) -> bool:
+        return await self._interact(self.Locators.CHECKIN_DATE, "fill", value=date)
 
-    async def fill_checkout_date(self, date: str) -> None:
-        await self._interact(self.Locators.CHECKOUT_DATE, "fill", value=date)
+    async def fill_checkout_date(self, date: str) -> bool:
+        return await self._interact(self.Locators.CHECKOUT_DATE, "fill", value=date)
 
     async def fill_adults(self, count: str) -> None:
         await self._select_option(self.Locators.ADULTS_SELECT, count)
@@ -107,10 +107,12 @@ class HotelDetailPage(BasePage):
     async def fill_children(self, count: str) -> None:
         await self._select_option(self.Locators.CHILDREN_SELECT, count)
 
-    async def submit_booking(self) -> None:
-        await self._interact(self.Locators.BOOK_NOW, "click")
+    async def submit_booking(self) -> bool:
+        if not await self._interact(self.Locators.BOOK_NOW, "click"):
+            return False
         await self._driver.wait_for_load_state("domcontentloaded")
         logger.info("Booking submitted for hotel: %s", self._hotel_slug)
+        return True
 
     # ── Confirmation reads ────────────────────────────────────────────────────
 

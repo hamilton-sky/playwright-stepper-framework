@@ -88,6 +88,39 @@ Both modes are live: the glue layer always injects a resolver, and
 `_interact` adds jitter before fills and hover-dwell before clicks; when `None`, it acts
 immediately. POMs must work with `behaviour=None`.
 
+### Report whether it happened
+
+`_interact` never raises. A missing selector, a resolver confidence below
+`CONFIDENCE_WARN`, and a click that did not land all come back the same way:
+`False`. **Return it** — do not drop it on the floor:
+
+```python
+# CORRECT — the caller can tell
+async def click_login(self) -> bool:
+    return await self._interact(self.Locators.SUBMIT, "click")
+
+# WRONG — reports success for something that may never have happened
+async def click_login(self) -> None:
+    await self._interact(self.Locators.SUBMIT, "click")
+```
+
+When something follows the interaction, guard it. Waiting for a page that a
+missed click will never produce just spends the timeout and then fails for the
+wrong reason:
+
+```python
+async def go_to_cart(self) -> bool:
+    if not await self._interact(self.Locators.CART_LINK, "click"):
+        return False
+    await self._driver.wait_for_load_state("domcontentloaded")
+    return True
+```
+
+This is not a style preference. It shipped as a bug in three sites — see
+[glue-layer.md](glue-layer.md) for the other half and
+`stepper/tests/unit/test_failure_propagation.py` for the rule that now fails
+the build.
+
 ### What POMs must NOT do
 
 - No flow logic (no loops across pages, no multi-step orchestration)

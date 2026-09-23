@@ -76,9 +76,27 @@ class OLLoginPage(PageModule):
                 else:
                     await login_page.open()        # navigate + wait_for_ready
 
-                await login_page.fill_username(settings.username)
-                await login_page.fill_password(settings.password)
-                await login_page.submit()
+                if not await login_page.fill_username(settings.username):
+                    return StepResult(
+                        step=step, status="failed",
+                        error="ol_ensure_login: fill_username() did not act — the selector "
+                              "matched nothing, or the element was present but "
+                              "not interactable",
+                    )
+                if not await login_page.fill_password(settings.password):
+                    return StepResult(
+                        step=step, status="failed",
+                        error="ol_ensure_login: fill_password() did not act — the selector "
+                              "matched nothing, or the element was present but "
+                              "not interactable",
+                    )
+                if not await login_page.submit():
+                    return StepResult(
+                        step=step, status="failed",
+                        error="ol_ensure_login: submit() did not act — the selector "
+                              "matched nothing, or the element was present but "
+                              "not interactable",
+                    )
 
                 if not await login_page.is_logged_in():
                     return StepResult(

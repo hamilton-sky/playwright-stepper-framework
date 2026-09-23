@@ -76,10 +76,14 @@ class CheckoutOverviewPage(BasePage):
 
     # ── Navigation ────────────────────────────────────────────────────────────
 
-    async def finish(self) -> None:
-        await self._interact(self.Locators.FINISH, "click")
+    async def finish(self) -> bool:
+        if not await self._interact(self.Locators.FINISH, "click"):
+            return False
         await self._driver.wait_for_load_state("domcontentloaded")
+        return True
 
-    async def cancel(self) -> None:
-        await self._interact(self.Locators.CANCEL, "click")
+    async def cancel(self) -> bool:
+        if not await self._interact(self.Locators.CANCEL, "click"):
+            return False
         await self._driver.wait_for_load_state("domcontentloaded")
+        return True

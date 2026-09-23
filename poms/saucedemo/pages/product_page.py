@@ -82,14 +82,20 @@ class ProductPage(BasePage):
         except Exception:
             return False
 
-    async def add_to_cart(self) -> None:
-        await self._interact(self.Locators.ADD_TO_CART, "click")
+    async def add_to_cart(self) -> bool:
+        if not await self._interact(self.Locators.ADD_TO_CART, "click"):
+            return False
         logger.info("Product added to cart from detail page (id=%s)", self._item_id)
+        return True
 
-    async def remove_from_cart(self) -> None:
-        await self._interact(self.Locators.REMOVE_FROM_CART, "click")
+    async def remove_from_cart(self) -> bool:
+        if not await self._interact(self.Locators.REMOVE_FROM_CART, "click"):
+            return False
         logger.info("Product removed from cart from detail page (id=%s)", self._item_id)
+        return True
 
-    async def go_back(self) -> None:
-        await self._interact(self.Locators.BACK, "click")
+    async def go_back(self) -> bool:
+        if not await self._interact(self.Locators.BACK, "click"):
+            return False
         await self._driver.wait_for_load_state("domcontentloaded")
+        return True

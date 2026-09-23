@@ -180,17 +180,24 @@ class InventoryPage(BasePage):
 
     # ── Navigation ────────────────────────────────────────────────────────────
 
-    async def go_to_cart(self) -> None:
-        await self._interact(self.Locators.CART_LINK, "click")
+    async def go_to_cart(self) -> bool:
+        if not await self._interact(self.Locators.CART_LINK, "click"):
+            return False
         await self._driver.wait_for_load_state("domcontentloaded")
+        return True
 
-    async def open_burger_menu(self) -> None:
-        await self._interact(self.Locators.BURGER_MENU, "click")
+    async def open_burger_menu(self) -> bool:
+        return await self._interact(self.Locators.BURGER_MENU, "click")
 
-    async def logout(self) -> None:
-        await self.open_burger_menu()
+    async def logout(self) -> bool:
+        # If the menu did not open there is no logout link to wait for, and
+        # waiting anyway just spends the 5s before failing for the wrong reason.
+        if not await self.open_burger_menu():
+            return False
         await self._driver.wait_for_selector(
             self.Locators.LOGOUT.css, timeout=5_000
         )
-        await self._interact(self.Locators.LOGOUT, "click")
+        if not await self._interact(self.Locators.LOGOUT, "click"):
+            return False
         await self._driver.wait_for_load_state("domcontentloaded")
+        return True

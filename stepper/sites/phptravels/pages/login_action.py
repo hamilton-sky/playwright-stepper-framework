@@ -70,9 +70,27 @@ class PTLoginPage(PageModule):
 
                 logger.info("pt_login — logging in as %s", email)
                 await login_page.open()
-                await login_page.fill_email(email)
-                await login_page.fill_password(password)
-                await login_page.submit()
+                if not await login_page.fill_email(email):
+                    return StepResult(
+                        step=step, status="failed",
+                        error="pt_login: fill_email() did not act — the selector "
+                              "matched nothing, or the element was present but "
+                              "not interactable",
+                    )
+                if not await login_page.fill_password(password):
+                    return StepResult(
+                        step=step, status="failed",
+                        error="pt_login: fill_password() did not act — the selector "
+                              "matched nothing, or the element was present but "
+                              "not interactable",
+                    )
+                if not await login_page.submit():
+                    return StepResult(
+                        step=step, status="failed",
+                        error="pt_login: submit() did not act — the selector "
+                              "matched nothing, or the element was present but "
+                              "not interactable",
+                    )
 
                 if not await login_page.is_logged_in():
                     error_msg = await login_page.get_error_message()

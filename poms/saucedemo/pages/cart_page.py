@@ -107,10 +107,14 @@ class CartPage(BasePage):
 
     # ── Navigation ────────────────────────────────────────────────────────────
 
-    async def proceed_to_checkout(self) -> None:
-        await self._interact(self.Locators.CHECKOUT, "click")
+    async def proceed_to_checkout(self) -> bool:
+        if not await self._interact(self.Locators.CHECKOUT, "click"):
+            return False
         await self._driver.wait_for_load_state("domcontentloaded")
+        return True
 
-    async def continue_shopping(self) -> None:
-        await self._interact(self.Locators.CONTINUE_SHOPPING, "click")
+    async def continue_shopping(self) -> bool:
+        if not await self._interact(self.Locators.CONTINUE_SHOPPING, "click"):
+            return False
         await self._driver.wait_for_load_state("domcontentloaded")
+        return True

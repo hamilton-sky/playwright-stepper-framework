@@ -76,9 +76,27 @@ class SDLoginPage(PageModule):
 
                 logger.info("sd_login — logging in as %s", username)
                 await login_page.open()
-                await login_page.fill_username(username)
-                await login_page.fill_password(password)
-                await login_page.submit()
+                if not await login_page.fill_username(username):
+                    return StepResult(
+                        step=step, status="failed",
+                        error="sd_login: fill_username() did not act — the selector "
+                              "matched nothing, or the element was present but "
+                              "not interactable",
+                    )
+                if not await login_page.fill_password(password):
+                    return StepResult(
+                        step=step, status="failed",
+                        error="sd_login: fill_password() did not act — the selector "
+                              "matched nothing, or the element was present but "
+                              "not interactable",
+                    )
+                if not await login_page.submit():
+                    return StepResult(
+                        step=step, status="failed",
+                        error="sd_login: submit() did not act — the selector "
+                              "matched nothing, or the element was present but "
+                              "not interactable",
+                    )
 
                 if not await login_page.is_logged_in():
                     error_msg = await login_page.get_error_message()
