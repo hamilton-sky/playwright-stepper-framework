@@ -1,0 +1,134 @@
+"""
+sites/pathly/pages/home_screen_action.py — Stepper glue for Pathly home screen.
+
+JSON usage:
+  { "action": "pathly_open_project",    "extra": { "project_name": "MyProject" } }
+  { "action": "pathly_new_project" }
+  { "action": "pathly_assert_projects", "extra": { "expected_names": ["A", "B"] } }
+"""
+from __future__ import annotations
+import logging
+
+from stepper.engine.interfaces import StepConfig, StepResult, ExecutionContext
+from stepper.engine.pages.base_page_module import PageModule
+from stepper.engine.pages.glue_action import GlueAction
+
+logger = logging.getLogger(__name__)
+
+
+class PathlyHomeScreen(PageModule):
+    site = "pathly"
+
+    class PathlyOpenProjectAction(GlueAction):
+        """Open a project from the home screen by name."""
+
+        action_name = "pathly_open_project"
+
+        async def _execute(
+            self, page, step: StepConfig,
+            resolver, context: ExecutionContext, behaviour=None,
+        ) -> StepResult:
+            project_name = step.extra.get("project_name")
+            if not project_name:
+                return StepResult(
+                    step=step, status="failed",
+                    error="pathly_open_project: missing required extra field 'project_name'",
+                )
+            try:
+                from poms.pathly.pages.home_screen_page import HomeScreenPage
+
+                driver = self._driver(page)
+                home = self._build_pom(
+                    HomeScreenPage, driver, "electron://pathly-homescreen",
+                    page=page, resolver=resolver, behaviour=behaviour,
+                )
+                await home.open_project(project_name)
+                return StepResult(step=step, status="passed")
+            except ValueError as e:
+                return StepResult(step=step, status="failed", error=str(e))
+            except Exception as e:
+                logger.error("pathly_open_project failed: %s", e)
+                return StepResult(step=step, status="failed", error=str(e))
+
+    class PathlyNewProjectAction(GlueAction):
+        """Click the new-project button on the home screen."""
+
+        action_name = "pathly_new_project"
+
+        async def _execute(
+            self, page, step: StepConfig,
+            resolver, context: ExecutionContext, behaviour=None,
+        ) -> StepResult:
+            try:
+                from poms.pathly.pages.home_screen_page import HomeScreenPage
+
+                driver = self._driver(page)
+                home = self._build_pom(
+                    HomeScreenPage, driver, "electron://pathly-homescreen",
+                    page=page, resolver=resolver, behaviour=behaviour,
+                )
+                if not await home.click_new_project():
+                    return StepResult(
+                        step=step, status="failed",
+                        error="pathly_new_project: the element did not resolve on the "
+                              "attached page — wrong screen, or the "
+                              "data-testid is missing from Pathly Studio",
+                    )
+                return StepResult(step=step, status="passed")
+            except Exception as e:
+                logger.error("pathly_new_project failed: %s", e)
+                return StepResult(step=step, status="failed", error=str(e))
+
+    class PathlyAssertProjectsAction(GlueAction):
+        """Assert which projects the home screen lists."""
+
+        action_name = "pathly_assert_projects"
+        read_only   = True
+
+        async def _execute(
+            self, page, step: StepConfig,
+            resolver, context: ExecutionContext, behaviour=None,
+        ) -> StepResult:
+            # Checked before the run, not defaulted to []. An absent or
+            # misspelled key used to make `missing` empty, so the assertion
+            # passed whatever the home screen showed — the one behaviour an
+            # assertion must not have. A bare string is rejected for the same
+            # reason: `n not in actual` would iterate its characters.
+            expected_names = step.extra.get("expected_names")
+            if (not isinstance(expected_names, list) or not expected_names
+                    or not all(isinstance(n, str) for n in expected_names)):
+                return StepResult(
+                    step=step, status="failed",
+                    error="pathly_assert_projects: extra.expected_names must be a "
+                          f"non-empty list of project names, got {expected_names!r}",
+                )
+            try:
+                from poms.pathly.pages.home_screen_page import HomeScreenPage
+
+                driver = self._driver(page)
+                home = self._build_pom(
+                    HomeScreenPage, driver, "electron://pathly-homescreen",
+                    page=page, resolver=resolver, behaviour=behaviour,
+                )
+                actual = await home.get_project_names()
+                missing = [n for n in expected_names if n not in actual]
+                if missing:
+                    return StepResult(
+                        step=step, status="failed",
+                        error=f"pathly_assert_projects: missing projects: {missing} "
+                              f"— the home screen lists {actual}",
+                    )
+                return StepResult(step=step, status="passed",
+                                  output={"pathly_projects": actual})
+            except Exception as e:
+                logger.error("pathly_assert_projects failed: %s", e)
+                return StepResult(step=step, status="failed", error=str(e))
+
+    @classmethod
+    def register(cls, registry) -> None:
+        cls.register_actions(
+            registry,
+            cls.PathlyOpenProjectAction(),
+            cls.PathlyNewProjectAction(),
+            cls.PathlyAssertProjectsAction(),
+        )

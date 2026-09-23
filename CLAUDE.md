@@ -31,6 +31,7 @@ playwright-stepper-framework/
 │       ├── saucedemo/pages/
 │       ├── phptravels/pages/
 │       ├── ti/                       # the-internet — generated from a crawl
+│       ├── pathly/                   # Pathly Studio — Electron, attached over CDP
 │       ├── db/                       # Non-browser domain — SQLite, stdlib only
 │       └── */workflows/*.json        # Declarative workflow definitions
 │
