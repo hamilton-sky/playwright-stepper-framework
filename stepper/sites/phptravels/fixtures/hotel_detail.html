@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html><head><title>phpTravels — {name}</title></head>
+<body>
+  <nav>
+    <a class="navbar-brand" href="/">phpTravels</a>
+    <!--AVATAR-->
+  </nav>
+  <h1 class="hotel-name">{name}</h1>
+  <div class="stars">{stars}</div>
+  <div class="price">from <strong>${price}</strong> / night</div>
+  <address class="hotel-address">{address}</address>
+  <div class="hotel-description"><p>{description}</p></div>
+
+  <form action="/hotels/{slug}/book" method="post">
+    <input type="text" name="checkin"  id="checkin"  placeholder="Check In">
+    <input type="text" name="checkout" id="checkout" placeholder="Check Out">
+    <select name="adults"><option>1</option><option selected>2</option><option>3</option><option>4</option></select>
+    <select name="children"><option selected>0</option><option>1</option><option>2</option></select>
+    <button type="submit" class="book-now" id="book_now">Book Now</button>
+  </form>
+</body></html>

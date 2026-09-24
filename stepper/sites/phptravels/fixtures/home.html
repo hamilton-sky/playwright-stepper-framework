@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html><head><title>phpTravels</title>
+<style>
+  .tt-menu { display: none; border: 1px solid #ccc; position: absolute; background: #fff; }
+  .tt-menu.open { display: block; }
+  .tt-suggestion { padding: 4px 8px; cursor: pointer; }
+  .tab-pane { display: none; }
+  .tab-pane.active { display: block; }
+</style>
+</head>
+<body>
+  <nav>
+    <a class="navbar-brand" href="/">phpTravels</a>
+    <a href="/account/login">My Account</a>
+  </nav>
+
+  <ul class="nav-tabs">
+    <li><a href="#hotels">Hotels</a></li>
+    <li><a href="#flights">Flights</a></li>
+    <li><a href="#tours">Tours</a></li>
+  </ul>
+
+  <div id="hotels" class="tab-pane active">
+    <form action="/hotels" method="get">
+      <input class="typeahead" type="text" name="destination" placeholder="Destination" autocomplete="off">
+      <div class="tt-menu"></div>
+      <input type="text" name="checkin"  placeholder="Check In">
+      <input type="text" name="checkout" placeholder="Check Out">
+      <select name="adults"><option>1</option><option selected>2</option><option>3</option><option>4</option></select>
+      <select name="children"><option selected>0</option><option>1</option><option>2</option></select>
+      <select name="rooms"><option selected>1</option><option>2</option></select>
+      <button type="submit">Search</button>
+    </form>
+  </div>
+
+  <div id="flights" class="tab-pane">
+    <form action="/flights" method="get">
+      <input type="text" name="from" placeholder="From">
+      <input type="text" name="to" placeholder="To">
+      <input type="text" name="departure_date" placeholder="Departure Date">
+      <input type="text" name="return_date" placeholder="Return Date">
+      <select name="adults"><option selected>1</option><option>2</option></select>
+      <button type="submit">Search</button>
+    </form>
+  </div>
+
+  <div id="tours" class="tab-pane"><p>Tours</p></div>
+
+  <script>
+    // The typeahead the POM waits on: .tt-menu appears once something is
+    // typed, and .tt-suggestion is what select_first_hotel_suggestion clicks.
+    var CITIES = ["Dubai", "Dubai Marina", "Dublin", "Durban"];
+    var input = document.querySelector('#hotels input.typeahead');
+    var menu  = document.querySelector('#hotels .tt-menu');
+
+    function render() {
+      var q = input.value.trim().toLowerCase();
+      menu.innerHTML = '';
+      if (!q) { menu.classList.remove('open'); return; }
+      CITIES.filter(function (c) { return c.toLowerCase().indexOf(q) === 0; })
+            .forEach(function (c) {
+              var d = document.createElement('div');
+              d.className = 'tt-suggestion';
+              d.textContent = c;
+              d.addEventListener('mousedown', function () {
+                input.value = c;
+                menu.classList.remove('open');
+              });
+              menu.appendChild(d);
+            });
+      if (menu.children.length) menu.classList.add('open');
+    }
+    input.addEventListener('input', render);
+
+    document.querySelectorAll('.nav-tabs a').forEach(function (a) {
+      a.addEventListener('click', function (e) {
+        e.preventDefault();
+        document.querySelectorAll('.tab-pane').forEach(function (p) { p.classList.remove('active'); });
+        document.querySelector(a.getAttribute('href')).classList.add('active');
+      });
+    });
+  </script>
+</body></html>
