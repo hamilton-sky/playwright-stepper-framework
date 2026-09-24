@@ -72,10 +72,12 @@ cp stepper/.env.example .env
 python stepper/main.py run sd_happy_path
 ```
 
-**12 of the 30 workflows run with no network and no credentials** — every
-the-internet flow, the phpTravels booking flow, both database workflows and the
-no-browser one. They are what CI runs on every push, and what to reach for when
-you want to see the engine work before deciding whether to wire up your own app.
+**11 of the 30 workflows run with nothing configured at all** — every
+the-internet flow, both database workflows and the no-browser one. A twelfth,
+the phpTravels booking flow, needs two values set, but they are fixture values
+rather than secrets and the command below shows them. None of the twelve touches
+the network. They are what CI runs on every push, and what to reach for when you
+want to see the engine work before deciding whether to wire up your own app.
 See [Running without a network](#running-without-a-network).
 
 The sites here are demos. To drive your own app, see
@@ -625,7 +627,9 @@ whose job is to read a fact fails when the fact is absent.
 
 Three of the demo sites are public applications this repo does not control, and one is
 a desktop app. That makes them a bad first impression and a worse CI dependency. So the
-flows that can be made hermetic, are:
+flows that can be made hermetic, are. Eleven need nothing beyond the repo; `hotel_booking`
+also wants an email and password, which its own site refuses to default — the two below
+are the fixture server's, not anyone's account:
 
 ```bash
 # the-internet — eight flows
