@@ -614,14 +614,14 @@ which one they are writing against:
 | Path | Where | A missed interaction shows up as |
 |---|---|---|
 | `_interact()` | page objects, one named element | **`False`** — for the interaction itself, never an exception |
-| handle + index | page objects, picking out of a collection | `False` if the collection is empty; an **exception** if the click itself fails |
+| handle + index | page objects, picking out of a collection | `False` if the collection is empty — then **`False` or an exception**, depending on the method |
 | resolve + locator | the engine's own `click` / `fill` / `hover` | **`skipped`** if nothing resolved; an **exception** if the interaction fails |
 
 The first is the one that bites. A missing selector, a resolver confidence below
 threshold, and a click that did not land all come back the same way, as `False`. Drop
-that value and the step reports `passed` for something that never happened. The
-exceptions in the other two rows are safe by comparison: `StepRunner`'s retry loop
-catches them into a failed step.
+that value and the step reports `passed` for something that never happened. Where the
+other two rows raise, they are safe by comparison: `StepRunner`'s retry loop catches
+an exception into a failed step.
 
 One qualification on that first row, because "never raises" is not literally true.
 `_interact` wraps the *interaction* in a `try`, but the `resolver.resolve()` call sits
@@ -644,8 +644,25 @@ The second path exists because the cascade resolves exactly one element, so pick
 the first of several rows or following a pagination link has to go to the driver
 directly — 16 call sites in 14 methods across 8 page objects. It carries its own rule
 in [.claude/rules/pom-layer.md](.claude/rules/pom-layer.md), because it also loses the
-hover that `_interact` does for free. The third has gaps of its own,
-[named below](#the-gaps-that-are-still-open).
+hover that `_interact` does for free.
+
+Its second column is genuinely two answers, which is why the row says so. **7 of those
+16 calls sit inside a `try` and come back as `False`; the other 9 raise.** The clearest
+case is a pair of adjacent methods in one file:
+
+```python
+# saucedemo/inventory_page.py
+async def add_to_cart_by_name(...):        # click inside try → except → return False
+async def remove_from_cart_by_name(...):   # bare click      → raises
+```
+
+So a caller cannot infer the contract from the fact that it is a handle path — **read
+the method**. Both outcomes are handled correctly downstream, which makes this an
+inconsistency rather than a defect: the `False` is caught by the propagation rule
+above, the exception by `StepRunner`. Worth making uniform, and not in a documentation
+pass.
+
+The third path has gaps of its own, [named below](#the-gaps-that-are-still-open).
 
 Every site in this tree once dropped that `False` on the floor, and it hid real
 defects:
