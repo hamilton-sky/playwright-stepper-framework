@@ -219,3 +219,86 @@ def test_every_pom_takes_and_keeps_the_injected_behaviour(pom_cls):
         f"{pom_cls.__module__}.{pom_cls.__name__} accepted behaviour= and did "
         f"not pass it to super() — the POM is silently un-humanised"
     )
+
+
+# ── Every click is humanised, including the ones _interact never sees ─────────
+#
+# `_interact` hovers before it clicks when a behaviour is injected. A POM that
+# reaches past it — to pick the first of several rows, to follow a pagination
+# link — gets no hover for free, and skipping it leaves that one click
+# un-humanised on a live, often bot-protected site. Silently, too: a behaviour
+# object that is held but never used looks exactly like one that is working,
+# which is why the constructor rule above cannot catch this.
+#
+# Found by Codex on PR #33, on a click this session had just introduced. The
+# audit that followed found nine more across four sites. openLibrary's
+# book_detail_page already did it correctly and is what the fix copied.
+
+
+def _handle_clicks_without_a_hover(path: Path) -> list[str]:
+    """
+    `await <handle>.click()` whose preceding statement is not `await self._hover(…)`.
+
+    Clicks through `self` are exempt: `self._driver.click(css)` goes through the
+    adapter, and `self._interact(...)` does its own hovering.
+    """
+    def root(node):
+        while True:
+            if isinstance(node, ast.Attribute):
+                node = node.value
+            elif isinstance(node, ast.Subscript):
+                node = node.value
+            elif isinstance(node, ast.Call):
+                node = node.func
+            else:
+                return node
+
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    found = []
+    for parent in ast.walk(tree):
+        for attr in ("body", "orelse", "finalbody"):
+            block = getattr(parent, attr, None)
+            if not isinstance(block, list):
+                continue
+            for i, stmt in enumerate(block):
+                if not (isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Await)):
+                    continue
+                call = stmt.value.value
+                if not (isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute)
+                        and call.func.attr == "click"):
+                    continue
+                base = root(call.func.value)
+                if isinstance(base, ast.Name) and base.id == "self":
+                    continue
+                prev = block[i - 1] if i else None
+                hovered = (
+                    isinstance(prev, ast.Expr) and isinstance(prev.value, ast.Await)
+                    and isinstance(prev.value.value, ast.Call)
+                    and isinstance(prev.value.value.func, ast.Attribute)
+                    and prev.value.value.func.attr == "_hover"
+                )
+                if not hovered:
+                    found.append(
+                        f"{path.relative_to(_REPO_ROOT)}:{stmt.lineno}  "
+                        f"{ast.unparse(call)[:50]}"
+                    )
+    return found
+
+
+def test_no_pom_clicks_a_handle_without_hovering_first():
+    exempt = {"base_page.py", "driver.py"}
+    offenders = [
+        hit
+        for path in _pom_files()
+        if not (path.parent.name == "shared" and path.name in exempt)
+        for hit in _handle_clicks_without_a_hover(path)
+    ]
+
+    assert not offenders, (
+        "These click an element handle directly, so they miss the hover-and-dwell "
+        "that _interact applies to every other click — one un-humanised click on "
+        "a live site, and nothing says so.\n"
+        "Put `await self._hover(el)` immediately before the click; it applies the "
+        "behaviour when one is injected and is a no-op when it is None.\n  "
+        + "\n  ".join(offenders)
+    )

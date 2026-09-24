@@ -118,6 +118,7 @@ class HotelResultsPage(BasePage):
             if not name_el:
                 continue
             if (await name_el.inner_text()).strip() == name:
+                await self._hover(name_el)
                 await name_el.click()
                 await self._driver.wait_for_load_state("domcontentloaded")
                 logger.info("Clicked hotel: %s", name)
@@ -137,6 +138,7 @@ class HotelResultsPage(BasePage):
         name = (await name_el.inner_text()).strip() if name_el else ""
         link_el = await cards[0].query_selector(self.Locators.HOTEL_BOOK_BTN)
         if link_el:
+            await self._hover(link_el)
             await link_el.click()
             await self._driver.wait_for_load_state("domcontentloaded")
             logger.info("Clicked first hotel: %s", name)
@@ -150,6 +152,7 @@ class HotelResultsPage(BasePage):
         try:
             el = await self._driver.query_selector(self.Locators.NEXT_PAGE)
             if el:
+                await self._hover(el)
                 await el.click()
                 await self._driver.wait_for_load_state("domcontentloaded")
                 return True
