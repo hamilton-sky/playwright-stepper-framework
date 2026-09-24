@@ -607,18 +607,31 @@ The trade-off it demonstrates:
 The most useful property this framework has is not the resolver or the healer. It is
 that a step which did not do its job says so.
 
-That is harder than it sounds, because of one design decision in the page-object
-layer. `_interact()` is the single path every **page object** click and fill takes,
-and **it never raises**. A missing selector, a resolver confidence below threshold,
-and a click that did not land all come back the same way — `False`. Drop that value
-and the step reports `passed` for something that never happened.
+That is harder than it sounds, because an interaction reports a miss in three
+different ways depending on which path it took — and an action author needs to know
+which one they are writing against:
 
-The engine's own `click` and `fill` actions do not go through `_interact` at all —
-they resolve and then call the Playwright locator directly, so a timeout raises and
-`StepRunner` turns the exception into a failed step. Different mechanism, same
-requirement. They have their own gap, and it is [named below](#the-gap-that-is-still-open).
+| Path | Where | A missed interaction shows up as |
+|---|---|---|
+| `_interact()` | page objects, one named element | **`False`, never an exception** |
+| handle + index | page objects, picking out of a collection | `False` if the collection is empty; an **exception** if the click itself fails |
+| resolve + locator | the engine's own `click` / `fill` / `hover` | **`skipped`** if nothing resolved; an **exception** if the interaction fails |
 
-Every site in this tree once did exactly that, and it hid real defects:
+The first is the one that bites. `_interact()` **never raises** — a missing selector, a
+resolver confidence below threshold, and a click that did not land all come back the
+same way, as `False`. Drop that value and the step reports `passed` for something that
+never happened. The exceptions in the other two rows are safe by comparison:
+`StepRunner`'s retry loop catches them into a failed step.
+
+The second path exists because the cascade resolves exactly one element, so picking
+the first of several rows or following a pagination link has to go to the driver
+directly — 16 call sites in 14 methods across 8 page objects. It carries its own rule
+in [.claude/rules/pom-layer.md](.claude/rules/pom-layer.md), because it also loses the
+hover that `_interact` does for free. The third has a gap of its own,
+[named below](#the-gap-that-is-still-open).
+
+Every site in this tree once dropped that `False` on the floor, and it hid real
+defects:
 
 | It reported | What was actually true |
 |---|---|
