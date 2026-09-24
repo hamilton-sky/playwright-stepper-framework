@@ -60,7 +60,7 @@ def test_the_suggestion_selector_is_not_a_locator():
     assert isinstance(item, str)
 
 
-def _home_page(suggestions: int):
+def _home_page(suggestions: int, behaviour=None):
     from poms.phpTravels.pages.home_page import HomePage
 
     clicked = []
@@ -81,7 +81,7 @@ def _home_page(suggestions: int):
 
     driver.query_selector_all = _all
     return HomePage(driver, "https://example.test", page=MagicMock(),
-                    resolver=None, behaviour=None), clicked
+                    resolver=None, behaviour=behaviour), clicked
 
 
 def test_the_first_suggestion_is_taken_when_several_are_offered():
@@ -166,3 +166,45 @@ def test_a_missed_interaction_fails_the_step(action, extra, every_lookup_misses)
         f"{action.action_name} reported {result.status!r} with nothing on the page"
     )
     assert action.action_name in (result.error or "")
+
+
+# ── Rule 3: the collection click is humanised like every other click ──────────
+#
+# This path does not go through _interact, so it does not inherit its
+# hover-and-dwell. Leaving it out would make exactly one click in the site
+# un-humanised, on a site with bot protection — and silently, because a
+# behaviour object that is held but never used looks exactly like one that is
+# working. Codex caught it on PR #33.
+
+
+class _SpyBehaviour:
+    """Records what the POM asked it to hover, the way HumanBehaviour would."""
+
+    def __init__(self):
+        self.hovered = []
+
+    async def hover_before_click(self, element):
+        self.hovered.append(element)
+
+    def jitter(self, base_ms):
+        return 0
+
+
+def test_the_suggestion_click_hovers_first_when_a_behaviour_is_injected():
+    behaviour = _SpyBehaviour()
+    home, clicked = _home_page(suggestions=3, behaviour=behaviour)
+
+    assert asyncio.run(home.select_first_hotel_suggestion()) is True
+    assert clicked == [0]
+    assert len(behaviour.hovered) == 1, (
+        "the suggestion was clicked without a hover — this path bypasses "
+        "_interact, so it has to call _hover itself"
+    )
+
+
+def test_the_suggestion_click_still_works_with_no_behaviour():
+    """Driver-only mode passes behaviour=None; _hover must be a no-op there."""
+    home, clicked = _home_page(suggestions=2, behaviour=None)
+
+    assert asyncio.run(home.select_first_hotel_suggestion()) is True
+    assert clicked == [0]

@@ -137,10 +137,19 @@ class HomePage(BasePage):
         return True
 
     async def select_first_hotel_suggestion(self) -> bool:
-        """True if a suggestion was there to take; False if the menu was empty."""
+        """
+        True if a suggestion was there to take; False if the menu was empty.
+
+        `_hover` before the click, because this path does not go through
+        `_interact` and so does not get its hover-and-dwell for free. Skipping
+        it would leave exactly one click in the site un-humanised — on a site
+        with bot protection, and silently, since a behaviour object that is
+        held but never used looks identical to one that is working.
+        """
         items = await self._driver.query_selector_all(self.Locators.SUGGESTION_ITEM)
         if not items:
             return False
+        await self._hover(items[0])
         await items[0].click()
         return True
 
