@@ -607,11 +607,16 @@ The trade-off it demonstrates:
 The most useful property this framework has is not the resolver or the healer. It is
 that a step which did not do its job says so.
 
-That is harder than it sounds, because of one design decision. `_interact()` is the
-single path every click and fill takes, and **it never raises**. A missing selector, a
-resolver confidence below threshold, and a click that did not land all come back the
-same way — `False`. Drop that value and the step reports `passed` for something that
-never happened.
+That is harder than it sounds, because of one design decision in the page-object
+layer. `_interact()` is the single path every **page object** click and fill takes,
+and **it never raises**. A missing selector, a resolver confidence below threshold,
+and a click that did not land all come back the same way — `False`. Drop that value
+and the step reports `passed` for something that never happened.
+
+The engine's own `click` and `fill` actions do not go through `_interact` at all —
+they resolve and then call the Playwright locator directly, so a timeout raises and
+`StepRunner` turns the exception into a failed step. Different mechanism, same
+requirement. They have their own gap, and it is [named below](#the-gap-that-is-still-open).
 
 Every site in this tree once did exactly that, and it hid real defects:
 
@@ -652,6 +657,36 @@ A step whose job is to read a fact fails when the fact is absent, too:
 `pt_book_hotel` filled the form, clicked the button, found neither a confirmation
 banner nor a booking reference, and reported passed with a `logger.warning` as the
 only trace.
+
+### The gap that is still open
+
+The engine's `click` and `fill` return `skipped` — not `failed` — when the resolver
+finds nothing. `skipped` is what a `when:` clause produces when a step is deliberately
+not run, so the two are indistinguishable in a report. Measured on a page with no such
+element:
+
+```
+▶ Step 2: click a button that does not exist
+  -> Element not found → not-found
+○ Step 2 → skipped
+
+{"total_steps": 2, "passed": 1, "failed": 0, "skipped": 1, "success_rate": 1.0}
+exit=0
+```
+
+A click that never happened, a success rate of 100%, and an exit code CI reads as
+green. It is the same defect as the ones above, in the two most-used actions in the
+framework.
+
+It is not fixed here, deliberately: `skipped` → `failed` changes the status of every
+not-found across every workflow, and that decision wants its own change and its own
+sweep rather than a line in a documentation pass.
+
+The shipped exposure is small but not zero — seven steps across three workflows use
+the generic actions. Six are in `sd_heal_test` and `sd_full_heal_flow`, whose selectors
+are broken on purpose and go to the healer. The seventh is one `click` in
+`db_web_mixed`, which CI runs on every push. The other 27 workflows drive their sites
+through the site actions, which do report a missed interaction correctly.
 
 ---
 

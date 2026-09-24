@@ -90,9 +90,9 @@ file lists the domains** — adding one edits nothing outside its own directory.
 | | |
 |---|---|
 | Domains | `web`, `db`, `noop` |
-| Actions | 68 unique instances across seven sites, plus `load_test_data` and `run_workflow`, which declare no domain and are handed no session |
+| Actions | 68 registered names across seven sites — 67 instances, because `ol_collect_books` is an alias bound to the same object as `collect_items`. The 68 include `load_test_data` and `run_workflow`, which declare no domain and are handed no session |
 | Workflows | 30, all valid (`python stepper/main.py validate`). 12 need no account, no API key and no network; two of those run bare, the other ten want one line of local setup — a loopback fixture server, a `--vars` page path, or two fixture credentials that are nobody's account |
-| Unit tests | 1207, no browser / network / credentials, ~16s |
+| Unit tests | 1220, no browser / network / credentials, ~17s |
 | Source | ~18,600 lines under `stepper/` + `poms/`, excluding tests |
 | Tests | ~14,700 lines |
 
