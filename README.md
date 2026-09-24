@@ -8,12 +8,17 @@ three-layer architecture keeps every CSS selector in the page-object layer, out 
 engine and the JSON.
 
 Each action declares the **domain** it acts on, and the engine hands it that domain's
-session. For the three browser sites that is a Playwright `Page`; for the `db` domain it is
-a `sqlite3.Connection`. One workflow can use both: a step can read a value off a rendered
-page and a later step can assert it through SQL, sharing one context and one report.
+session. For the browser sites that is a Playwright `Page` — launched, or attached to a
+running Electron app over CDP; for the `db` domain it is a `sqlite3.Connection`. One
+workflow can use both: a step can read a value off a rendered page and a later step can
+assert it through SQL, sharing one context and one report.
 
 When a selector breaks, the resolver cascade and the self-healing pipeline try to find the
 element anyway, escalating from free local strategies to paid AI only when they have to.
+
+And a step that did not do its job says so. That sounds like table stakes; it is the thing
+most of this codebase's own bugs turned out to be — see
+**[a green step means it happened](#a-green-step-means-it-happened)**.
 
 ```mermaid
 flowchart LR
@@ -48,23 +53,32 @@ playwright install chromium
 #    to warm the cache ahead of time or to run offline.
 python stepper/download_models.py
 
-# 2. Configure — .env belongs at the repo root, where both the engine and
-#    the examples look for it first
+# 2. Verify the install — no browser, no network, no credentials
+pytest stepper/tests/unit/
+
+# 3. See what there is to run
+python stepper/main.py list
+
+# 4. Run something now. No account, no API key, nothing to sign up for:
+#    the page is a checked-in fixture served on loopback.
+python stepper/sites/ti/fixtures/server.py --port 8099 &
+TI_BASE_URL=http://127.0.0.1:8099 python stepper/main.py run log_in_and_view_the_secure_area
+
+# 5. Only when you want the live demo sites — .env belongs at the repo root,
+#    where both the engine and the examples look for it first
 cp stepper/.env.example .env
 #    Fill in OPENLIBRARY_USERNAME / OPENLIBRARY_PASSWORD, plus at least one of
 #    GROQ_API_KEY / GEMINI_API_KEY / ANTHROPIC_API_KEY if you want AI resolution.
-
-# 3. Verify the install — no browser, no network, no credentials
-pytest stepper/tests/unit/
-
-# 4. See what there is to run
-python stepper/main.py list
-
-# 5. Run a workflow — by name, not by path
 python stepper/main.py run sd_happy_path
 ```
 
-The three sites here are demos. To drive your own app, see
+**12 of the 30 workflows run with no network and no credentials** — every
+the-internet flow, the phpTravels booking flow, both database workflows and the
+no-browser one. They are what CI runs on every push, and what to reach for when
+you want to see the engine work before deciding whether to wire up your own app.
+See [Running without a network](#running-without-a-network).
+
+The sites here are demos. To drive your own app, see
 **[docs/adding-your-app.md](docs/adding-your-app.md)** — six files, no edits to
 anything that already exists.
 
@@ -444,9 +458,9 @@ for every site and domain: [.claude/rules/site-actions.md](.claude/rules/site-ac
 
 ## Workflows
 
-Nineteen ready-to-run workflows — `python stepper/main.py list` prints this table
+Thirty ready-to-run workflows — `python stepper/main.py list` prints this table
 live from disk, and `python stepper/main.py validate` adds the domains each one
-opens. Run any of them from the repo root:
+opens. The ones marked **hermetic** need no network and no credentials. Run any of them from the repo root:
 
 ```bash
 python stepper/main.py run <workflow-name>
@@ -477,20 +491,49 @@ python stepper/main.py run <workflow-name>
 | `sd_heal_test.json` | Self-healing under a changed selector |
 | `sd_full_heal_flow.json` | Full heal demo — broken selectors throughout |
 
-**phpTravels** — `stepper/sites/phptravels/workflows/` (in progress)
+**phpTravels** — `stepper/sites/phptravels/workflows/` · *hermetic against fixtures*
 
 | Workflow | What it showcases |
 |---|---|
-| `hotel_booking.json` | Login → search → select → book |
+| `hotel_booking.json` | Login → typeahead search → select → book, with a confirmation read back |
 
-**db** — `stepper/sites/db/workflows/` · *no browser required*
+**the-internet** — `stepper/sites/ti/workflows/` · *hermetic against fixtures*
+
+The interactions the other sites do not exercise. Generated from a crawl by
+`/discover-site` + `/generate-poms`, then run — which is how two real bugs in them
+surfaced.
+
+| Workflow | What it showcases |
+|---|---|
+| `log_in_and_view_the_secure_area.json` | Form POST, session cookie, redirect, flash message |
+| `log_out_from_secure_area.json` | The same in reverse, confirming the flash |
+| `check_and_uncheck_checkboxes.json` | Inputs whose label text is a sibling node, not a `<label>` |
+| `select_an_option_from_the_dropdown.json` | A native `<select>`, driven by `select_option` rather than the cascade |
+| `trigger_and_dismiss_javascript_alerts.json` | All three native dialogs — alert, confirm, prompt |
+| `hover_over_elements_to_reveal_hidden_text.json` | A link that is in the DOM but unclickable until hovered |
+| `open_a_new_window_and_switch_to_it.json` | `target="_blank"` and switching to the new page |
+| `drag_and_drop_columns.json` | HTML5 drag-and-drop, with an observable result |
+
+**Pathly Studio** — `stepper/sites/pathly/workflows/` · *needs the app running*
+
+An Electron app, reached over CDP. Still the `web` domain — same actions, same POMs,
+same cascade; only where the `Page` comes from differs. Nothing here launches the app,
+and `run` refuses at plan time if nothing is listening.
+
+| Workflow | What it showcases |
+|---|---|
+| `pathly_smoke.json` | Attach, open a project, walk the main panels |
+| `pathly_settings.json` | Read the routing engine into the context — read-only |
+| `pathly_wizard_smoke.json` | The flow wizard end to end |
+
+**db** — `stepper/sites/db/workflows/` · *hermetic, no browser required*
 
 | Workflow | What it showcases |
 |---|---|
 | `db_smoke.json` | SQLite only — seed, read back, assert, gate a step on `db_row_exists` |
 | `db_web_mixed.json` | **A browser session and a database connection in one run**, sharing a context and a report. Hermetic: a `file://` fixture page and a temp database |
 
-**noop** — `stepper/sites/_noop/workflows/` · *not a real site*
+**noop** — `stepper/sites/_noop/workflows/` · *hermetic, not a real site*
 
 | Workflow | What it showcases |
 |---|---|
@@ -536,10 +579,93 @@ The trade-off it demonstrates:
 
 ---
 
+## A green step means it happened
+
+The most useful property this framework has is not the resolver or the healer. It is
+that a step which did not do its job says so.
+
+That is harder than it sounds, because of one design decision. `_interact()` is the
+single path every click and fill takes, and **it never raises**. A missing selector, a
+resolver confidence below threshold, and a click that did not land all come back the
+same way — `False`. Drop that value and the step reports `passed` for something that
+never happened.
+
+Every site in this tree once did exactly that, and it hid real defects:
+
+| It reported | What was actually true |
+|---|---|
+| `10/10 passed` | Nine interactions against an app whose wizard never opened |
+| `1/1 passed` | A CSS selector matching **zero** elements |
+| `2/2 passed` | A login flow run with the **wrong password** |
+| `8/8 passed` | A workflow writing the literal `{{item}}`, asserted against the same unresolved string |
+
+None was found by reading. `validate` reported every workflow sound throughout. They
+surfaced the first time something ran the flows against a real page.
+
+So four rules now fail the build, and they are static — which matters, because they
+reach the sites this environment cannot execute:
+
+| Rule | Where |
+|---|---|
+| No page object discards `_interact`'s result | `tests/unit/test_failure_propagation.py` |
+| No action drops a page object's reported flag | same — `_ = await …` is the documented opt-out |
+| Every page object accepts **and stores** `behaviour` | `tests/unit/test_pom_behaviour_optional.py` |
+| No element-handle click without a `_hover` before it | same |
+
+Each was checked by reverting the fix it guards and confirming it fails. A rule that
+has never failed is a rule nobody has tested.
+
+The same principle applies to the reporting actions. An assertion whose expected value
+is missing fails as a configuration error rather than passing vacuously, and a step
+whose job is to read a fact fails when the fact is absent.
+
+---
+
+## Running without a network
+
+Three of the demo sites are public applications this repo does not control, and one is
+a desktop app. That makes them a bad first impression and a worse CI dependency. So the
+flows that can be made hermetic, are:
+
+```bash
+# the-internet — eight flows
+python stepper/sites/ti/fixtures/server.py --port 8099 &
+TI_BASE_URL=http://127.0.0.1:8099 python stepper/main.py run <workflow>
+
+# phpTravels — the booking flow
+python stepper/sites/phptravels/fixtures/server.py --port 8098 &
+PHPTRAVELS_BASE_URL=http://127.0.0.1:8098 \
+PHPTRAVELS_EMAIL=user@phptravels.com PHPTRAVELS_PASSWORD=demouser \
+    python stepper/main.py run hotel_booking
+
+# db — one with a browser, one without
+python stepper/main.py run db_smoke
+python stepper/main.py run db_web_mixed \
+  --vars "{\"page_url\": \"file://$PWD/stepper/sites/db/fixtures/inventory.html\"}"
+```
+
+Each site is pointed elsewhere through the base-URL environment variable it already
+had, so **no production code changes** to run against a fixture. `127.0.0.1` bypasses
+any egress proxy, and the servers are `http.server` from the standard library.
+
+The fixtures reproduce what the page objects actually select on — a typeahead that
+offers several matches, tabs that give two buttons the same accessible name, checkbox
+labels that are sibling text nodes rather than `<label>` elements, a form POST with a
+session cookie and two redirects.
+
+**What they are not:** reconstructions, not captures. A passing flow proves the
+selector matches *that* markup and that the engine path behind it works end to end. It
+does not prove the selector still matches the live site. Each fixture directory's
+`README.md` says so, and says what to do when the real host becomes reachable — run the
+same workflow with the base-URL variable unset, and treat any disagreement as fixture
+drift.
+
+---
+
 ## Testing
 
 ```bash
-# Unit — no browser, no network, no credentials. 1064 tests, ~12s.
+# Unit — no browser, no network, no credentials. 1207 tests, ~16s.
 pytest stepper/tests/unit/
 
 # Stepper integration — real browser

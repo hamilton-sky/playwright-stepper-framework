@@ -90,11 +90,11 @@ file lists the domains** — adding one edits nothing outside its own directory.
 | | |
 |---|---|
 | Domains | `web`, `db`, `noop` |
-| Actions | 44 unique instances — 38 `web`, 3 `db`, 2 `noop`, plus `load_test_data` and `run_workflow`, which declare no domain and are handed no session |
-| Workflows | 19, all valid (`python stepper/main.py validate`) |
-| Unit tests | 1064, no browser / network / credentials, ~12s |
-| Source | ~15,200 lines under `stepper/` + `poms/`, excluding tests |
-| Tests | ~12,800 lines |
+| Actions | 68 unique instances across seven sites, plus `load_test_data` and `run_workflow`, which declare no domain and are handed no session |
+| Workflows | 30, all valid (`python stepper/main.py validate`). 12 of them run with no network and no credentials |
+| Unit tests | 1207, no browser / network / credentials, ~16s |
+| Source | ~18,600 lines under `stepper/` + `poms/`, excluding tests |
+| Tests | ~14,700 lines |
 
 `python stepper/main.py validate` prints the domains each workflow opens:
 
@@ -162,8 +162,8 @@ and the `db` domain that proved the abstraction was not browser-shaped.
 Every ticket in both plans was checked four ways, because each catches
 something the others cannot:
 
-1. **The unit suite** — 1064 tests, no browser, no network, no credentials.
-2. **The suite with Playwright made unimportable** — 1050 pass, 14 skip. This
+1. **The unit suite** — 1207 tests, no browser, no network, no credentials.
+2. **The suite with Playwright made unimportable** — 1193 pass, 14 skip. This
    is what proves the engine does not secretly depend on it.
 3. **The suite with no browsers installed** — the condition CI's Unit Tests job
    actually runs in. It caught a round of tests that read the machine's real
