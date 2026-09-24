@@ -613,15 +613,32 @@ which one they are writing against:
 
 | Path | Where | A missed interaction shows up as |
 |---|---|---|
-| `_interact()` | page objects, one named element | **`False`, never an exception** |
+| `_interact()` | page objects, one named element | **`False`** — for the interaction itself, never an exception |
 | handle + index | page objects, picking out of a collection | `False` if the collection is empty; an **exception** if the click itself fails |
 | resolve + locator | the engine's own `click` / `fill` / `hover` | **`skipped`** if nothing resolved; an **exception** if the interaction fails |
 
-The first is the one that bites. `_interact()` **never raises** — a missing selector, a
-resolver confidence below threshold, and a click that did not land all come back the
-same way, as `False`. Drop that value and the step reports `passed` for something that
-never happened. The exceptions in the other two rows are safe by comparison:
-`StepRunner`'s retry loop catches them into a failed step.
+The first is the one that bites. A missing selector, a resolver confidence below
+threshold, and a click that did not land all come back the same way, as `False`. Drop
+that value and the step reports `passed` for something that never happened. The
+exceptions in the other two rows are safe by comparison: `StepRunner`'s retry loop
+catches them into a failed step.
+
+One qualification on that first row, because "never raises" is not literally true.
+`_interact` wraps the *interaction* in a `try`, but the `resolver.resolve()` call sits
+outside it, so an exception thrown by a resolver strategy propagates. Measured with a
+strategy that throws:
+
+```
+resolver.resolve: RAISED RuntimeError
+_interact:        RAISED RuntimeError        ← not False
+```
+
+Every strategy shipped here catches its own exceptions and returns `[]` — verified the
+same way — so this needs a custom strategy that does not. The cascade does not isolate
+them from each other, which is arguably its own bug: one broken strategy takes down
+the whole chain rather than yielding to the next. Whether it *should* catch is a real
+question, though, since a swallowed exception turns a broken strategy into "element
+not found" everywhere. That decision belongs with the one below, not here.
 
 The second path exists because the cascade resolves exactly one element, so picking
 the first of several rows or following a pagination link has to go to the driver

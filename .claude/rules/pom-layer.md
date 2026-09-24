@@ -66,7 +66,9 @@ The one method that matters:
 _interact(locator: Locator, action: str, **kwargs) -> bool
     action="fill"  → kwargs must contain value=str
     action="click" → kwargs may contain js_click=bool
-    Returns True on success, False if not found or the action failed. Never raises.
+    Returns True on success, False if not found or the action failed.
+    Never raises for the interaction itself — but resolver.resolve() is called
+    outside the try, so a strategy that throws propagates (see below).
 ```
 
 `_interact` is the only path interactive elements should take — it dispatches to the
@@ -90,9 +92,9 @@ immediately. POMs must work with `behaviour=None`.
 
 ### Report whether it happened
 
-`_interact` never raises. A missing selector, a resolver confidence below
-`CONFIDENCE_WARN`, and a click that did not land all come back the same way:
-`False`. **Return it** — do not drop it on the floor:
+`_interact` does not raise for the interaction itself. A missing selector, a
+resolver confidence below `CONFIDENCE_WARN`, and a click that did not land all
+come back the same way: `False`. **Return it** — do not drop it on the floor:
 
 ```python
 # CORRECT — the caller can tell
@@ -120,6 +122,22 @@ This is not a style preference. It shipped as a bug in three sites — see
 [glue-layer.md](glue-layer.md) for the other half and
 `stepper/tests/unit/test_failure_propagation.py` for the rule that now fails
 the build.
+
+**The one exception to "returns rather than raises".** `_interact` wraps the
+interaction in a `try`, but `self._resolver.resolve(...)` is called *outside*
+it. A resolver strategy that throws therefore propagates out of `_interact`
+rather than becoming `False`, and the cascade does not isolate strategies from
+each other either — one bad `collect()` takes down the whole chain:
+
+```
+resolver.resolve: RAISED RuntimeError
+_interact:        RAISED RuntimeError        ← not False
+```
+
+Every strategy in this tree catches its own exceptions and returns `[]`, so
+this needs a new one that does not. **If you add a strategy, catch inside its
+`collect()`** — `log_swallowed(...)` then `return []`, as the shipped ones do
+(see [resolver-cascade.md](resolver-cascade.md)).
 
 ### Reaching past `_interact` costs you the behaviour
 
