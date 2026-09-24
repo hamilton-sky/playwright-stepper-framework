@@ -801,7 +801,7 @@ drift.
 ## Testing
 
 ```bash
-# Unit — no browser, no network, no credentials. 1207 tests, ~16s.
+# Unit — no browser, no network, no credentials. 1221 tests, ~17s.
 pytest stepper/tests/unit/
 
 # Stepper integration — real browser
