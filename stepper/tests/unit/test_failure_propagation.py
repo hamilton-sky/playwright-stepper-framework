@@ -1,10 +1,11 @@
 """
 A step that did not act must not report "passed". Repo-wide.
 
-`SharedBasePage._interact` never raises. A missing selector, a resolver
-confidence below CONFIDENCE_WARN, and a click that does not land all come back
-the same way: False. Every site in this tree once dropped that value on the
-floor, and the glue then returned status="passed" unconditionally.
+`SharedBasePage._interact` does not raise for the interaction itself. A missing
+selector, a resolver confidence below CONFIDENCE_WARN, and a click that does not
+land all come back the same way: False. Every site in this tree once dropped
+that value on the floor, and the glue then returned status="passed"
+unconditionally.
 
 That is not a hypothetical. It shipped three times:
 

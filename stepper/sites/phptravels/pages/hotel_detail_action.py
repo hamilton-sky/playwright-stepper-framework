@@ -102,8 +102,16 @@ class PTHotelDetailPage(PageModule):
                 booking_ref = await detail.get_booking_reference()
                 confirmed   = await detail.is_booking_confirmed()
 
+                # The submit landed; that is not the same as the booking being
+                # taken. Neither a confirmation banner nor a reference means the
+                # one fact this step exists to establish is absent.
                 if not confirmed and not booking_ref:
-                    logger.warning("pt_book_hotel — no confirmation detected after submit")
+                    return StepResult(
+                        step=step, status="failed",
+                        error="pt_book_hotel: the booking form was submitted but the "
+                              "page shows neither a confirmation nor a booking "
+                              "reference — the booking was not taken",
+                    )
 
                 logger.info(
                     "pt_book_hotel ✓ — ref=%s confirmed=%s",

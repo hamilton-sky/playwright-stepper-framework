@@ -74,12 +74,13 @@ class WizardPage(BasePage):
         )
 
     # Every interaction below returns _interact's success flag rather than
-    # discarding it. _interact never raises: a missing selector, a resolver
-    # confidence below CONFIDENCE_WARN, or a click that does not land all come
-    # back as False. Swallowing that here is what let pathly_wizard_smoke —
-    # open → template → name → next x4 → save → screenshot, with no assertion
-    # anywhere — report ten passed steps against an app whose wizard never
-    # opened. The POM still does not assert; it reports, and the glue decides.
+    # discarding it. _interact does not raise for the interaction itself: a
+    # missing selector, a resolver confidence below CONFIDENCE_WARN, or a
+    # click that does not land all come back as False. Swallowing that here
+    # is what let pathly_wizard_smoke — open → template → name → next x4 →
+    # save → screenshot, with no assertion anywhere — report ten passed
+    # steps against an app whose wizard never opened. The POM still does not
+    # assert; it reports, and the glue decides.
 
     async def open_wizard(self) -> bool:
         return await self._interact(self.Locators.FLOWS_ADD_BTN, "click")

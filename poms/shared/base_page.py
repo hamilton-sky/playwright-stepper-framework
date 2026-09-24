@@ -81,6 +81,11 @@ class BasePage:
         With resolver → full 10-stage cascade via ElementResolver.
         Without resolver → driver CSS fallback via locator.css_candidates().
         Returns True on success, False if element not found or action failed.
+
+        Does not raise for the interaction itself — that is wrapped below. The
+        resolve() call is not, so a resolver strategy that throws propagates;
+        every strategy in this tree catches its own and returns []. See
+        .claude/rules/pom-layer.md.
         """
         if self._resolver and self._page:
             cfg = locator.to_cfg()

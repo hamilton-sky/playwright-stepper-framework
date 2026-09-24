@@ -1,14 +1,14 @@
 """
 A Pathly action that did not act must not report "passed".
 
-`SharedBasePage._interact` never raises. A missing selector, a resolver
-confidence below CONFIDENCE_WARN, and a click that does not land all come back
-the same way: False. The Pathly POMs used to drop that value on the floor and
-the glue returned status="passed" unconditionally, so `pathly_wizard_smoke` —
-open wizard → pick template → name it → next x4 → save → screenshot, with no
-assertion anywhere — reported ten passed steps against an app whose wizard had
-never opened. The screenshot at the end was of the wrong screen and the run
-still said green.
+`SharedBasePage._interact` does not raise for the interaction itself. A missing
+selector, a resolver confidence below CONFIDENCE_WARN, and a click that does
+not land all come back the same way: False. The Pathly POMs used to drop that
+value on the floor and the glue returned status="passed" unconditionally, so
+`pathly_wizard_smoke` — open wizard → pick template → name it → next x4 → save
+→ screenshot, with no assertion anywhere — reported ten passed steps against an
+app whose wizard had never opened. The screenshot at the end was of the wrong
+screen and the run still said green.
 
 This is the same failure the db domain hit from the other direction: a step
 that compares an unresolved value against itself, agrees, and passes. A report

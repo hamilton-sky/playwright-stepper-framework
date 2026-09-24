@@ -7,9 +7,13 @@ unchanged; only where the `Page` comes from differs.
 ## You must start Pathly yourself
 
 Nothing here launches it. The stepper *attaches* to a running Electron process
-over the Chrome DevTools Protocol, and `run` refuses at plan time if nothing is
-listening. That is deliberate: the session owns the CDP connection, not the
-application, so teardown disconnects and leaves your window open.
+over the Chrome DevTools Protocol. That is deliberate: the session owns the CDP
+connection, not the application, so teardown disconnects and leaves your window open.
+
+`run` refuses at plan time when `STEPPER_ELECTRON_CDP_PORT` is set and nothing
+answers on it. **Unset, there is nothing to refuse on**: preflight falls back to
+checking for an installed browser, the run launches an ordinary Chromium, and the
+first step fails against a page that was never Pathly. So always set it.
 
 ```bash
 # 1. in the Pathly Studio checkout — start it with CDP enabled, and wait for

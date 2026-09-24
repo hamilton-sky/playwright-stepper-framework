@@ -223,9 +223,28 @@ outcome — the inventory logo on success, the error banner on failure. Both bra
 become deterministic; waiting only for the success marker would stall the full
 timeout on every genuine bad-credentials run.
 
-All three sites settle on an outcome now. phpTravels uses the same shape as above;
-OpenLibrary polls `current_url` until it leaves `/account/login`, which is a
-different and equally correct way to express the same wait.
+Three of the four logins in this tree express that wait. SauceDemo and phpTravels
+use the shape above; OpenLibrary polls `current_url` until it leaves
+`/account/login`, which is a different and equally correct way to say the same
+thing. `test_login_submit_settles.py` holds all three.
+
+**the-internet's does not**, and the reason is worth stating exactly, because the
+obvious version of it is wrong. `ti_login` clicks and returns. Playwright's `click()`
+does wait for a navigation the click starts, so the URL has already moved on:
+
+```
+the instant ti_login returns     url=/secure   flash=0  logout=0
++250ms                           url=/secure   flash=1  logout=1
+```
+
+So it is **not** reading the pre-submit page — that document is gone. It is reading
+the new one before it has any content. An assertion placed straight after `ti_login`
+finds neither the flash nor the logout link and reports a failure that is about
+timing rather than about the app.
+
+The flow works because the step after it waits: `ti_view_secure` waits for the logout
+link before reading the flash. Safe by construction of the *workflow*, not of the
+action — which holds only as long as every workflow keeps that shape.
 
 ---
 

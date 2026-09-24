@@ -1,6 +1,11 @@
 # Pointing Stepper at your own app
 
-The three sites in this repo are demos. This is how you add a fourth — yours.
+The sites in this repo are demos. This is how you add another — yours.
+
+Worth reading first if your app is not reachable from your CI: two of the
+sites here run against checked-in fixtures on loopback rather than the live
+host, through the base-URL environment variable the site already had. The
+pattern is in `stepper/sites/ti/fixtures/` and costs no production code.
 
 Everything below was verified by building a site from scratch against these
 steps and running it: `2/2 passed`. If a step here does not work, it is a bug in
