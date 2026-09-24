@@ -519,8 +519,27 @@ surfaced.
 **Pathly Studio** — `stepper/sites/pathly/workflows/` · *needs the app running*
 
 An Electron app, reached over CDP. Still the `web` domain — same actions, same POMs,
-same cascade; only where the `Page` comes from differs. Nothing here launches the app,
-and `run` refuses at plan time if nothing is listening.
+same cascade; only where the `Page` comes from differs. Nothing here launches the app.
+
+**`STEPPER_ELECTRON_CDP_PORT` is what arms that refusal.** With it set and
+nothing listening, `run` stops at plan time in about a fifth of a second. With it
+*unset* there is nothing to check, so preflight only looks for an installed browser:
+the run launches an ordinary Chromium, and the first Pathly step fails against a page
+that was never Pathly. Measured both ways:
+
+```
+STEPPER_ELECTRON_CDP_PORT=9222, nothing listening
+  error: web: nothing is listening on CDP port 9222 … start it with --remote-debugging-port=9222
+
+unset
+  ▶ Step 1: Navigate to settings panel
+  ✗ pathly_navigate_panel: the element did not resolve on the attached page
+  Result: 0/1 passed
+```
+
+The second is still a clear failure rather than a false pass — that is what the
+propagation rules buy — but it costs a browser launch and names the selector rather
+than the missing variable.
 
 | Workflow | What it showcases |
 |---|---|

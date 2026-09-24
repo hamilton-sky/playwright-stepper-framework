@@ -69,8 +69,12 @@ query but a uniquely-matching one. Both are fixed;
 
 The **web** domain reached a different way: start Pathly with
 `--remote-debugging-port`, set `STEPPER_ELECTRON_CDP_PORT`, and the web session
-attaches over CDP instead of launching a browser. Nothing here launches the app,
-and `run` refuses at plan time if nothing is listening.
+attaches over CDP instead of launching a browser. Nothing here launches the app.
+
+`run` refuses at plan time when `STEPPER_ELECTRON_CDP_PORT` is set and nothing is
+listening on it. **With the variable unset there is nothing to check**: preflight
+only looks for an installed browser, so the run launches an ordinary Chromium and
+the first Pathly step fails against a page that was never Pathly. Set the variable.
 
 | Action name | Glue file | POM(s) used |
 |---|---|---|

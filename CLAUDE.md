@@ -130,7 +130,9 @@ PHPTRAVELS_EMAIL=user@phptravels.com PHPTRAVELS_PASSWORD=demouser \
 # Drive a running Electron app instead of launching a browser. Still the web
 # domain — same actions, same POMs, same resolver cascade; only the page's
 # source differs. Start Electron with --remote-debugging-port=<port> first;
-# nothing here launches it, and `run` refuses at plan time if nothing answers.
+# nothing here launches it. The refusal below is armed by STEPPER_ELECTRON_CDP_PORT:
+# set, with nothing listening, `run` stops at plan time; unset, preflight has nothing
+# to check and the run launches an ordinary browser that is not Pathly.
 STEPPER_ELECTRON_CDP_PORT=9222 python stepper/main.py run <workflow>
 
 # Run against a browser Playwright did not download for itself. Needed when the

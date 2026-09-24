@@ -91,7 +91,7 @@ file lists the domains** — adding one edits nothing outside its own directory.
 |---|---|
 | Domains | `web`, `db`, `noop` |
 | Actions | 68 unique instances across seven sites, plus `load_test_data` and `run_workflow`, which declare no domain and are handed no session |
-| Workflows | 30, all valid (`python stepper/main.py validate`). 12 of them run with no network and no credentials |
+| Workflows | 30, all valid (`python stepper/main.py validate`). 11 run with nothing configured at all; a 12th, `hotel_booking`, needs two fixture values that are not secrets. None of the twelve touches the network |
 | Unit tests | 1207, no browser / network / credentials, ~16s |
 | Source | ~18,600 lines under `stepper/` + `poms/`, excluding tests |
 | Tests | ~14,700 lines |
