@@ -34,6 +34,10 @@ class AssertCountAction(ActionStrategy):
         selectors = step.extra.get("selectors", [])
         expected_from_context = step.extra.get("expected_from_context")
         delta = int(step.extra.get("delta", 0))
+
+        # Both halves of the comparison have to come from somewhere. Defaulting
+        # either one made `{"action": "assert_count"}` with nothing else assert
+        # 0 == 0 and report passed against any page at all.
         if expected_from_context:
             if not context.has_count(expected_from_context):
                 return StepResult(
@@ -42,12 +46,35 @@ class AssertCountAction(ActionStrategy):
                     error=f"assert_count: missing count key '{expected_from_context}'",
                 )
             expected = context.get_count(expected_from_context) + delta
+        elif "expected" in step.extra:
+            expected = int(step.extra["expected"]) + delta
         else:
-            expected = int(step.extra.get("expected", 0)) + delta
+            return StepResult(
+                step=step,
+                status="failed",
+                error="assert_count: extra.expected or extra.expected_from_context is "
+                      "required — with neither, the step compares 0 against 0 and "
+                      "passes whatever the page holds",
+            )
         source = step.extra.get("source")
 
         if source == "context.paginated_data":
             actual = len(context.paginated_data)
+        elif source:
+            return StepResult(
+                step=step,
+                status="failed",
+                error=f"assert_count: unknown extra.source '{source}' — the only "
+                      "source is 'context.paginated_data'; drop it to count selectors",
+            )
+        elif not selectors:
+            return StepResult(
+                step=step,
+                status="failed",
+                error="assert_count: extra.selectors is required when no extra.source "
+                      "is given — with neither there is nothing to count and the "
+                      "actual is 0 regardless of the page",
+            )
         else:
             actual = 0
             for sel in selectors:
@@ -73,6 +100,13 @@ class AssertTextAction(ActionStrategy):
 
     async def _execute(self, page, step: StepConfig, resolver,
                        context: ExecutionContext, behaviour=None) -> StepResult:
+        # An absent expected value is a broken step, not a satisfied one. It
+        # defaulted to "", which `contains` finds inside every string on earth.
+        if "expected" not in step.extra:
+            return StepResult(step=step, status="failed",
+                              error="assert_text: extra.expected is required — it "
+                                    "defaulted to '', which every text contains")
+
         # strict: an assertion must check the element it names. Under the full
         # cascade a cfg that matches nothing falls through to a description-based
         # match, so the check passes against some other element entirely.
@@ -81,9 +115,9 @@ class AssertTextAction(ActionStrategy):
             return StepResult(step=step, status="failed",
                               error=f"assert_text: element not found → {step.element}")
 
-        expected = step.extra.get("expected", "")
         contains = bool(step.extra.get("contains", False))
         actual   = (await result.locator.first.inner_text()).strip()
+        expected = step.extra["expected"]
 
         if contains:
             passed = expected in actual

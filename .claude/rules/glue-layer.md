@@ -140,6 +140,20 @@ side: `if flash:` made "no flash" indistinguishable from "flash", and
 `extra.get("expected_names", [])` made an assertion pass vacuously when the key
 was misspelled. Validate the input, fail on the absent fact.
 
+`pt_book_hotel` is the version of this to watch for. Every interaction landed —
+the fields filled, the button clicked, `submit_booking()` returned `True` — and
+the page came back without a booking. It logged a warning and returned `passed`.
+A click that lands is not the fact; the fact is what the page shows afterwards,
+and a step named for it has to read that and fail when it is absent.
+
+The engine-level reporting actions had the same hole, and there it needs no
+broken page at all: `assert_text` defaulted `extra.expected` to `""` (inside
+every string there is, under `contains`) and `assert_count` defaulted both sides
+of its comparison to `0`. Both now fail as configuration errors, while an
+explicit `""` or `0` stays a real expectation — see
+`stepper/engine/actions/assertions.py` and
+`stepper/tests/unit/test_assertion_input_validation.py`.
+
 `stepper/tests/unit/test_failure_propagation.py` fails the build on both
 halves. If ignoring a result really is deliberate, assign it (`_ = await ...`)
 so the choice is visible.

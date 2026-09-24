@@ -208,3 +208,70 @@ def test_the_suggestion_click_still_works_with_no_behaviour():
 
     assert asyncio.run(home.select_first_hotel_suggestion()) is True
     assert clicked == [0]
+
+
+# ── Rule 4: the booking is the fact, not the click ────────────────────────────
+#
+# pt_book_hotel checked whether the page came back confirmed and then reported
+# passed either way, with a logger.warning as the only trace. That is the same
+# defect as `if flash:` in ti_view_secure, one layer further on: every
+# interaction landed, so nothing upstream could tell that the booking did not.
+# The whole workflow exists to book a hotel; this is the step that says whether
+# it did.
+
+
+def _detail_action(*, confirmed: bool, booking_ref, monkeypatch):
+    from poms.phpTravels.pages.hotel_detail_page import HotelDetailPage
+    from poms.shared.base_page import BasePage
+    from stepper.sites.phptravels.pages.hotel_detail_action import PTHotelDetailPage
+
+    async def _acted(self, locator, action, **kwargs):
+        return True
+
+    async def _selected(self, selector, value):
+        return None
+
+    async def _name(self):
+        return "Fixture Hotel"
+
+    async def _ref(self):
+        return booking_ref
+
+    async def _confirmed(self):
+        return confirmed
+
+    monkeypatch.setattr(BasePage, "_interact", _acted)
+    monkeypatch.setattr(BasePage, "_select_option", _selected)
+    monkeypatch.setattr(HotelDetailPage, "get_name", _name)
+    monkeypatch.setattr(HotelDetailPage, "get_booking_reference", _ref)
+    monkeypatch.setattr(HotelDetailPage, "is_booking_confirmed", _confirmed)
+
+    action = PTHotelDetailPage.PTBookHotelAction()
+    action._driver = lambda _page: _empty_driver()
+    step = StepConfig(action="pt_book_hotel", description="book",
+                      extra={"checkin": "01-01-2027", "checkout": "02-01-2027"})
+    return asyncio.run(action.execute(MagicMock(), step, MagicMock(),
+                                      ExecutionContext(), None))
+
+
+def test_a_submitted_form_with_no_confirmation_fails_the_step(monkeypatch):
+    result = _detail_action(confirmed=False, booking_ref=None, monkeypatch=monkeypatch)
+
+    assert result.status == "failed", (
+        "every field filled and the button clicked, and the page came back "
+        "without a booking — a warning in the log is not a step status"
+    )
+    assert "pt_book_hotel" in (result.error or "")
+
+
+@pytest.mark.parametrize("confirmed, ref", [(True, None), (False, "REF-1234"),
+                                            (True, "REF-1234")])
+def test_either_signal_is_enough_to_pass(confirmed, ref, monkeypatch):
+    """
+    The fixture shows both; a live phpTravels may show only one. Requiring both
+    would fail a booking that was actually taken.
+    """
+    result = _detail_action(confirmed=confirmed, booking_ref=ref, monkeypatch=monkeypatch)
+
+    assert result.status == "passed"
+    assert result.output == {"booking_reference": ref, "confirmed": confirmed}

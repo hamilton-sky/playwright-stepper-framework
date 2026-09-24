@@ -72,12 +72,14 @@ cp stepper/.env.example .env
 python stepper/main.py run sd_happy_path
 ```
 
-**11 of the 30 workflows run with nothing configured at all** — every
-the-internet flow, both database workflows and the no-browser one. A twelfth,
-the phpTravels booking flow, needs two values set, but they are fixture values
-rather than secrets and the command below shows them. None of the twelve touches
-the network. They are what CI runs on every push, and what to reach for when you
-want to see the engine work before deciding whether to wire up your own app.
+**12 of the 30 workflows need no account, no API key and no network** — every
+the-internet flow, the phpTravels booking flow, both database workflows and the
+no-browser one. Two of them (`noop_smoke`, `db_smoke`) run bare. The other ten
+each want one line of local setup, and the commands here show it: a fixture
+server on loopback for the-internet and phpTravels, a `--vars` page path for
+`db_web_mixed`, and two fixture credentials — not anyone's account — for
+`hotel_booking`. They are what CI runs on every push, and what to reach for when
+you want to see the engine work before deciding whether to wire up your own app.
 See [Running without a network](#running-without-a-network).
 
 The sites here are demos. To drive your own app, see
@@ -623,8 +625,9 @@ Every site in this tree once did exactly that, and it hid real defects:
 None was found by reading. `validate` reported every workflow sound throughout. They
 surfaced the first time something ran the flows against a real page.
 
-So four rules now fail the build, and they are static — which matters, because they
-reach the sites this environment cannot execute:
+So six rules now fail the build. The first four are static — which matters, because
+they reach the sites this environment cannot execute; the last two run the action and
+read its status:
 
 | Rule | Where |
 |---|---|
@@ -632,13 +635,23 @@ reach the sites this environment cannot execute:
 | No action drops a page object's reported flag | same — `_ = await …` is the documented opt-out |
 | Every page object accepts **and stores** `behaviour` | `tests/unit/test_pom_behaviour_optional.py` |
 | No element-handle click without a `_hover` before it | same |
+| An assertion with nothing to assert fails | `tests/unit/test_assertion_input_validation.py` |
+| A booking with no confirmation fails | `tests/unit/test_phptravels_failure_propagation.py` |
 
 Each was checked by reverting the fix it guards and confirming it fails. A rule that
 has never failed is a rule nobody has tested.
 
-The same principle applies to the reporting actions. An assertion whose expected value
-is missing fails as a configuration error rather than passing vacuously, and a step
-whose job is to read a fact fails when the fact is absent.
+The same principle applies to the reporting actions, where the hole needs no broken
+page to open — one misspelled key is enough. `assert_text` defaulted its expected
+value to `""`, which `contains` finds inside every string there is; `assert_count`
+defaulted *both* sides of its comparison to `0`. Either step could report on a page
+it had never looked at. Both now fail as configuration errors, while an explicit `""`
+or `0` remains a real expectation the page can contradict.
+
+A step whose job is to read a fact fails when the fact is absent, too:
+`pt_book_hotel` filled the form, clicked the button, found neither a confirmation
+banner nor a booking reference, and reported passed with a `logger.warning` as the
+only trace.
 
 ---
 
@@ -646,9 +659,10 @@ whose job is to read a fact fails when the fact is absent.
 
 Three of the demo sites are public applications this repo does not control, and one is
 a desktop app. That makes them a bad first impression and a worse CI dependency. So the
-flows that can be made hermetic, are. Eleven need nothing beyond the repo; `hotel_booking`
-also wants an email and password, which its own site refuses to default — the two below
-are the fixture server's, not anyone's account:
+flows that can be made hermetic, are. Twelve need nothing beyond this repo and the
+command that starts them — no account, no key, no host. Each line below is the whole
+setup; `hotel_booking` also wants an email and password, which its own site refuses to
+default, and the two here are the fixture server's rather than anyone's account:
 
 ```bash
 # the-internet — eight flows

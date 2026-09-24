@@ -190,9 +190,10 @@ async def test_the_checking_actions_resolve_strictly(action_name):
     resolver.resolve = AsyncMock(
         return_value=MagicMock(found=False, confidence=0.0, method="not-found")
     )
-    # `store` returns early without extra.key and would never reach resolve().
+    # Both of these return early on a missing field and would never reach
+    # resolve(): `store` without extra.key, `assert_text` without extra.expected.
     step = StepConfig(action=action_name, description="d",
-                      element={"css": ".x"}, extra={"key": "k"})
+                      element={"css": ".x"}, extra={"key": "k", "expected": "v"})
 
     await action.execute(MagicMock(), step, resolver, None, None)
 
