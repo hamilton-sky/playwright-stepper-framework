@@ -638,14 +638,14 @@ same way — so this needs a custom strategy that does not. The cascade does not
 them from each other, which is arguably its own bug: one broken strategy takes down
 the whole chain rather than yielding to the next. Whether it *should* catch is a real
 question, though, since a swallowed exception turns a broken strategy into "element
-not found" everywhere. That decision belongs with the one below, not here.
+not found" everywhere. That decision belongs with the ones below, not here.
 
 The second path exists because the cascade resolves exactly one element, so picking
 the first of several rows or following a pagination link has to go to the driver
 directly — 16 call sites in 14 methods across 8 page objects. It carries its own rule
 in [.claude/rules/pom-layer.md](.claude/rules/pom-layer.md), because it also loses the
-hover that `_interact` does for free. The third has a gap of its own,
-[named below](#the-gap-that-is-still-open).
+hover that `_interact` does for free. The third has gaps of its own,
+[named below](#the-gaps-that-are-still-open).
 
 Every site in this tree once dropped that `False` on the floor, and it hid real
 defects:
@@ -688,9 +688,43 @@ A step whose job is to read a fact fails when the fact is absent, too:
 banner nor a booking reference, and reported passed with a `logger.warning` as the
 only trace.
 
-### The gap that is still open
+### The gaps that are still open
 
-The engine's `click` and `fill` return `skipped` — not `failed` — when the resolver
+Review of this pull request turned over three of these. They are named rather than
+fixed here, for the reason given with each — but named, because an engine that lies
+is worse when the lie is undocumented.
+
+**`for_each_item` reports `passed` whatever its sub-steps do.** It catches every
+exception per item, logs it, takes an error screenshot, and then returns `passed`
+unconditionally; the list of results `_run_sub_steps` hands back is discarded.
+Measured, with two items and a sub-step that cannot even be constructed:
+
+```
+items iterated : 2
+every sub-step : raised (unknown action)
+step status    : 'passed'
+step error     : ''
+```
+
+It takes a screenshot *of the error* and then reports the step passed. This is the
+defect this whole section is about, in a core flow action, and unlike the third one
+below it carries no design question — a step that swallowed two exceptions did not
+pass. It is unfixed here only because `ol_data_driven` is the workflow that uses it,
+and OpenLibrary has never run in CI, so the change cannot be verified against a real
+run from this branch.
+
+**`validate` does not look inside dispatchers.** `PlanValidator` recurses through
+`extra` for `when` clauses but not for action names, so a typo'd action inside
+`for_each_item` passes `validate` and only fails at run time:
+
+```
+top-level               → validate raised: 1 validation error(s)
+nested in extra.steps   → validate PASSED (typo not caught)
+```
+
+The run does fail, loudly, so this costs a round trip rather than a false green.
+
+**The engine's `click` and `fill` return `skipped`** — not `failed` — when the resolver
 finds nothing. `skipped` is what a `when:` clause produces when a step is deliberately
 not run, so the two are indistinguishable in a report. Measured on a page with no such
 element:

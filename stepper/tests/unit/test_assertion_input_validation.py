@@ -157,21 +157,62 @@ def test_a_counted_expectation_still_compares_what_it_finds():
 
 # ── every workflow on disk still satisfies the rule ───────────────────────────
 
+def _every_step(node):
+    """
+    Yield every step in a workflow document, however deep.
+
+    Sub-steps are *not* stored where a step's own keys are — `for_each_item`,
+    `parallel` and `ensure_login` read them from `step.extra["steps"]`
+    (flow.py:57, flow.py:351). A walker that looks for "steps" only at the top
+    level of a step therefore never descends into any dispatcher, and this guard
+    silently covered nothing nested. So: recurse everything, and treat any dict
+    carrying an "action" key as a step. That holds for a nesting key nobody has
+    invented yet, which is the point of a repo-wide rule.
+    """
+    if isinstance(node, dict):
+        if "action" in node:
+            yield node
+        for value in node.values():
+            yield from _every_step(value)
+    elif isinstance(node, list):
+        for item in node:
+            yield from _every_step(item)
+
+
+def test_the_workflow_walker_descends_into_dispatchers():
+    """
+    A guard that cannot see the thing it guards is worse than none. This pins
+    the walker itself against the shape `ol_data_driven.json` actually uses.
+    """
+    doc = {"steps": [
+        {"action": "top"},
+        {"action": "for_each_item", "extra": {"steps": [
+            {"action": "nested"},
+            {"action": "parallel", "extra": {"steps": [{"action": "deep"}]}},
+        ]}},
+    ]}
+
+    assert [s["action"] for s in _every_step(doc)] == [
+        "top", "for_each_item", "nested", "parallel", "deep",
+    ]
+
+
 def test_no_shipped_workflow_relies_on_the_old_defaults():
     """
     The rule is only safe to add because nothing depended on the hole. This
-    keeps it that way for workflows written later.
+    keeps it that way for workflows written later — at any nesting depth.
     """
     import json
     import pathlib
 
     offenders = []
+    root = pathlib.Path(__file__).resolve().parents[2] / "sites"
 
-    def walk(steps, where):
-        for i, s in enumerate(steps):
-            extra = s.get("extra", {}) or {}
-            action = s.get("action")
-            at = f"{where}[{i}] {action}"
+    for path in sorted(root.rglob("workflows/*.json")):
+        for step in _every_step(json.loads(path.read_text())):
+            extra  = step.get("extra", {}) or {}
+            action = step.get("action")
+            at = f"{path.name} {action}"
             if action == "assert_text" and "expected" not in extra:
                 offenders.append(f"{at}: no extra.expected")
             if action == "assert_count":
@@ -179,13 +220,6 @@ def test_no_shipped_workflow_relies_on_the_old_defaults():
                     offenders.append(f"{at}: no extra.expected")
                 if not extra.get("selectors") and not extra.get("source"):
                     offenders.append(f"{at}: nothing to count")
-            for key in ("steps", "then", "else", "actions"):
-                if isinstance(s.get(key), list):
-                    walk(s[key], f"{at}.{key}")
-
-    root = pathlib.Path(__file__).resolve().parents[2] / "sites"
-    for path in sorted(root.rglob("workflows/*.json")):
-        walk(json.loads(path.read_text()).get("steps", []), path.name)
 
     assert not offenders, "workflow assertions with nothing to assert:\n  " + \
         "\n  ".join(offenders)
