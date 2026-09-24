@@ -156,7 +156,9 @@ class InventoryPage(BasePage):
                     else:
                         continue
                     if await btn.count() > 0:
-                        await btn.first.click()
+                        target = btn.first
+                        await self._hover(target)
+                        await target.click()
                         logger.info("Added to cart: %s (via %s)", product_name, next(iter(cfg)))
                         return True
                 except Exception:
@@ -173,6 +175,7 @@ class InventoryPage(BasePage):
             if (await name_el.inner_text()).strip() == product_name:
                 btn = await item.query_selector(self.Locators.REMOVE_BTN)
                 if btn:
+                    await self._hover(btn)
                     await btn.click()
                     logger.info("Removed from cart: %s", product_name)
                     return True

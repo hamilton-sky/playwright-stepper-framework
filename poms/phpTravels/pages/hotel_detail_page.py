@@ -54,8 +54,14 @@ class HotelDetailPage(BasePage):
         )
 
     def __init__(self, driver, base_url: str, hotel_slug: str | None = None,
-                 page=None, resolver=None):
-        super().__init__(driver, base_url, page, resolver)
+                 page=None, resolver=None, behaviour=None):
+        # behaviour was missing here, and only here of the four phpTravels
+        # POMs. _build_pom passes it as a keyword to every POM it builds, so
+        # pt_book_hotel could not construct this class at all: every run died
+        # on `__init__() got an unexpected keyword argument 'behaviour'`, which
+        # the glue's `except Exception` turned into a failed step. The last
+        # step of the site's only workflow had never once run.
+        super().__init__(driver, base_url, page, resolver, behaviour)
         self._hotel_slug = hotel_slug
 
     @property

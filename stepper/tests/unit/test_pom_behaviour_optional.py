@@ -122,3 +122,183 @@ def test_the_shared_helpers_tolerate_no_behaviour():
 
     asyncio.run(page._sleep(1))
     asyncio.run(page._hover(MagicMock()))   # no-op, must not raise
+
+
+# ── Every POM must be constructible the way the glue builds it ────────────────
+#
+# The rule above says a POM must *work* with behaviour=None. This one says it
+# must accept the argument at all.
+#
+# `_build_pom` passes page=, resolver= and behaviour= as keywords to every POM
+# in the tree. phpTravels' HotelDetailPage — alone of its four — declared
+# `(self, driver, base_url, hotel_slug=None, page=None, resolver=None)`, so
+# every attempt to build it raised
+#
+#     TypeError: __init__() got an unexpected keyword argument 'behaviour'
+#
+# which the glue's `except Exception` reported as an ordinary failed step.
+# pt_book_hotel, the last step of that site's only workflow, had never run.
+# Nothing caught it because nothing constructed the class: the signature is
+# wrong in a way only a call reveals, and no call existed.
+
+def _pom_classes():
+    """Every concrete POM class, found by importing each POM module."""
+    import importlib
+    import inspect
+
+    from poms.shared.base_page import BasePage as SharedBasePage
+
+    found = []
+    for path in _pom_files():
+        rel = path.relative_to(_REPO_ROOT).with_suffix("")
+        module = importlib.import_module(".".join(rel.parts))
+        for _, cls in inspect.getmembers(module, inspect.isclass):
+            if (issubclass(cls, SharedBasePage) and cls is not SharedBasePage
+                    and cls.__module__ == module.__name__
+                    and not cls.__name__ == "BasePage"):
+                found.append(cls)
+    return found
+
+
+def test_pom_class_discovery_did_not_break():
+    assert len(_pom_classes()) > 25, "the rule below would pass vacuously"
+
+
+def _required_positionals(pom_cls) -> list:
+    """
+    Stand-ins for whatever else the constructor demands — a book url, an item
+    id, a hotel slug. Filling them from the signature is what keeps this rule
+    honest: an earlier version passed only driver and base_url and reported
+    BookDetailPage as broken when it was merely asked for less than it needs.
+    """
+    import inspect
+
+    params = list(inspect.signature(pom_cls.__init__).parameters.values())[1:]
+    args = []
+    for prm in params:
+        if prm.name in {"page", "resolver", "behaviour"}:
+            continue
+        if prm.kind in (prm.VAR_POSITIONAL, prm.VAR_KEYWORD):
+            continue
+        if prm.default is not prm.empty:
+            break
+        args.append("https://example.test" if prm.name == "base_url" else MagicMock())
+    return args
+
+
+@pytest.mark.parametrize(
+    "pom_cls", _pom_classes(),
+    ids=lambda c: f"{c.__module__.split('.')[1]}.{c.__name__}",
+)
+def test_every_pom_takes_and_keeps_the_injected_behaviour(pom_cls):
+    """
+    Built exactly as GlueAction._build_pom builds it, and then checked that the
+    behaviour arrived. Two failure modes, one rule:
+
+      raises TypeError  — the constructor has no behaviour parameter, so the
+                          action cannot build the POM at all. phpTravels'
+                          HotelDetailPage was this, and pt_book_hotel had
+                          therefore never run.
+      _behaviour is None — the constructor accepts it and drops it on the way
+                          to super(), which is a silently un-humanised POM:
+                          no jitter, no hover dwell, and nothing says so.
+    """
+    sentinel = object()
+    try:
+        pom = pom_cls(*_required_positionals(pom_cls),
+                      page=MagicMock(), resolver=None, behaviour=sentinel)
+    except TypeError as e:
+        pytest.fail(
+            f"{pom_cls.__module__}.{pom_cls.__name__} cannot be built the way "
+            f"_build_pom builds every POM: {e}\n"
+            f"Its __init__ must accept page=, resolver= and behaviour= as "
+            f"keywords and pass them to super()."
+        )
+
+    assert pom._behaviour is sentinel, (
+        f"{pom_cls.__module__}.{pom_cls.__name__} accepted behaviour= and did "
+        f"not pass it to super() — the POM is silently un-humanised"
+    )
+
+
+# ── Every click is humanised, including the ones _interact never sees ─────────
+#
+# `_interact` hovers before it clicks when a behaviour is injected. A POM that
+# reaches past it — to pick the first of several rows, to follow a pagination
+# link — gets no hover for free, and skipping it leaves that one click
+# un-humanised on a live, often bot-protected site. Silently, too: a behaviour
+# object that is held but never used looks exactly like one that is working,
+# which is why the constructor rule above cannot catch this.
+#
+# Found by Codex on PR #33, on a click this session had just introduced. The
+# audit that followed found nine more across four sites. openLibrary's
+# book_detail_page already did it correctly and is what the fix copied.
+
+
+def _handle_clicks_without_a_hover(path: Path) -> list[str]:
+    """
+    `await <handle>.click()` whose preceding statement is not `await self._hover(…)`.
+
+    Clicks through `self` are exempt: `self._driver.click(css)` goes through the
+    adapter, and `self._interact(...)` does its own hovering.
+    """
+    def root(node):
+        while True:
+            if isinstance(node, ast.Attribute):
+                node = node.value
+            elif isinstance(node, ast.Subscript):
+                node = node.value
+            elif isinstance(node, ast.Call):
+                node = node.func
+            else:
+                return node
+
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    found = []
+    for parent in ast.walk(tree):
+        for attr in ("body", "orelse", "finalbody"):
+            block = getattr(parent, attr, None)
+            if not isinstance(block, list):
+                continue
+            for i, stmt in enumerate(block):
+                if not (isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Await)):
+                    continue
+                call = stmt.value.value
+                if not (isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute)
+                        and call.func.attr == "click"):
+                    continue
+                base = root(call.func.value)
+                if isinstance(base, ast.Name) and base.id == "self":
+                    continue
+                prev = block[i - 1] if i else None
+                hovered = (
+                    isinstance(prev, ast.Expr) and isinstance(prev.value, ast.Await)
+                    and isinstance(prev.value.value, ast.Call)
+                    and isinstance(prev.value.value.func, ast.Attribute)
+                    and prev.value.value.func.attr == "_hover"
+                )
+                if not hovered:
+                    found.append(
+                        f"{path.relative_to(_REPO_ROOT)}:{stmt.lineno}  "
+                        f"{ast.unparse(call)[:50]}"
+                    )
+    return found
+
+
+def test_no_pom_clicks_a_handle_without_hovering_first():
+    exempt = {"base_page.py", "driver.py"}
+    offenders = [
+        hit
+        for path in _pom_files()
+        if not (path.parent.name == "shared" and path.name in exempt)
+        for hit in _handle_clicks_without_a_hover(path)
+    ]
+
+    assert not offenders, (
+        "These click an element handle directly, so they miss the hover-and-dwell "
+        "that _interact applies to every other click — one un-humanised click on "
+        "a live site, and nothing says so.\n"
+        "Put `await self._hover(el)` immediately before the click; it applies the "
+        "behaviour when one is injected and is a no-op when it is None.\n  "
+        + "\n  ".join(offenders)
+    )

@@ -39,8 +39,13 @@ class ProductPage(BasePage):
         )
 
     def __init__(self, driver, base_url: str, item_id: int | None = None,
-                 page=None, resolver=None):
-        super().__init__(driver, base_url, page=page, resolver=resolver)
+                 page=None, resolver=None, behaviour=None):
+        # Same omission phpTravels' HotelDetailPage had. No glue action builds
+        # this class yet, which is the only reason it never raised: _build_pom
+        # passes behaviour= to every POM, so the first action to use it would
+        # have died on a TypeError rather than on anything about SauceDemo.
+        super().__init__(driver, base_url, page=page, resolver=resolver,
+                         behaviour=behaviour)
         self._item_id = item_id
 
     @property

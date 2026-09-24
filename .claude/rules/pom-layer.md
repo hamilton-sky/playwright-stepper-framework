@@ -121,6 +121,35 @@ This is not a style preference. It shipped as a bug in three sites — see
 `stepper/tests/unit/test_failure_propagation.py` for the rule that now fails
 the build.
 
+### Reaching past `_interact` costs you the behaviour
+
+`_interact` hovers before it clicks when a `HumanBehaviour` is injected. Some
+things it cannot do: the cascade resolves exactly one element, so picking the
+first of several rows, or following a pagination link, means going to the
+driver or the page directly. That is allowed — see the collection rule above —
+but the hover does not come with it:
+
+```python
+# WRONG — one un-humanised click, on a live site, and nothing says so
+items = await self._driver.query_selector_all(self.Locators.SUGGESTION_ITEM)
+await items[0].click()
+
+# CORRECT
+items = await self._driver.query_selector_all(self.Locators.SUGGESTION_ITEM)
+await self._hover(items[0])
+await items[0].click()
+```
+
+`self._hover(el)` applies the behaviour when one is injected and is a no-op
+when it is `None`, so it is safe in driver-only mode too. It exists precisely
+so POMs never touch `self._behaviour` directly.
+
+This is easy to miss because it fails silently in the worst way: a behaviour
+object that is held but never used looks exactly like one that is working, and
+the only symptom is on a live bot-protected site.
+`stepper/tests/unit/test_pom_behaviour_optional.py` fails the build on a
+handle click with no `_hover` immediately before it.
+
 ### What POMs must NOT do
 
 - No flow logic (no loops across pages, no multi-step orchestration)

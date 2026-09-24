@@ -57,6 +57,7 @@ class ReadingListPage(BasePage):
             next_el = await self._driver.query_selector(self.Locators.NEXT_PAGE)
             if not next_el:
                 break
+            await self._hover(next_el)
             await next_el.click()
             await self._driver.wait_for_load_state("domcontentloaded")
             await self._sleep(self.delays.between_pagination_ms)
@@ -76,6 +77,7 @@ class ReadingListPage(BasePage):
             next_el = await self._driver.query_selector(self.Locators.NEXT_PAGE)
             if not next_el:
                 break
+            await self._hover(next_el)
             await next_el.click()
             await self._driver.wait_for_load_state("domcontentloaded")
             await self._sleep(self.delays.between_pagination_ms)

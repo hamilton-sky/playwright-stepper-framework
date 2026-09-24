@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html><head><title>phpTravels — Booking confirmed</title></head>
+<body>
+  <nav>
+    <a class="navbar-brand" href="/">phpTravels</a>
+    <!--AVATAR-->
+  </nav>
+  <!-- is_booking_confirmed() looks for .booking-confirmed; get_booking_reference()
+       reads .booking-ref. Both are present so the happy path is observable. -->
+  <h1 class="hotel-name">{name}</h1>
+  <div class="booking-confirmed success-header">Your booking is confirmed</div>
+  <p>Reference: <span class="booking-ref">{ref}</span></p>
+  <p>{checkin} → {checkout}, {adults} adult(s), {children} child(ren)</p>
+</body></html>

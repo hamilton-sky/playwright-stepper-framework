@@ -87,6 +87,8 @@ class HomeScreenPage(BasePage):
         opens = self._page.locator(self.Locators.OPEN_BTNS)
         for i in range(await cards.count()):
             if (await cards.nth(i).inner_text()).strip() == name:
-                await opens.nth(i).click()
+                open_btn = opens.nth(i)
+                await self._hover(open_btn)
+                await open_btn.click()
                 return
         raise ValueError(f"Project {name!r} not found on the home screen")

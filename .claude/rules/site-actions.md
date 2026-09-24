@@ -35,7 +35,7 @@ workflows use `ol_collect_books`.
 | `sd_view_cart` | `cart_action.py` | `CartPage` |
 | `sd_checkout` | `checkout_action.py` | `CartPage` + `CheckoutInfoPage` + `CheckoutOverviewPage` + `CheckoutCompletePage` |
 
-### phpTravels (`stepper/sites/phptravels/pages/`) — in progress
+### phpTravels (`stepper/sites/phptravels/pages/`)
 
 | Action name | Glue file | POM(s) used |
 |---|---|---|
@@ -43,6 +43,27 @@ workflows use `ol_collect_books`.
 | `pt_search_hotels` | `hotel_search_action.py` | `HomePage` |
 | `pt_select_hotel` | `hotel_results_action.py` | `HotelResultsPage` |
 | `pt_book_hotel` | `hotel_detail_action.py` | `HotelDetailPage` |
+
+`PHPTRAVELS_BASE_URL` points the site elsewhere, which is how `hotel_booking`
+runs without reaching the network — `stepper/sites/phptravels/fixtures/` holds
+a local stand-in and a server for it, and CI runs the flow against it:
+
+```bash
+python stepper/sites/phptravels/fixtures/server.py --port 8098 &
+PHPTRAVELS_BASE_URL=http://127.0.0.1:8098 \
+PHPTRAVELS_EMAIL=user@phptravels.com PHPTRAVELS_PASSWORD=demouser \
+    python stepper/main.py run hotel_booking
+```
+
+Nothing had ever run this site before those fixtures existed, and the first two
+attempts found two defects. `HotelDetailPage.__init__` omitted `behaviour`,
+which `_build_pom` passes to every POM — so `pt_book_hotel` could not construct
+its POM at all and the last step of the only workflow had never once run. And
+the typeahead suggestion was a `Locator`: a typeahead offers several matches by
+design, the cascade resolves one and refuses 2+, so the step failed on any
+query but a uniquely-matching one. Both are fixed;
+`stepper/tests/unit/test_phptravels_failure_propagation.py` and the repo-wide
+`test_pom_behaviour_optional.py` hold the rules.
 
 ### Pathly Studio (`stepper/sites/pathly/pages/`) — an Electron app
 

@@ -99,6 +99,7 @@ class CartPage(BasePage):
             if (await name_el.inner_text()).strip() == name:
                 btn = await row.query_selector(self.Locators.REMOVE_BTN)
                 if btn:
+                    await self._hover(btn)
                     await btn.click()
                     logger.info("Removed from cart: %s", name)
                     return True

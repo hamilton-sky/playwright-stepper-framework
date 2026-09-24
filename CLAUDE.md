@@ -29,7 +29,7 @@ playwright-stepper-framework/
 │   └── sites/                        # Glue layer — wires POMs into Stepper actions
 │       ├── openlibrary/pages/
 │       ├── saucedemo/pages/
-│       ├── phptravels/pages/
+│       ├── phptravels/pages/     # fixtures/ serves it locally, no network
 │       ├── ti/                       # the-internet — generated from a crawl;
 │       │                             #   fixtures/ serves it locally, no network
 │       ├── pathly/                   # Pathly Studio — Electron, attached over CDP
@@ -118,6 +118,14 @@ python stepper/main.py run sd_heal_test --heal 2 --no-heal-cache --show
 # egress policy, which is why six of the eight had never run at all.
 python stepper/sites/ti/fixtures/server.py --port 8099 &
 TI_BASE_URL=http://127.0.0.1:8099 python stepper/main.py run hover_over_elements_to_reveal_hidden_text
+
+# The phpTravels booking flow, against checked-in fixtures on loopback. Its one
+# workflow had never run before these existed — the host is denied here and the
+# site had no CI step at all.
+python stepper/sites/phptravels/fixtures/server.py --port 8098 &
+PHPTRAVELS_BASE_URL=http://127.0.0.1:8098 \
+PHPTRAVELS_EMAIL=user@phptravels.com PHPTRAVELS_PASSWORD=demouser \
+    python stepper/main.py run hotel_booking
 
 # Drive a running Electron app instead of launching a browser. Still the web
 # domain — same actions, same POMs, same resolver cascade; only the page's

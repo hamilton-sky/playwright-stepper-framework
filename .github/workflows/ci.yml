@@ -211,6 +211,39 @@ jobs:
             exit 1
           fi
 
+      # The phpTravels booking flow, against checked-in fixtures on loopback.
+      # Hermetic like the two steps above. Until these fixtures existed this
+      # site had no CI step at all and its one workflow had never run —
+      # running it found a POM that could not be constructed and a typeahead
+      # addressed as if it were a single element.
+      - name: Run the phpTravels workflow against local fixtures
+        env:
+          PHPTRAVELS_BASE_URL: http://127.0.0.1:8098
+          PHPTRAVELS_EMAIL: user@phptravels.com
+          PHPTRAVELS_PASSWORD: demouser
+        run: |
+          python stepper/sites/phptravels/fixtures/server.py --port 8098 &
+          server_pid=$!
+          trap 'kill $server_pid 2>/dev/null || true' EXIT
+
+          ready=no
+          for _ in $(seq 1 40); do
+            if ! kill -0 $server_pid 2>/dev/null; then
+              echo "::error title=phptravels fixtures::the fixture server exited during startup (is port 8098 already in use?)"
+              exit 1
+            fi
+            if curl -sf --noproxy '*' http://127.0.0.1:8098/ >/dev/null; then
+              ready=yes; break
+            fi
+            sleep 0.25
+          done
+          if [ "$ready" != yes ]; then
+            echo "::error title=phptravels fixtures::the fixture server never came up on 127.0.0.1:8098"
+            exit 1
+          fi
+
+          python stepper/main.py run hotel_booking --ci --ci-output reports/ci-pt-hotel-booking.json
+
       # Every test under stepper/tests/ (excluding unit/) drives an OpenLibrary
       # workflow, so the whole step depends on the credentials.
       - name: Run stepper integration tests
