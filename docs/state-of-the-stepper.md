@@ -92,7 +92,7 @@ file lists the domains** — adding one edits nothing outside its own directory.
 | Domains | `web`, `db`, `noop` |
 | Actions | 68 registered names across seven sites — 67 instances, because `ol_collect_books` is an alias bound to the same object as `collect_items`. The 68 include `load_test_data` and `run_workflow`, which declare no domain and are handed no session |
 | Workflows | 30, all valid (`python stepper/main.py validate`). 12 need no account, no API key and no network; two of those run bare, the other ten want one line of local setup — a loopback fixture server, a `--vars` page path, or two fixture credentials that are nobody's account |
-| Unit tests | 1255, no browser / network / credentials, ~20s |
+| Unit tests | 1261, no browser / network / credentials, ~20s |
 | Source | ~18,600 lines under `stepper/` + `poms/`, excluding tests |
 | Tests | ~14,700 lines |
 
@@ -162,8 +162,8 @@ and the `db` domain that proved the abstraction was not browser-shaped.
 Every ticket in both plans was checked four ways, because each catches
 something the others cannot:
 
-1. **The unit suite** — 1255 tests, no browser, no network, no credentials.
-2. **The suite with Playwright made unimportable** — 1241 pass, 14 skip. This
+1. **The unit suite** — 1261 tests, no browser, no network, no credentials.
+2. **The suite with Playwright made unimportable** — 1247 pass, 14 skip. This
    is what proves the engine does not secretly depend on it. The shim has to
    raise `ModuleNotFoundError`, not a bare `ImportError` — `pytest.importorskip`
    only skips on the former, and a shim that got this wrong once made this very

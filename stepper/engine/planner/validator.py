@@ -10,7 +10,9 @@ from __future__ import annotations
 import difflib
 
 from stepper.engine.interfaces import StepConfig
-from stepper.engine.planner.domains import domains_in_step, sub_step_dicts
+from stepper.engine.planner.domains import (
+    SUB_STEP_KEYS, body_of, domains_in_step,
+)
 
 
 class PlanValidationError(Exception):
@@ -150,7 +152,8 @@ def _unknown_conditions_in(node, conditions) -> list[str]:
 
 def _sub_step_errors(extra, known: list[str]) -> list[tuple[str, bool]]:
     """
-    The same checks a top-level step gets, applied to every sub-step below it.
+    The same checks a top-level step gets, applied to every sub-step below it,
+    plus the shape checks a nested body needs and a top-level list cannot.
 
     Returns (message, names_an_unknown_action) pairs, in order, duplicates
     kept: the same typo in two places is two things to fix, and the error list
@@ -162,25 +165,55 @@ def _sub_step_errors(extra, known: list[str]) -> list[tuple[str, bool]]:
     the first version of this — silently dropped a sub-step with no action at
     all, which the factory then rejects at run time with a session already open.
 
+    Malformed *containers* are reported for the same reason rather than
+    skipped. A dispatcher hands each entry straight to `dict_to_step_config`,
+    so `{"steps": ["not a step"]}` dies with
+
+        AttributeError: 'str' object has no attribute 'get'
+
+    once the run has started. This is the one place that can say so first.
+    Note that `sub_step_dicts` stays lenient: it feeds domain *discovery*,
+    where a guess costs nothing and a crash costs the run.
+
     Only the dispatcher containers are walked (see SUB_STEP_KEYS). Treating
     every dict under `extra` as a possible step rejects legitimate data:
     `run_workflow` passes arbitrary `extra.vars` through, so
     `{"vars": {"action": "archive"}}` read as a sub-step naming an action.
     """
     found: list[tuple[str, bool]] = []
-    for raw in sub_step_dicts(extra):
-        action = raw.get("action")
-        label  = raw.get("description") or action or "<empty sub-step>"
+    if not isinstance(extra, dict):
+        return found
 
-        if not isinstance(action, str) or not action:
-            found.append((f"sub-step '{label}': missing 'action'", False))
-        elif action not in known:
+    for key in SUB_STEP_KEYS:
+        if key not in extra:
+            continue
+        body = extra[key]
+        if not isinstance(body, list):
             found.append((
-                f"unknown action '{action}' in a sub-step"
-                + _did_you_mean(action, known), True))
+                f"extra.{key} is {type(body).__name__}, not a list of steps", False))
+            continue
 
-        if not raw.get("description"):
-            found.append((f"sub-step '{label}': missing 'description'", False))
+        for i, raw in enumerate(body, 1):
+            where = f"{key}[{i}]"
+            if not isinstance(raw, dict):
+                found.append((
+                    f"{where} is {type(raw).__name__}, not a step", False))
+                continue
+
+            action = raw.get("action")
+            label  = raw.get("description") or action or where
+
+            if not isinstance(action, str) or not action:
+                found.append((f"sub-step '{label}': missing 'action'", False))
+            elif action not in known:
+                found.append((
+                    f"unknown action '{action}' in a sub-step"
+                    + _did_you_mean(action, known), True))
+
+            if not raw.get("description"):
+                found.append((f"sub-step '{label}': missing 'description'", False))
+
+            found.extend(_sub_step_errors(body_of(raw), known))
     return found
 
 

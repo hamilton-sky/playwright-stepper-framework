@@ -366,6 +366,59 @@ def test_a_sub_step_needs_a_description_like_any_other_step():
     assert "missing 'description'" in str(exc.value)
 
 
+@pytest.mark.parametrize("extra, expected", [
+    ({"steps": "not a list"},   "extra.steps is str, not a list of steps"),
+    ({"steps": ["not a step"]}, "steps[1] is str, not a step"),
+    ({"steps": [42]},           "steps[1] is int, not a step"),
+    ({"login_steps": {}},       "extra.login_steps is dict, not a list of steps"),
+])
+def test_a_malformed_dispatcher_body_is_a_validation_error(extra, expected):
+    """
+    A dispatcher hands each entry straight to dict_to_step_config, so a
+    malformed body does not degrade — it dies:
+
+        AttributeError: 'str' object has no attribute 'get'
+
+    and only once the run has started. Skipping these shapes rather than
+    reporting them was the last thing standing between `validate` and the
+    runtime, for exactly the case `validate` exists to catch.
+    """
+    registry = _registry_with("for_each_item", "ensure_login", "click")
+    action = "ensure_login" if "login_steps" in extra else "for_each_item"
+    step = StepConfig(action=action, description="s", extra=extra)
+
+    with pytest.raises(PlanValidationError) as exc:
+        PlanValidator.validate([step], registry)
+
+    assert expected in str(exc.value)
+
+
+def test_a_malformed_body_is_caught_at_any_depth():
+    registry = _registry_with("for_each_item", "click")
+    step = StepConfig(action="for_each_item", description="outer", extra={
+        "steps": [{"action": "for_each_item", "description": "inner",
+                   "steps": ["nope"]}],
+    })
+
+    with pytest.raises(PlanValidationError) as exc:
+        PlanValidator.validate([step], registry)
+
+    assert "not a step" in str(exc.value)
+
+
+def test_domain_discovery_stays_lenient_about_the_same_shapes():
+    """
+    The asymmetry, pinned. Discovery must not crash on a malformed body — it
+    runs before validation and on plans validation has not seen. Reporting is
+    the validator's job; `sub_step_dicts` only has to survive.
+    """
+    from stepper.engine.planner.domains import sub_step_dicts
+
+    assert sub_step_dicts({"steps": "not a list"}) == []
+    assert sub_step_dicts({"steps": ["not a step", 42]}) == []
+    assert sub_step_dicts(None) == []
+
+
 def test_a_valid_nested_body_still_validates():
     """The off switch."""
     registry = _registry_with("for_each_item", "click")
