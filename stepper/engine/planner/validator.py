@@ -67,17 +67,13 @@ class PlanValidator:
                     + _did_you_mean(step.action, known)
                 )
 
-            # Sub-steps are steps. They live in extra, so the loop above never
-            # saw them: a typo inside a for_each_item body passed validate and
-            # surfaced only at run time, after a session had opened.
-            for nested in _nested_action_names(step.extra):
-                if nested in known:
-                    continue
-                saw_unknown_action = True
-                step_errors.append(
-                    f"unknown action '{nested}' in a sub-step"
-                    + _did_you_mean(nested, known)
-                )
+            # Sub-steps are steps, and get the same checks. They live in extra,
+            # so the loop above never saw them: a typo inside a for_each_item
+            # body passed validate and surfaced only at run time, after a
+            # session had opened.
+            for problem, unknown in _sub_step_errors(step.extra, known):
+                saw_unknown_action = saw_unknown_action or unknown
+                step_errors.append(problem)
 
             if not step.description:
                 step_errors.append("missing 'description'")
@@ -152,22 +148,40 @@ def _unknown_conditions_in(node, conditions) -> list[str]:
     return found
 
 
-def _nested_action_names(extra) -> list[str]:
+def _sub_step_errors(extra, known: list[str]) -> list[tuple[str, bool]]:
     """
-    Every `action` named below a step's own, in order, duplicates kept.
+    The same checks a top-level step gets, applied to every sub-step below it.
 
-    A nested step is a step, so a typo in a dispatcher body has to fail
-    validation the same way a top-level one does. But only the dispatcher
-    containers are walked — see SUB_STEP_KEYS. Treating every dict under
-    `extra` as a possible step rejects legitimate data: `run_workflow` passes
-    arbitrary `extra.vars` through, so `{"vars": {"action": "archive"}}` read
-    as a sub-step calling an unregistered action.
+    Returns (message, names_an_unknown_action) pairs, in order, duplicates
+    kept: the same typo in two places is two things to fix, and the error list
+    is what a person reads.
 
-    Duplicates are kept rather than de-duplicated: the same typo in two places
-    is two things to fix, and the error list is what a person reads.
+    A nested step is a step, so a missing action, an unregistered one and a
+    missing description each have to fail validation the way they do at the top
+    level. Extracting only the *names* that were already well-formed strings —
+    the first version of this — silently dropped a sub-step with no action at
+    all, which the factory then rejects at run time with a session already open.
+
+    Only the dispatcher containers are walked (see SUB_STEP_KEYS). Treating
+    every dict under `extra` as a possible step rejects legitimate data:
+    `run_workflow` passes arbitrary `extra.vars` through, so
+    `{"vars": {"action": "archive"}}` read as a sub-step naming an action.
     """
-    return [raw["action"] for raw in sub_step_dicts(extra)
-            if isinstance(raw.get("action"), str) and raw["action"]]
+    found: list[tuple[str, bool]] = []
+    for raw in sub_step_dicts(extra):
+        action = raw.get("action")
+        label  = raw.get("description") or action or "<empty sub-step>"
+
+        if not isinstance(action, str) or not action:
+            found.append((f"sub-step '{label}': missing 'action'", False))
+        elif action not in known:
+            found.append((
+                f"unknown action '{action}' in a sub-step"
+                + _did_you_mean(action, known), True))
+
+        if not raw.get("description"):
+            found.append((f"sub-step '{label}': missing 'description'", False))
+    return found
 
 
 def _did_you_mean(name: str, known: list[str], limit: int = 3) -> str:

@@ -37,13 +37,26 @@ from __future__ import annotations
 SUB_STEP_KEYS = ("steps", "login_steps")
 
 
+def body_of(raw: dict) -> dict:
+    """
+    Where a raw step dict keeps its sub-steps — `dict_to_step_config`'s rule.
+
+    An explicit `extra` wins; without one, every non-top-level key is promoted
+    into extra, so `{"action": "for_each_item", "steps": [...]}` is a real and
+    supported shape. Reading only `raw["extra"]` misses it, and the runtime
+    does not: it runs those steps.
+    """
+    if "extra" in raw:
+        return raw["extra"] if isinstance(raw["extra"], dict) else {}
+    return raw
+
+
 def sub_step_dicts(extra) -> list[dict]:
     """
     Every raw sub-step dict below this `extra`, depth-first, dispatchers first.
 
     Descends *through* a sub-step as well as recording it: a `for_each_item`
-    nested inside a `parallel` carries its own body one level further down,
-    under its own `extra`.
+    nested inside a `parallel` carries its own body one level further down.
     """
     found: list[dict] = []
     if not isinstance(extra, dict):
@@ -55,7 +68,7 @@ def sub_step_dicts(extra) -> list[dict]:
         for raw in body:
             if isinstance(raw, dict):
                 found.append(raw)
-                found.extend(sub_step_dicts(raw.get("extra")))
+                found.extend(sub_step_dicts(body_of(raw)))
     return found
 
 

@@ -299,6 +299,73 @@ def test_a_dispatcher_nested_in_a_dispatcher_is_walked():
     assert "not_a_thing" in str(exc.value)
 
 
+def test_a_flat_dispatcher_body_is_walked():
+    """
+    `dict_to_step_config` promotes a step's non-top-level keys into extra when
+    there is no explicit `extra` key, so `{"action": "for_each_item",
+    "steps": [...]}` is a real shape the runtime executes. Reading only
+    raw["extra"] missed it, and a typo two levels down passed validation.
+    """
+    registry = _registry_with("parallel", "for_each_item", "click")
+    step = StepConfig(action="parallel", description="outer", extra={
+        "steps": [
+            {"action": "for_each_item", "description": "inner",
+             "steps": [{"action": "clcik", "description": "typo"}]},
+        ],
+    })
+
+    with pytest.raises(PlanValidationError) as exc:
+        PlanValidator.validate([step], registry)
+
+    assert "clcik" in str(exc.value)
+
+
+def test_an_explicit_extra_still_wins_over_flat_keys():
+    """
+    The other half of dict_to_step_config's rule: when `extra` is present the
+    flat keys are ignored entirely, so the walk must not read them either.
+    """
+    registry = _registry_with("for_each_item", "click")
+    step = StepConfig(action="for_each_item", description="loop", extra={
+        "steps": [
+            {"action": "click", "description": "the real body",
+             "extra": {},
+             "steps": [{"action": "nonsense"}]},   # dropped at runtime
+        ],
+    })
+
+    PlanValidator.validate([step], registry)
+
+
+def test_a_sub_step_with_no_action_is_rejected():
+    """
+    The first version extracted only well-formed action strings, so a sub-step
+    with no action at all fell out of the list and validated clean — then the
+    factory rejected it at run time, with a session already open.
+    """
+    registry = _registry_with("for_each_item")
+    step = StepConfig(action="for_each_item", description="loop", extra={
+        "steps": [{"description": "forgot the action"}],
+    })
+
+    with pytest.raises(PlanValidationError) as exc:
+        PlanValidator.validate([step], registry)
+
+    assert "missing 'action'" in str(exc.value)
+
+
+def test_a_sub_step_needs_a_description_like_any_other_step():
+    registry = _registry_with("for_each_item", "click")
+    step = StepConfig(action="for_each_item", description="loop", extra={
+        "steps": [{"action": "click"}],
+    })
+
+    with pytest.raises(PlanValidationError) as exc:
+        PlanValidator.validate([step], registry)
+
+    assert "missing 'description'" in str(exc.value)
+
+
 def test_a_valid_nested_body_still_validates():
     """The off switch."""
     registry = _registry_with("for_each_item", "click")
