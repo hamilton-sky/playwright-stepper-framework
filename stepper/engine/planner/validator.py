@@ -10,7 +10,7 @@ from __future__ import annotations
 import difflib
 
 from stepper.engine.interfaces import StepConfig
-from stepper.engine.planner.domains import domains_in_step
+from stepper.engine.planner.domains import domains_in_step, sub_step_dicts
 
 
 class PlanValidationError(Exception):
@@ -152,31 +152,22 @@ def _unknown_conditions_in(node, conditions) -> list[str]:
     return found
 
 
-def _nested_action_names(node) -> list[str]:
+def _nested_action_names(extra) -> list[str]:
     """
     Every `action` named below a step's own, in order, duplicates kept.
 
-    Same shape as the `when`-clause walk above and for the same reason: a
-    nested step is a step. `for_each_item`, `parallel`, `paginate` and
-    `ensure_login` hold their bodies as raw dicts inside `extra`, and a body can
-    hold another dispatcher, so this descends *through* a sub-step as well as
-    recording it.
+    A nested step is a step, so a typo in a dispatcher body has to fail
+    validation the same way a top-level one does. But only the dispatcher
+    containers are walked — see SUB_STEP_KEYS. Treating every dict under
+    `extra` as a possible step rejects legitimate data: `run_workflow` passes
+    arbitrary `extra.vars` through, so `{"vars": {"action": "archive"}}` read
+    as a sub-step calling an unregistered action.
 
     Duplicates are kept rather than de-duplicated: the same typo in two places
     is two things to fix, and the error list is what a person reads.
     """
-    found: list[str] = []
-    if isinstance(node, dict):
-        for key, value in node.items():
-            if key == "action":
-                if isinstance(value, str) and value:
-                    found.append(value)
-            else:
-                found.extend(_nested_action_names(value))
-    elif isinstance(node, list):
-        for item in node:
-            found.extend(_nested_action_names(item))
-    return found
+    return [raw["action"] for raw in sub_step_dicts(extra)
+            if isinstance(raw.get("action"), str) and raw["action"]]
 
 
 def _did_you_mean(name: str, known: list[str], limit: int = 3) -> str:

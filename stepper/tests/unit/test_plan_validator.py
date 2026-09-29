@@ -309,19 +309,49 @@ def test_a_valid_nested_body_still_validates():
     PlanValidator.validate([step], registry)
 
 
-def test_an_extra_key_called_action_that_is_not_a_step_is_not_invented():
+def test_a_variable_that_happens_to_be_called_action_is_not_a_sub_step():
     """
-    The walk keys off the word `action`, so it is worth pinning that it reads a
-    step's action and not, say, a string field that happens to share the name.
-    A non-string value is not an action name.
+    The case that broke the first version of this check, and that my own
+    too-weak test missed: it covered a *non-string* value named `action` and
+    concluded the walk was safe.
+
+    `run_workflow` passes `extra.vars` through to the child workflow untouched,
+    so the value can be anything. A walk that treats every dict under `extra` as
+    a possible step reads `{"vars": {"action": "archive"}}` as a sub-step calling
+    an action named "archive", and rejects a workflow that is perfectly valid.
+    Only the dispatcher containers are steps.
     """
-    registry = _registry_with("noop_set")
-    step = StepConfig(action="noop_set", description="set", extra={
-        "value": {"action": 42},          # a number, not an action name
-        "other": ["action", "steps"],     # bare strings in a list, not dicts
+    registry = _registry_with("run_workflow")
+    step = StepConfig(action="run_workflow", description="child", extra={
+        "path": "child.json",
+        "vars": {"action": "archive", "query": "x"},
     })
 
     PlanValidator.validate([step], registry)
+
+
+def test_other_shapes_under_extra_are_not_sub_steps_either():
+    registry = _registry_with("noop_set")
+    step = StepConfig(action="noop_set", description="set", extra={
+        "value": {"action": 42},                 # a number, not a name
+        "other": ["action", "steps"],            # bare strings, not dicts
+        "nested": {"deep": {"action": "nope"}},  # not under a container key
+    })
+
+    PlanValidator.validate([step], registry)
+
+
+def test_ensure_login_bodies_are_walked_too():
+    """`login_steps` is the other container — flow.py:163, not `steps`."""
+    registry = _registry_with("ensure_login", "fill")
+    step = StepConfig(action="ensure_login", description="log in", extra={
+        "login_steps": [{"action": "fil", "description": "typo"}],
+    })
+
+    with pytest.raises(PlanValidationError) as exc:
+        PlanValidator.validate([step], registry)
+
+    assert "fil" in str(exc.value)
 
 
 # ── when-conditions (ticket T4) ───────────────────────────────────────────────

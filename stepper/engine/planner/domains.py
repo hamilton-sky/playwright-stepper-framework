@@ -11,8 +11,12 @@ runner previously answered only by failing partway through:
 Sub-steps count. `for_each_item`, `parallel` and `paginate` hold theirs as raw
 dicts inside `extra`, so a loop body is the easiest place for a second domain to
 hide — and since M4 it is a place the runner genuinely routes to a different
-session. The walk here has the same shape as the validator's `when`-clause walk,
-for the same reason: a nested step is a step.
+session.
+
+There are two walks here, and they are deliberately not the same shape:
+`sub_step_dicts` reads only the named dispatcher containers, and `_domains_in`
+reads any dict carrying an `action`. See `_domains_in` for why the looser one
+is right for discovery and wrong for validation.
 
 An action the registry does not know reports domain `None` rather than raising.
 Its real problem is that it is unregistered, PlanValidator already says so, and
@@ -20,6 +24,39 @@ a second error about its domain would only bury the first.
 """
 
 from __future__ import annotations
+
+
+#: The `extra` keys a dispatcher reads its body from — the only places a
+#: sub-step can live. `for_each_item`, `parallel` and `paginate` use `steps`
+#: (flow.py:66, flow.py:400); `ensure_login` uses `login_steps` (flow.py:163).
+#:
+#: Walking *every* dict under `extra` instead is wrong, and not harmlessly:
+#: `run_workflow` passes arbitrary `extra.vars` to the child workflow, so
+#: `{"vars": {"action": "archive"}}` reads as a sub-step calling an action
+#: named "archive". PlanValidator rejected the workflow over it.
+SUB_STEP_KEYS = ("steps", "login_steps")
+
+
+def sub_step_dicts(extra) -> list[dict]:
+    """
+    Every raw sub-step dict below this `extra`, depth-first, dispatchers first.
+
+    Descends *through* a sub-step as well as recording it: a `for_each_item`
+    nested inside a `parallel` carries its own body one level further down,
+    under its own `extra`.
+    """
+    found: list[dict] = []
+    if not isinstance(extra, dict):
+        return found
+    for key in SUB_STEP_KEYS:
+        body = extra.get(key)
+        if not isinstance(body, list):
+            continue
+        for raw in body:
+            if isinstance(raw, dict):
+                found.append(raw)
+                found.extend(sub_step_dicts(raw.get("extra")))
+    return found
 
 
 def domains_in_step(step, registry) -> list[tuple[str, str | None]]:
@@ -64,6 +101,16 @@ def _domains_in(node, registry) -> list[tuple[str, str | None]]:
 
     Descends *through* a sub-step as well as recording it: a `for_each_item`
     nested inside a `parallel` carries its own body one level further down.
+
+    Deliberately looser than `sub_step_dicts` above, which walks only the
+    named containers. The asymmetry is the point, and it is about what each
+    answer costs when it is wrong:
+
+        missing a domain here  → no session opens, and the run dies partway
+        an extra name here     → unregistered, domain None, ignored
+
+    So discovery guesses wide. Validation cannot afford to: an extra name
+    there *rejects a valid workflow*, which is what `extra.vars` did.
     """
     found: list[tuple[str, str | None]] = []
     if isinstance(node, dict):
