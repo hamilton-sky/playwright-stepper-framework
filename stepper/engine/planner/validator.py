@@ -67,6 +67,18 @@ class PlanValidator:
                     + _did_you_mean(step.action, known)
                 )
 
+            # Sub-steps are steps. They live in extra, so the loop above never
+            # saw them: a typo inside a for_each_item body passed validate and
+            # surfaced only at run time, after a session had opened.
+            for nested in _nested_action_names(step.extra):
+                if nested in known:
+                    continue
+                saw_unknown_action = True
+                step_errors.append(
+                    f"unknown action '{nested}' in a sub-step"
+                    + _did_you_mean(nested, known)
+                )
+
             if not step.description:
                 step_errors.append("missing 'description'")
 
@@ -137,6 +149,33 @@ def _unknown_conditions_in(node, conditions) -> list[str]:
     elif isinstance(node, list):
         for item in node:
             found.extend(_unknown_conditions_in(item, conditions))
+    return found
+
+
+def _nested_action_names(node) -> list[str]:
+    """
+    Every `action` named below a step's own, in order, duplicates kept.
+
+    Same shape as the `when`-clause walk above and for the same reason: a
+    nested step is a step. `for_each_item`, `parallel`, `paginate` and
+    `ensure_login` hold their bodies as raw dicts inside `extra`, and a body can
+    hold another dispatcher, so this descends *through* a sub-step as well as
+    recording it.
+
+    Duplicates are kept rather than de-duplicated: the same typo in two places
+    is two things to fix, and the error list is what a person reads.
+    """
+    found: list[str] = []
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if key == "action":
+                if isinstance(value, str) and value:
+                    found.append(value)
+            else:
+                found.extend(_nested_action_names(value))
+    elif isinstance(node, list):
+        for item in node:
+            found.extend(_nested_action_names(item))
     return found
 
 

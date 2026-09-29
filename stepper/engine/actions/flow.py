@@ -34,6 +34,15 @@ class ForEachItemAction(SubStepRunnerMixin, ActionStrategy):
     Iterate over collected item URLs and run sub-steps on each.
     Template variables: {{item_url}}, {{book_url}} (compat), {{index}}
     Metadata (dict items): {{item.<key>}} for any key in the item dict
+
+    **The step fails when its sub-steps do.** It used to return passed
+    unconditionally — catching every per-item exception, logging it, taking an
+    error screenshot, and discarding the results list `_run_sub_steps` returns.
+    Two items whose sub-step could not even be constructed gave `status
+    'passed'` with an empty error: a screenshot *of the error*, then a green
+    step. `stop_on_failure` stays False, because a bad item should not abandon
+    the rest of the collection — continuing past a failure is not the same as
+    reporting it passed.
     """
     action_name = "for_each_item"
     domain      = "web"
@@ -56,6 +65,15 @@ class ForEachItemAction(SubStepRunnerMixin, ActionStrategy):
         )
         sub_steps_raw = step.extra.get("steps", [])
 
+        if not items:
+            # Not a failure — "for each of nothing" is a legitimate no-op, and
+            # making it fail would break any flow whose collection can be empty.
+            # But it is worth saying out loud, because an empty collection is
+            # usually an upstream collect step that found nothing.
+            logger.warning("for_each_item: no items collected — no sub-step ran")
+
+        failures: list[str] = []
+
         for idx, item in enumerate(items):
             if isinstance(item, dict):
                 item_url = (
@@ -77,7 +95,7 @@ class ForEachItemAction(SubStepRunnerMixin, ActionStrategy):
                     subs[f"item.{key}"] = val
 
             try:
-                await self._run_sub_steps(
+                results = await self._run_sub_steps(
                     sub_steps_raw, page, resolver, context,
                     substitutions=subs,
                     stop_on_failure=False,
@@ -85,11 +103,42 @@ class ForEachItemAction(SubStepRunnerMixin, ActionStrategy):
                 )
             except Exception as e:
                 logger.error(f"ForEach item {idx+1}: {e}")
-                await page.screenshot(
-                    path=str(self._screenshots_dir / f"error_book_{idx+1}.png")
-                )
+                failures.append(f"item {idx+1}: {e}")
+                await self._error_screenshot(page, idx)
+                continue
+
+            # stop_on_failure stays False — a bad item should not abandon the
+            # rest of the collection. Continuing past it is not the same as
+            # reporting it passed, which is what dropping `results` did.
+            for r in results:
+                if r.status == "failed":
+                    what = r.step.action or "sub-step"
+                    failures.append(f"item {idx+1}: {what} — {r.error or 'failed'}")
+
+        if failures:
+            shown = failures[:10]
+            more  = len(failures) - len(shown)
+            detail = "\n  ".join(shown) + (f"\n  … and {more} more" if more else "")
+            return StepResult(
+                step=step, status="failed",
+                error=f"for_each_item: {len(failures)} sub-step failure(s) "
+                      f"across {len(items)} item(s):\n  {detail}",
+            )
 
         return StepResult(step=step, status="passed")
+
+    async def _error_screenshot(self, page, idx: int) -> None:
+        """
+        Best-effort. A screenshot that itself fails must not replace the error
+        it was taken to record — that swap is how the original exception used
+        to disappear.
+        """
+        try:
+            await page.screenshot(
+                path=str(self._screenshots_dir / f"error_book_{idx+1}.png")
+            )
+        except Exception as e:
+            logger.warning("ForEach item %d: error screenshot failed: %s", idx + 1, e)
 
 
 class EnsureLoginAction(SubStepRunnerMixin, ActionStrategy):
@@ -352,6 +401,9 @@ class ParallelAction(ActionStrategy):
         mode          = step.extra.get("mode", "tabs")
 
         if not sub_steps_raw:
+            # A skip by choice, pinned by test_no_sub_steps_is_skipped_not_failed.
+            # It reads oddly beside `scroll_to`, which fails when no element is
+            # named — see design-patterns.md.
             return StepResult(step=step, status="skipped",
                               error="parallel: no sub-steps defined")
 

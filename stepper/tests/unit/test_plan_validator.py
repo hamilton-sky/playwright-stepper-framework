@@ -207,6 +207,7 @@ def test_the_shipped_workflows_validate_against_the_real_registry():
     from pathlib import Path
 
     from stepper.engine.actions.factory import build_default_registry
+    from stepper.engine.actions.strategies import RunWorkflowAction
     from stepper.engine.utils import dict_to_step_config
 
     registry = build_default_registry()
@@ -215,12 +216,112 @@ def test_the_shipped_workflows_validate_against_the_real_registry():
         site = register_path.parent.name
         __import__(f"stepper.sites.{site}.register", fromlist=["register"]).register(registry)
 
+    # build_validated_registry adds this before it validates, so a registry
+    # without it is not the one main checks a plan against. It went unnoticed
+    # while the validator only looked at top-level actions — ol_data_driven
+    # calls run_workflow from inside a for_each_item body, and nothing looked
+    # there.
+    registry.register(RunWorkflowAction())
+
     workflows = sorted(sites_dir.glob("*/workflows/*.json"))
     assert workflows, "no workflows found; this test would pass vacuously"
 
     for path in workflows:
         steps = [dict_to_step_config(s) for s in json.loads(path.read_text())["steps"]]
         PlanValidator.validate(steps, registry)
+
+
+# ── Sub-step action names ─────────────────────────────────────────────────────
+#
+# The validator walked `extra` for `when` clauses but not for action names, so
+# a typo inside a dispatcher body passed `validate` and surfaced only at run
+# time, after a session had already opened. Measured before the fix:
+#
+#     top-level               → validate raised: 1 validation error(s)
+#     nested in extra.steps   → validate PASSED (typo not caught)
+
+
+def _registry_with(*action_names):
+    """A registry that knows exactly these names and nothing else."""
+    from stepper.engine.interfaces import ActionStrategy
+
+    from stepper.engine.actions.factory import ActionRegistry
+
+    registry = ActionRegistry()
+    for name in action_names:
+        cls = type(f"Fake_{name}", (ActionStrategy,),
+                   {"action_name": name, "domain": None,
+                    "_execute": lambda self, *a, **k: None})
+        registry.register(cls())
+    return registry
+
+
+def test_a_typo_inside_a_dispatcher_body_is_caught():
+    registry = _registry_with("for_each_item", "click")
+    step = StepConfig(action="for_each_item", description="loop", extra={
+        "steps": [{"action": "clcik", "description": "a typo nobody caught"}],
+    })
+
+    with pytest.raises(PlanValidationError) as exc:
+        PlanValidator.validate([step], registry)
+
+    assert "clcik" in str(exc.value)
+    assert "in a sub-step" in str(exc.value)
+
+
+def test_the_suggestion_works_for_a_nested_typo_too():
+    """`did you mean` is most useful exactly where the name is hardest to see."""
+    registry = _registry_with("for_each_item", "click")
+    step = StepConfig(action="for_each_item", description="loop", extra={
+        "steps": [{"action": "clcik", "description": "typo"}],
+    })
+
+    with pytest.raises(PlanValidationError) as exc:
+        PlanValidator.validate([step], registry)
+
+    assert "click" in str(exc.value)
+
+
+def test_a_dispatcher_nested_in_a_dispatcher_is_walked():
+    """A body can hold another body; the walk descends through, not just into."""
+    registry = _registry_with("parallel", "for_each_item")
+    step = StepConfig(action="parallel", description="outer", extra={
+        "steps": [
+            {"action": "for_each_item", "description": "inner", "extra": {
+                "steps": [{"action": "not_a_thing", "description": "two down"}],
+            }},
+        ],
+    })
+
+    with pytest.raises(PlanValidationError) as exc:
+        PlanValidator.validate([step], registry)
+
+    assert "not_a_thing" in str(exc.value)
+
+
+def test_a_valid_nested_body_still_validates():
+    """The off switch."""
+    registry = _registry_with("for_each_item", "click")
+    step = StepConfig(action="for_each_item", description="loop", extra={
+        "steps": [{"action": "click", "description": "fine"}],
+    })
+
+    PlanValidator.validate([step], registry)
+
+
+def test_an_extra_key_called_action_that_is_not_a_step_is_not_invented():
+    """
+    The walk keys off the word `action`, so it is worth pinning that it reads a
+    step's action and not, say, a string field that happens to share the name.
+    A non-string value is not an action name.
+    """
+    registry = _registry_with("noop_set")
+    step = StepConfig(action="noop_set", description="set", extra={
+        "value": {"action": 42},          # a number, not an action name
+        "other": ["action", "steps"],     # bare strings in a list, not dicts
+    })
+
+    PlanValidator.validate([step], registry)
 
 
 # ── when-conditions (ticket T4) ───────────────────────────────────────────────

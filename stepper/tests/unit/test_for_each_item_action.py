@@ -200,14 +200,86 @@ def test_every_sub_step_runs_for_every_item(page, tmp_path):
 # ── Failure handling ──────────────────────────────────────────────────────────
 
 def test_one_failing_item_does_not_stop_the_loop(page, tmp_path):
-    """The loop is best-effort: item 2 blowing up must not skip item 3."""
+    """
+    The loop is best-effort: item 2 blowing up must not skip item 3.
+
+    Continuing past a failure is the behaviour worth keeping. Reporting the
+    whole step as passed afterwards was not — see the next test.
+    """
     boom = ExplodingAction()
 
     result, _ = run_loop(page, ["/a", "/b", "/c"], [{"action": "exploding"}],
                          tmp_path, {"exploding": boom})
 
+    assert boom.calls == 3, "the loop stopped early"
+
+
+def test_a_loop_whose_items_all_blew_up_does_not_report_passed(page, tmp_path):
+    """
+    The defect this replaces: every per-item exception was caught, logged,
+    screenshotted — and then the step returned passed with an empty error. It
+    took a picture of the failure and called the run green.
+    """
+    boom = ExplodingAction()
+
+    result, _ = run_loop(page, ["/a", "/b", "/c"], [{"action": "exploding"}],
+                         tmp_path, {"exploding": boom})
+
+    assert result.status == "failed"
+    assert "for_each_item" in result.error
+    assert "3 sub-step failure(s) across 3 item(s)" in result.error
+    for n in (1, 2, 3):
+        assert f"item {n}" in result.error, f"item {n} is not named in the error"
+
+
+def test_a_sub_step_that_reports_failed_fails_the_loop(page, tmp_path):
+    """
+    The other half. A sub-step does not have to raise — the results list
+    `_run_sub_steps` returns was discarded whole, so a plain failed status
+    vanished just as completely as an exception did.
+    """
+    class Failing(ActionStrategy):
+        action_name = "failing"
+        read_only = True
+
+        async def _execute(self, page, step, resolver, context, behaviour=None):
+            return StepResult(step=step, status="failed", error="no element")
+
+    result, _ = run_loop(page, ["/a", "/b"], [{"action": "failing"}],
+                         tmp_path, {"failing": Failing()})
+
+    assert result.status == "failed"
+    assert "no element" in result.error
+    assert page.screenshot.await_count == 0, (
+        "a reported failure is not an exception — no error screenshot is taken"
+    )
+
+
+def test_a_loop_whose_items_all_pass_still_passes(page, tmp_path):
+    """The rule has to have an off switch, or it is just a broken action."""
+    spy = SpyAction()
+
+    result, _ = run_loop(page, ["/a", "/b"], [{"action": "spy"}],
+                         tmp_path, {"spy": spy})
+
     assert result.status == "passed"
-    assert boom.calls == 3
+    assert result.error in ("", None)
+
+
+def test_a_screenshot_that_fails_does_not_replace_the_error_it_records(page, tmp_path):
+    """
+    The screenshot is best-effort. Letting it raise would swap the real
+    failure for a reporting failure, which is how the original used to get
+    lost on a page that cannot be captured.
+    """
+    boom = ExplodingAction()
+    page.screenshot.side_effect = RuntimeError("no page to capture")
+
+    result, _ = run_loop(page, ["/a"], [{"action": "exploding"}],
+                         tmp_path, {"exploding": boom})
+
+    assert result.status == "failed"
+    assert "blew up" in result.error, "the screenshot failure replaced the real one"
 
 
 def test_a_failing_item_is_screenshotted(page, tmp_path):

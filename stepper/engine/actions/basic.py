@@ -7,6 +7,19 @@ dispatches a sub-step or reads the execution context.
 
 Pattern: Strategy + Template Method — the execute() skeleton lives on
 ActionStrategy, every class below overrides _execute() only.
+
+**A not-found element fails the step; it does not skip it.** These actions used
+to report a skip when the resolver found nothing, which is the same status a
+false `when:` clause produces for a step deliberately not run. A report
+could not tell "we chose not to" from "we tried and could not", and because
+`success_rate` is `passed / (passed + failed)` and the CLI exits on
+`any(status == "failed")`, a click on an element that did not exist produced:
+
+    {"passed": 1, "failed": 0, "skipped": 1, "success_rate": 1.0}   exit=0
+
+Seven call sites across five actions had it. `skipped` now means one thing only:
+a step that was deliberately not run. The healer is unaffected — StepRunner
+fires it on `status in ("failed", "skipped")`, so the new status still heals.
 """
 
 from __future__ import annotations
@@ -73,13 +86,21 @@ class ClickAction(ActionStrategy):
         result = await resolver.resolve(page, step.element, step.description)
 
         if not result.found:
-            return StepResult(step=step, status="skipped",
+            return StepResult(step=step, status="failed",
                               error=f"Element not found → {result.method}")
 
         if result.confidence < CONFIDENCE_WARN:
-            return StepResult(step=step, status="warned",
-                              confidence=result.confidence,
-                              error=f"Low confidence {result.confidence:.0%} → skipped")
+            # Below the gate the click does not happen, so this is a step that
+            # did not act — the same thing a not-found element is. It used to
+            # report `warned`, which no counter reads: `success_rate` is
+            # passed/(passed+failed), the CLI exits on `any(failed)`, and the
+            # heal loop fires on failed-or-skipped. A step the healer exists to
+            # rescue was dropped silently instead.
+            return StepResult(
+                step=step, status="failed", confidence=result.confidence,
+                error=f"Low confidence {result.confidence:.0%} (below "
+                      f"{CONFIDENCE_WARN:.0%}) → not clicked",
+            )
 
         if result.confidence < CONFIDENCE_AUTO:
             logger.warning(f"Medium confidence {result.confidence:.0%} → attempting")
@@ -121,7 +142,7 @@ class FillAction(ActionStrategy):
         result = await resolver.resolve(page, step.element, step.description)
 
         if not result.found:
-            return StepResult(step=step, status="skipped",
+            return StepResult(step=step, status="failed",
                               error=f"Element not found → {result.method}")
 
         await result.locator.scroll_into_view_if_needed()
@@ -150,7 +171,7 @@ class HoverAction(ActionStrategy):
         result = await resolver.resolve(page, step.element, step.description)
 
         if not result.found:
-            return StepResult(step=step, status="skipped",
+            return StepResult(step=step, status="failed",
                               error=f"Element not found → {result.method}")
 
         await result.locator.first.hover(timeout=5_000)
@@ -188,7 +209,7 @@ class SelectAction(ActionStrategy):
         result = await resolver.resolve(page, step.element, step.description)
 
         if not result.found:
-            return StepResult(step=step, status="skipped",
+            return StepResult(step=step, status="failed",
                               error=f"Element not found → {result.method}")
 
         label = step.extra.get("label")
@@ -240,11 +261,11 @@ class ScrollToAction(ActionStrategy):
     async def _execute(self, page, step: StepConfig, resolver,
                        context: ExecutionContext, behaviour=None) -> StepResult:
         if not step.element:
-            return StepResult(step=step, status="skipped",
+            return StepResult(step=step, status="failed",
                               error="scroll_to: no element specified")
         result = await resolver.resolve(page, step.element, step.description)
         if not result.found:
-            return StepResult(step=step, status="skipped",
+            return StepResult(step=step, status="failed",
                               error=f"scroll_to: element not found → {step.element}")
         await result.locator.first.scroll_into_view_if_needed()
         logger.info(f"✓ scroll_to via {result.method}")
@@ -266,7 +287,7 @@ class KeyboardPressAction(ActionStrategy):
         if step.element:
             result = await resolver.resolve(page, step.element, step.description)
             if not result.found:
-                return StepResult(step=step, status="skipped",
+                return StepResult(step=step, status="failed",
                                   error=f"keyboard_press: element not found → {step.element}")
             await result.locator.first.press(key)
             logger.info(f"✓ keyboard_press: '{key}' on {result.method}")

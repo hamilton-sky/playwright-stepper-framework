@@ -615,7 +615,7 @@ which one they are writing against:
 |---|---|---|
 | `_interact()` | page objects, one named element | **`False`** — for the interaction itself, never an exception |
 | handle + index | page objects, picking out of a collection | `False` if the collection is empty — then **`False` or an exception**, depending on the method |
-| resolve + locator | the engine's own `click` / `fill` / `hover` | **`skipped`** if nothing resolved; an **exception** if the interaction fails |
+| resolve + locator | the engine's own `click` / `fill` / `hover` | **`failed`** if nothing resolved or confidence is below the gate; an **exception** if the interaction fails |
 
 The first is the one that bites. A missing selector, a resolver confidence below
 threshold, and a click that did not land all come back the same way, as `False`. Drop
@@ -638,7 +638,7 @@ same way — so this needs a custom strategy that does not. The cascade does not
 them from each other, which is arguably its own bug: one broken strategy takes down
 the whole chain rather than yielding to the next. Whether it *should* catch is a real
 question, though, since a swallowed exception turns a broken strategy into "element
-not found" everywhere. That decision belongs with the ones below, not here.
+not found" everywhere. That one is still open, and is the last of its family left.
 
 The second path exists because the cascade resolves exactly one element, so picking
 the first of several rows or following a pagination link has to go to the driver
@@ -662,7 +662,7 @@ inconsistency rather than a defect: the `False` is caught by the propagation rul
 above, the exception by `StepRunner`. Worth making uniform, and not in a documentation
 pass.
 
-The third path has gaps of its own, [named below](#the-gaps-that-are-still-open).
+The third path had gaps of its own; they are [closed below](#the-four-gaps-that-were-open-and-are-not-now).
 
 Every site in this tree once dropped that `False` on the floor, and it hid real
 defects:
@@ -677,9 +677,9 @@ defects:
 None was found by reading. `validate` reported every workflow sound throughout. They
 surfaced the first time something ran the flows against a real page.
 
-So six rules now fail the build. The first four are static — which matters, because
-they reach the sites this environment cannot execute; the last two run the action and
-read its status:
+So ten rules now fail the build. The first four are static — which matters, because
+they reach the sites this environment cannot execute; the rest run the action and read
+its status:
 
 | Rule | Where |
 |---|---|
@@ -689,6 +689,10 @@ read its status:
 | No element-handle click without a `_hover` before it | same |
 | An assertion with nothing to assert fails | `tests/unit/test_assertion_input_validation.py` |
 | A booking with no confirmation fails | `tests/unit/test_phptravels_failure_propagation.py` |
+| A not-found element fails the step, and never skips it | `tests/unit/test_not_found_fails_the_step.py` |
+| A click below the confidence gate fails rather than warns | same |
+| A loop reports the failures of the sub-steps it ran | `tests/unit/test_for_each_item_action.py` |
+| A typo'd action inside a dispatcher fails validation | `tests/unit/test_plan_validator.py` |
 
 Each was checked by reverting the fix it guards and confirming it fails. A rule that
 has never failed is a rule nobody has tested.
@@ -705,69 +709,82 @@ A step whose job is to read a fact fails when the fact is absent, too:
 banner nor a booking reference, and reported passed with a `logger.warning` as the
 only trace.
 
-### The gaps that are still open
+### The four gaps that were open, and are not now
 
-Review of this pull request turned over three of these. They are named rather than
-fixed here, for the reason given with each — but named, because an engine that lies
-is worse when the lie is undocumented.
+Review of the documentation pull request turned these over — three by reading the
+claims against the code, the fourth found while verifying the fix for the other
+three. Each is the same defect as the ones above: a step that did not do its job,
+reported as though it had. They are closed, with the measurement that found each one
+and the measurement that closed it.
 
-**`for_each_item` reports `passed` whatever its sub-steps do.** It catches every
-exception per item, logs it, takes an error screenshot, and then returns `passed`
-unconditionally; the list of results `_run_sub_steps` hands back is discarded.
-Measured, with two items and a sub-step that cannot even be constructed:
+**`for_each_item` reported `passed` whatever its sub-steps did.** It caught every
+per-item exception, logged it, took an error screenshot, and discarded the results
+list `_run_sub_steps` returns. Two items whose sub-step could not even be constructed:
 
 ```
-items iterated : 2
-every sub-step : raised (unknown action)
-step status    : 'passed'
-step error     : ''
+                        before          after
+items iterated          2               2
+every sub-step          raised          raised
+step status             'passed'        'failed'
+step error              ''              3 sub-step failure(s) across 3 item(s): …
 ```
 
-It takes a screenshot *of the error* and then reports the step passed. This is the
-defect this whole section is about, in a core flow action, and unlike the third one
-below it carries no design question — a step that swallowed two exceptions did not
-pass. It is unfixed here only because `ol_data_driven` is the workflow that uses it,
-and OpenLibrary has never run in CI, so the change cannot be verified against a real
-run from this branch.
+It took a screenshot *of the error* and then reported the step passed.
+`stop_on_failure` stays `False` — a bad item must not abandon the rest of the
+collection — because continuing past a failure is not the same as reporting it
+passed. That distinction is the whole fix.
 
-**`validate` does not look inside dispatchers.** `PlanValidator` recurses through
+**`validate` did not look inside dispatchers.** `PlanValidator` recursed through
 `extra` for `when` clauses but not for action names, so a typo'd action inside
-`for_each_item` passes `validate` and only fails at run time:
+`for_each_item` passed `validate` and failed only at run time, after a session had
+opened:
 
 ```
-top-level               → validate raised: 1 validation error(s)
-nested in extra.steps   → validate PASSED (typo not caught)
+                        before                  after
+top-level typo          1 validation error      1 validation error
+nested in extra.steps   PASSED (not caught)     unknown action '…' in a sub-step
 ```
 
-The run does fail, loudly, so this costs a round trip rather than a false green.
+Fixing it immediately found that the test covering this had been building a registry
+`main` never validates against — it omitted the subflow action, and `ol_data_driven`
+calls `run_workflow` from inside a `for_each_item` body. Nothing had ever looked
+there.
 
-**The engine's `click` and `fill` return `skipped`** — not `failed` — when the resolver
-finds nothing. `skipped` is what a `when:` clause produces when a step is deliberately
-not run, so the two are indistinguishable in a report. Measured on a page with no such
-element:
+**The engine's page primitives returned `skipped` for a not-found element** — seven
+call sites across `click`, `fill`, `hover`, `select`, `scroll_to` and
+`keyboard_press`. `skipped` is what a false `when:` clause produces for a step
+deliberately not run, so a report could not tell "we chose not to" from "we tried and
+could not", and neither could anything downstream: `success_rate` is
+`passed / (passed + failed)` and the CLI exits on `any(status == "failed")`. Clicking
+a selector that matched nothing, on a real page:
 
 ```
-▶ Step 2: click a button that does not exist
-  -> Element not found → not-found
-○ Step 2 → skipped
-
-{"total_steps": 2, "passed": 1, "failed": 0, "skipped": 1, "success_rate": 1.0}
-exit=0
+before  {"passed": 1, "failed": 0, "skipped": 1, "success_rate": 1.0}   exit=0
+after   {"passed": 1, "failed": 1, "skipped": 0, "success_rate": 0.5}   exit=1
 ```
 
-A click that never happened, a success rate of 100%, and an exit code CI reads as
-green. It is the same defect as the ones above, in the two most-used actions in the
-framework.
+`skipped` now means one thing: a step deliberately not run. Every remaining skip in a
+shipped run carries a `when:` clause as its reason.
 
-It is not fixed here, deliberately: `skipped` → `failed` changes the status of every
-not-found across every workflow, and that decision wants its own change and its own
-sweep rather than a line in a documentation pass.
+**And one found by verifying that fix.** Healing a deliberately broken selector
+against a real page, the resolver located the button at 45% confidence — below the
+`CONFIDENCE_WARN` gate — so `click` returned `warned` and did not click. No counter
+reads `warned`:
 
-The shipped exposure is small but not zero — seven steps across three workflows use
-the generic actions. Six are in `sd_heal_test` and `sd_full_heal_flow`, whose selectors
-are broken on purpose and go to the healer. The seventh is one `click` in
-`db_web_mixed`, which CI runs on every push. The other 27 workflows drive their sites
-through the site actions, which do report a missed interaction correctly.
+```
+before  {"total_steps": 3, "passed": 2, "failed": 0, "skipped": 0, "success_rate": 1.0}   exit=0
+after   {"total_steps": 3, "passed": 2, "failed": 1, "skipped": 0, "success_rate": 0.67}  exit=1
+```
+
+Three steps, one of which never happened, and `passed + failed + skipped = 2`. Worse
+than the skip it sat beside — at least a skip was counted. And because the heal loop
+fires on failed-or-skipped, a step the healer exists to rescue was dropped instead of
+healed. It heals now: the same run shows `⚕ Healing step 3 (attempt 1/2)` where before
+it showed nothing.
+
+Each fix was checked by reverting it and confirming its tests fail — 8, 3, 3 and 3
+respectively — and the whole hermetic set was re-run after: all eight the-internet
+flows, `hotel_booking`, `db_web_mixed`, `db_smoke` and `noop_smoke`, unchanged.
 
 ---
 
@@ -818,7 +835,7 @@ drift.
 ## Testing
 
 ```bash
-# Unit — no browser, no network, no credentials. 1221 tests, ~17s.
+# Unit — no browser, no network, no credentials. 1249 tests, ~19s.
 pytest stepper/tests/unit/
 
 # Stepper integration — real browser
