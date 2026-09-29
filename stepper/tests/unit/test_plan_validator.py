@@ -241,6 +241,16 @@ def test_the_shipped_workflows_validate_against_the_real_registry():
 #     nested in extra.steps   → validate PASSED (typo not caught)
 
 
+#: What the real dispatchers declare, so the doubles below are dispatchers in
+#: the one way the validator now cares about. Keeping this in step with
+#: flow.py is what test_the_real_dispatchers_declare_their_containers is for.
+_FAKE_DISPATCH_KEYS = {
+    "for_each_item": ("steps",),
+    "parallel":      ("steps",),
+    "ensure_login":  ("login_steps",),
+}
+
+
 def _registry_with(*action_names):
     """A registry that knows exactly these names and nothing else."""
     from stepper.engine.interfaces import ActionStrategy
@@ -251,9 +261,43 @@ def _registry_with(*action_names):
     for name in action_names:
         cls = type(f"Fake_{name}", (ActionStrategy,),
                    {"action_name": name, "domain": None,
+                    "sub_step_keys": _FAKE_DISPATCH_KEYS.get(name, ()),
                     "_execute": lambda self, *a, **k: None})
         registry.register(cls())
     return registry
+
+
+def test_the_real_dispatchers_declare_their_containers():
+    """
+    The doubles above only mean anything if the real classes agree. This is
+    also the check that a new dispatcher does not forget to declare itself —
+    the failure mode would be silent, since an undeclared body is simply not
+    validated.
+    """
+    from stepper.engine.actions.strategies import (
+        EnsureLoginAction, ForEachItemAction, ParallelAction,
+    )
+
+    assert ForEachItemAction.sub_step_keys == ("steps",)
+    assert ParallelAction.sub_step_keys    == ("steps",)
+    assert EnsureLoginAction.sub_step_keys == ("login_steps",)
+
+
+def test_an_action_that_is_not_a_dispatcher_declares_nothing():
+    """
+    `extra` is an open bag, so an action is free to use the key `steps` for its
+    own data. Keying the walk on the *name* rejected that; keying it on the
+    action does not.
+    """
+    from stepper.engine.actions.strategies import ClickAction
+
+    assert ClickAction.sub_step_keys == ()
+
+    registry = _registry_with("click")
+    step = StepConfig(action="click", description="not a dispatcher",
+                      extra={"steps": ["phase 1", "phase 2"]})
+
+    PlanValidator.validate([step], registry)
 
 
 def test_a_typo_inside_a_dispatcher_body_is_caught():
@@ -410,13 +454,14 @@ def test_domain_discovery_stays_lenient_about_the_same_shapes():
     """
     The asymmetry, pinned. Discovery must not crash on a malformed body — it
     runs before validation and on plans validation has not seen. Reporting is
-    the validator's job; `sub_step_dicts` only has to survive.
+    the validator's job; the discovery walk only has to survive.
     """
-    from stepper.engine.planner.domains import sub_step_dicts
+    from stepper.engine.planner.domains import domains_used
 
-    assert sub_step_dicts({"steps": "not a list"}) == []
-    assert sub_step_dicts({"steps": ["not a step", 42]}) == []
-    assert sub_step_dicts(None) == []
+    registry = _registry_with("parallel")
+    for bad in ({"steps": "not a list"}, {"steps": ["not a step", 42]}):
+        step = StepConfig(action="parallel", description="p", extra=bad)
+        assert domains_used([step], registry) == []
 
 
 def test_a_valid_nested_body_still_validates():

@@ -250,6 +250,16 @@ class ActionStrategy(ABC):
     #: Must match the "action" field in step JSON.
     action_name: ClassVar[str]
 
+    #: The `extra` keys this action reads a list of *sub-steps* from, if any.
+    #: Empty for everything that is not a dispatcher.
+    #:
+    #: PlanValidator uses it to decide what to validate as a nested step, and
+    #: it has to be declared rather than guessed from the key name. `extra` is
+    #: an open bag of action-specific keys and factory.py promises a new action
+    #: needs "zero other changes", so a validator that assumes any `extra.steps`
+    #: is executable would reject an action that uses the name for its own data.
+    sub_step_keys: ClassVar[tuple[str, ...]] = ()
+
     #: Which domain's session this action acts on — the key StepRunner looks up
     #: in the run's SessionSet. Every browser action declares "web".
     #:

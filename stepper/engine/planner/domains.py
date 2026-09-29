@@ -13,10 +13,10 @@ dicts inside `extra`, so a loop body is the easiest place for a second domain to
 hide — and since M4 it is a place the runner genuinely routes to a different
 session.
 
-There are two walks here, and they are deliberately not the same shape:
-`sub_step_dicts` reads only the named dispatcher containers, and `_domains_in`
-reads any dict carrying an `action`. See `_domains_in` for why the looser one
-is right for discovery and wrong for validation.
+`_domains_in` below reads any dict carrying an `action`, which is looser than
+what PlanValidator does — see its docstring for why that is right here and
+wrong there. Which `extra` keys actually hold sub-steps is declared by the
+action itself (`ActionStrategy.sub_step_keys`), never guessed from the name.
 
 An action the registry does not know reports domain `None` rather than raising.
 Its real problem is that it is unregistered, PlanValidator already says so, and
@@ -24,17 +24,6 @@ a second error about its domain would only bury the first.
 """
 
 from __future__ import annotations
-
-
-#: The `extra` keys a dispatcher reads its body from — the only places a
-#: sub-step can live. `for_each_item`, `parallel` and `paginate` use `steps`
-#: (flow.py:66, flow.py:400); `ensure_login` uses `login_steps` (flow.py:163).
-#:
-#: Walking *every* dict under `extra` instead is wrong, and not harmlessly:
-#: `run_workflow` passes arbitrary `extra.vars` to the child workflow, so
-#: `{"vars": {"action": "archive"}}` reads as a sub-step calling an action
-#: named "archive". PlanValidator rejected the workflow over it.
-SUB_STEP_KEYS = ("steps", "login_steps")
 
 
 def body_of(raw: dict) -> dict:
@@ -49,27 +38,6 @@ def body_of(raw: dict) -> dict:
     if "extra" in raw:
         return raw["extra"] if isinstance(raw["extra"], dict) else {}
     return raw
-
-
-def sub_step_dicts(extra) -> list[dict]:
-    """
-    Every raw sub-step dict below this `extra`, depth-first, dispatchers first.
-
-    Descends *through* a sub-step as well as recording it: a `for_each_item`
-    nested inside a `parallel` carries its own body one level further down.
-    """
-    found: list[dict] = []
-    if not isinstance(extra, dict):
-        return found
-    for key in SUB_STEP_KEYS:
-        body = extra.get(key)
-        if not isinstance(body, list):
-            continue
-        for raw in body:
-            if isinstance(raw, dict):
-                found.append(raw)
-                found.extend(sub_step_dicts(body_of(raw)))
-    return found
 
 
 def domains_in_step(step, registry) -> list[tuple[str, str | None]]:

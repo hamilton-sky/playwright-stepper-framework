@@ -10,9 +10,7 @@ from __future__ import annotations
 import difflib
 
 from stepper.engine.interfaces import StepConfig
-from stepper.engine.planner.domains import (
-    SUB_STEP_KEYS, body_of, domains_in_step,
-)
+from stepper.engine.planner.domains import body_of, domains_in_step
 
 
 class PlanValidationError(Exception):
@@ -73,7 +71,8 @@ class PlanValidator:
             # so the loop above never saw them: a typo inside a for_each_item
             # body passed validate and surfaced only at run time, after a
             # session had opened.
-            for problem, unknown in _sub_step_errors(step.extra, known):
+            for problem, unknown in _sub_step_errors(
+                    step.action, step.extra, known, registry):
                 saw_unknown_action = saw_unknown_action or unknown
                 step_errors.append(problem)
 
@@ -150,7 +149,22 @@ def _unknown_conditions_in(node, conditions) -> list[str]:
     return found
 
 
-def _sub_step_errors(extra, known: list[str]) -> list[tuple[str, bool]]:
+def _dispatch_keys(action_name, registry) -> tuple[str, ...]:
+    """
+    The `extra` keys this action dispatches sub-steps from, as it declares
+    them. Empty for anything the registry does not know — an unregistered
+    action already has an error of its own, and a second one about its body
+    would only bury it.
+    """
+    try:
+        action = registry.create(action_name)
+    except Exception:
+        return ()
+    return tuple(getattr(action, "sub_step_keys", ()) or ())
+
+
+def _sub_step_errors(action_name, extra, known: list[str],
+                     registry) -> list[tuple[str, bool]]:
     """
     The same checks a top-level step gets, applied to every sub-step below it,
     plus the shape checks a nested body needs and a top-level list cannot.
@@ -175,16 +189,19 @@ def _sub_step_errors(extra, known: list[str]) -> list[tuple[str, bool]]:
     Note that `sub_step_dicts` stays lenient: it feeds domain *discovery*,
     where a guess costs nothing and a crash costs the run.
 
-    Only the dispatcher containers are walked (see SUB_STEP_KEYS). Treating
-    every dict under `extra` as a possible step rejects legitimate data:
-    `run_workflow` passes arbitrary `extra.vars` through, so
-    `{"vars": {"action": "archive"}}` read as a sub-step naming an action.
+    Which keys hold sub-steps is asked of the action, never guessed from the
+    name. `extra` is an open bag of action-specific keys and factory.py
+    promises a new action needs "zero other changes", so a validator that
+    assumed any `extra.steps` was executable would reject an action using that
+    name for its own data. Guessing has already cost once here: `run_workflow`
+    passes arbitrary `extra.vars` through, and `{"vars": {"action": "archive"}}`
+    read as a sub-step naming an action.
     """
     found: list[tuple[str, bool]] = []
     if not isinstance(extra, dict):
         return found
 
-    for key in SUB_STEP_KEYS:
+    for key in _dispatch_keys(action_name, registry):
         if key not in extra:
             continue
         body = extra[key]
@@ -213,7 +230,7 @@ def _sub_step_errors(extra, known: list[str]) -> list[tuple[str, bool]]:
             if not raw.get("description"):
                 found.append((f"sub-step '{label}': missing 'description'", False))
 
-            found.extend(_sub_step_errors(body_of(raw), known))
+            found.extend(_sub_step_errors(action, body_of(raw), known, registry))
     return found
 
 

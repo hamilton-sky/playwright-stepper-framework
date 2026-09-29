@@ -87,16 +87,27 @@ happened produced `success_rate 1.0` and `exit 0` — and, being neither failed 
 skipped, never reached the healer that existed to rescue it. See
 `stepper/tests/unit/test_not_found_fails_the_step.py`.
 
-**A dispatcher reports its sub-steps.** `_run_sub_steps` returns a list of
-`StepResult`; if your action drops it and returns `passed`, every failure inside it
-disappears. `for_each_item` caught each per-item exception, took an error
-screenshot, and then reported the step passed. Continuing past a failure
-(`stop_on_failure=False`) is a legitimate choice; reporting it as success is not.
+**A dispatcher reports its sub-steps, and declares where they live.**
+`_run_sub_steps` returns a list of `StepResult`; if your action drops it and returns
+`passed`, every failure inside it disappears. `for_each_item` caught each per-item
+exception, took an error screenshot, and then reported the step passed. Continuing
+past a failure (`stop_on_failure=False`) is a legitimate choice; reporting it as
+success is not.
+
+Set `sub_step_keys` to the `extra` keys you read sub-steps from — `("steps",)` for
+`for_each_item` and `parallel`, `("login_steps",)` for `ensure_login`. That is what
+`PlanValidator` walks to check nested steps, and it has to be declared rather than
+inferred from the key name: `extra` is an open bag and `build_default_registry`
+promises a new action needs "zero other changes", so a validator that assumed any
+`extra.steps` was executable would reject an action using that name for its own
+data. Leave it `()` if your action is not a dispatcher — which is the default, so
+there is nothing to do.
 
 Put the class in the `stepper/engine/actions/` module that matches what it does —
 `basic.py` (page primitives), `assertions.py` (check or record state), `data.py`
-(rows in and out), `flow.py` (dispatches sub-steps), `measurement.py` (judge the
-render against a threshold) — re-export it from `strategies.py`, then register it
+(rows in and out), `flow.py` (dispatches sub-steps), `subflow.py` (runs another
+workflow), `measurement.py` (judge the render against a threshold) — re-export it
+from `strategies.py`, then register it
 in `build_default_registry()` in `stepper/engine/actions/factory.py`.
 
 `strategies.py` is a re-export shim, not a home for classes;
