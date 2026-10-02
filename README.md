@@ -323,14 +323,16 @@ It finds the most recent `heal_suggestions.json` under `reports/`, shows a per-s
 before/after diff, and patches the JSON in place (`--yes` to skip confirmation).
 
 `sd_heal_test.json` and `sd_full_heal_flow.json` ship with deliberately broken selectors.
-Run them with `--heal 2 --no-heal-cache` to watch the cascade recover each one — the
-embed-direct rung needs no API key.
+Run them with `--heal 2 --no-heal-cache` and an LLM key to watch the cascade recover
+each one.
 
-They are **not** yet part of CI, and the honest reason is worth knowing: an
-`assert_*` step resolves through the full cascade, fuzzy fallbacks included, so an
-assertion can pass by matching a *different* element than the one it names. Until
-assertions resolve strictly, a green heal workflow would not prove the heal worked.
-Until then this is a claim about what the healer does, not a guarantee CI enforces.
+They are **not** part of CI, and the reason is a measured one. Run keyless against the
+SauceDemo fixtures, `sd_heal_test` fails at its first heal: the healer scores the
+username input between 0.50 and 0.85, which is the band that needs an AI pick, so the
+embed-direct rung cannot recover it alone. This had been documented as working without
+a key; it was never measured, because `--no-heal-cache` was silently ignored and every
+"measurement" replayed `heal_cache.json`. Making the keyless rung recover a login form
+is open work.
 
 ---
 

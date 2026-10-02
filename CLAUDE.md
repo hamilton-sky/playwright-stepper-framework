@@ -110,9 +110,11 @@ python stepper/main.py run db_web_mixed \
 # The same domain with no browser at all
 python stepper/main.py run db_smoke
 
-# Watch the healer work on deliberately broken selectors. No API key needed —
-# the embed-direct rung calls no provider. --no-heal-cache is what makes this a
-# measurement rather than a replay of the committed heal_cache.json.
+# Watch the healer work on deliberately broken selectors. --no-heal-cache is
+# what makes this a measurement rather than a replay of the committed
+# heal_cache.json. It needs an LLM key (GROQ_API_KEY / GEMINI_API_KEY /
+# ANTHROPIC_API_KEY): keyless, the embed-direct rung cannot recover the username
+# field — its best match scores below 0.85 — and the run fails at step 2.
 python stepper/main.py run sd_heal_test --heal 2 --no-heal-cache --show
 
 # The eight the-internet flows, against checked-in fixtures on loopback. No

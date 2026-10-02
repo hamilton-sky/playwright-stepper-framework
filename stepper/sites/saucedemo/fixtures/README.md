@@ -37,8 +37,24 @@ on one host and finishes on the other.
 | `sd_happy_path` | 6/6 — runs in CI |
 | `sd_multi_product` | 9/9 — runs in CI; order total $36.69 = 33.97 + 8% tax |
 | `sd_smoke_test` | 5/5 — runs in CI; the live-host run stays as the drift check |
-| `sd_heal_test` | runs in CI with `--heal 2 --no-heal-cache` and no LLM key, so its three broken selectors must be recovered by the embed-direct rung alone. Needs the MiniLM model, which CI downloads and caches; it cannot run where the Hugging Face hub is unreachable. |
-| `sd_full_heal_flow` | not in CI: the same three heals, followed by the checkout `sd_happy_path` already covers. |
+| `sd_heal_test`, `sd_full_heal_flow` | not in CI. Run keyless with `--heal 2 --no-heal-cache`, `sd_heal_test` fails at step 2 — see below. |
+
+## The keyless healer cannot recover the username field
+
+CI ran `sd_heal_test` here with `--heal 2 --no-heal-cache` and every AI key unset.
+Step 2 ("Type username into the username field", selector deliberately broken)
+failed: the healer's `DOMSnapshotCascade` scored its best candidate between 0.50
+and 0.85, returned `strategy=scoped` rather than `embed_direct`, and a scoped heal
+needs an AI pick. With no provider, both attempts failed.
+
+The input the healer embeds — tag `input`, placeholder `Username`, name
+`user-name`, type `text` — is the same on the live site, so the long-standing
+claim that this workflow heals "with no API key" very likely never held. It
+went unmeasured because `--no-heal-cache` used to be ignored, so every run
+replayed the committed `heal_cache.json`.
+
+Open work: what `_describe_element` embeds, or where the 0.85 `embed_direct`
+threshold sits. Until then the heal workflows need an LLM key.
 
 ## What it is and is not
 
