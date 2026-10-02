@@ -51,6 +51,15 @@ def _step(**kw) -> StepConfig:
     return StepConfig(**base)
 
 
+def _rung_step(**kw) -> StepConfig:
+    """
+    A step for testing the score rungs themselves. Its action is one the
+    clear-winner rule does not model, so a lone element is judged on the
+    thresholds alone — the rule has its own tests further down.
+    """
+    return _step(action="scroll_to", **kw)
+
+
 def _page(elements: list[dict], scoped_html: str = "", walk=None):
     """
     A page stub whose evaluate() dispatches on the JS it is handed, the way the
@@ -161,7 +170,7 @@ async def test_a_middling_score_sends_scoped_dom_not_the_whole_page(fixed_scores
     page = _page([_element(text="Submit", id="submit")],
                  scoped_html="<form><button id='submit'>Submit</button></form>")
 
-    payload = await DOMSnapshotCascade.capture(page, _step())
+    payload = await DOMSnapshotCascade.capture(page, _rung_step())
 
     assert payload.strategy_used == "scoped"
     assert payload.healed_cfg is None
@@ -180,7 +189,7 @@ async def test_scoped_dom_survives_an_element_with_nothing_to_scope_to(fixed_sco
     fixed_scores({"Submit": 0.70})
     page = _page([_element(text="Submit", id="", aria=None)])
 
-    payload = await DOMSnapshotCascade.capture(page, _step())
+    payload = await DOMSnapshotCascade.capture(page, _rung_step())
 
     assert payload.strategy_used == "scoped"
     assert "scoped_html" not in json.loads(payload.content)
@@ -245,7 +254,7 @@ async def test_each_threshold_selects_its_rung(fixed_scores, top_score, expected
     fixed_scores({"Target": top_score})
     page = _page([_element(text="Target", id="t")], walk={"tag": "body"})
 
-    payload = await DOMSnapshotCascade.capture(page, _step())
+    payload = await DOMSnapshotCascade.capture(page, _rung_step())
 
     assert payload.strategy_used == expected
 
@@ -370,3 +379,164 @@ def test_a_thin_description_is_padded_from_the_action_name():
 
     assert len(query) > len("go")
     assert "cart" in query
+
+
+# ── The clear-winner rule ─────────────────────────────────────────────────────
+#
+# Measured on the SauceDemo login fixture, MiniLM put the right element first for
+# every heal step but never at ≥ 0.85: username 0.790 (runner-up 0.341), password
+# 0.755 (0.382), Login 0.728 (alone among clickables). Every heal fell to the
+# scoped rung and needed an AI pick. The rule: a candidate that suits the action
+# and clearly leads the other suitable candidates is healed directly.
+
+from stepper.engine.healer.dom_snapshot import _LONE_MIN, _MARGIN  # noqa: E402
+
+
+def _login_form():
+    return [
+        _element(tag="INPUT", role="input", placeholder="Username", name="user-name",
+                 id="user-name", type="text"),
+        _element(tag="INPUT", role="input", placeholder="Password", name="password",
+                 id="password", type="password"),
+        _element(tag="INPUT", role="input", name="login-button", id="login-button",
+                 type="submit", value="Login"),
+    ]
+
+
+async def test_the_measured_login_form_heals_with_no_ai_call(fixed_scores):
+    """The numbers from the fixture: a 0.79 leading by 0.45 is not ambiguous."""
+    fixed_scores({"Username": 0.79, "Login": 0.34, "Password": 0.25})
+
+    payload = await DOMSnapshotCascade.capture(
+        _page(_login_form()),
+        _step(action="fill", description="Type username into the username field"),
+    )
+
+    assert payload.strategy_used == "embed_direct"
+    assert payload.healed_cfg["placeholder"] == "Username"
+    assert payload.token_estimate == 0
+
+
+async def test_a_fill_never_heals_onto_a_button(fixed_scores):
+    """
+    The submit button outscoring every field is not a reason to type into it. Only
+    elements that take text are candidates for a fill, so the answer stays with
+    the AI rather than becoming a confident wrong one.
+    """
+    fixed_scores({"Login": 0.80, "Username": 0.40, "Password": 0.38})
+
+    payload = await DOMSnapshotCascade.capture(
+        _page(_login_form(), walk={"tag": "body"}),
+        _step(action="fill", description="type into the login field"),
+    )
+
+    assert payload.strategy_used != "embed_direct"
+
+
+async def test_a_click_ignores_text_fields_and_heals_to_the_lone_button(fixed_scores):
+    """Text inputs are not clickable targets; the submit input is the one candidate."""
+    fixed_scores({"Login": 0.73, "Username": 0.30, "Password": 0.42})
+
+    payload = await DOMSnapshotCascade.capture(
+        _page(_login_form()),
+        _step(action="click", description="Click the Login button to submit credentials"),
+    )
+
+    assert payload.strategy_used == "embed_direct"
+    assert payload.healed_cfg == {"priority": 0, "id": "login-button"}
+
+
+@pytest.mark.parametrize("lead, expected", [
+    (_MARGIN, "embed_direct"),            # inclusive
+    (_MARGIN - 0.01, "scoped"),
+])
+async def test_the_lead_must_reach_the_margin(fixed_scores, lead, expected):
+    fixed_scores({"Username": 0.70, "Password": round(0.70 - lead, 4)})
+
+    payload = await DOMSnapshotCascade.capture(
+        _page(_login_form()[:2]),
+        _step(action="fill", description="type the username"),
+    )
+
+    assert payload.strategy_used == expected
+
+
+async def test_a_clear_lead_still_needs_the_floor(fixed_scores):
+    """0.45 over 0.10 leads by plenty, and is still a weak match for anything."""
+    fixed_scores({"Username": 0.45, "Password": 0.10})
+
+    payload = await DOMSnapshotCascade.capture(
+        _page(_login_form()[:2], walk={"tag": "body"}),
+        _step(action="fill", description="type the username"),
+    )
+
+    assert payload.strategy_used == "aria"
+
+
+@pytest.mark.parametrize("score, expected", [
+    (_LONE_MIN, "embed_direct"),
+    (_LONE_MIN - 0.01, "scoped"),
+])
+async def test_a_lone_candidate_has_to_clear_a_higher_bar(fixed_scores, score, expected):
+    """
+    With nothing to lead, the margin is the score itself — the case where the
+    target is gone and something unrelated is left. So it needs more than the
+    0.50 floor a contested winner does.
+    """
+    fixed_scores({"Accept": score})
+
+    payload = await DOMSnapshotCascade.capture(
+        _page([_element(text="Accept", id="accept")]),
+        _step(action="click", description="click the login button"),
+    )
+
+    assert payload.strategy_used == expected
+
+
+async def test_the_cross_encoder_can_veto_the_winner(fixed_scores, monkeypatch):
+    """If the re-ranker prefers a different suitable element, the AI decides."""
+    fixed_scores({"Username": 0.79, "Password": 0.30})
+    monkeypatch.setattr(
+        ds._CrossEncoderReranker, "instance",
+        classmethod(lambda cls: SimpleNamespace(rerank=lambda q, top: list(reversed(top)))),
+    )
+
+    payload = await DOMSnapshotCascade.capture(
+        _page(_login_form()[:2], scoped_html="<form></form>"),
+        _step(action="fill", description="type the username"),
+    )
+
+    assert payload.strategy_used != "embed_direct"
+
+
+async def test_an_action_the_rule_does_not_model_is_unaffected(fixed_scores):
+    fixed_scores({"Username": 0.79, "Password": 0.20})
+
+    payload = await DOMSnapshotCascade.capture(
+        _page(_login_form()[:2], scoped_html="<form></form>"),
+        _step(action="scroll_to", description="scroll to the username"),
+    )
+
+    assert payload.strategy_used == "scoped"
+
+
+@pytest.mark.parametrize("action, element, fits", [
+    ("fill",  _element(tag="INPUT", type="text"), True),
+    ("fill",  _element(tag="INPUT", type="password"), True),
+    ("fill",  _element(tag="INPUT", type=None), True),          # type defaults to text
+    ("fill",  _element(tag="INPUT", type="submit"), False),
+    ("fill",  _element(tag="INPUT", type="checkbox"), False),
+    ("fill",  _element(tag="TEXTAREA", role="textarea"), True),
+    ("fill",  _element(tag="DIV", role="textbox"), True),
+    ("fill",  _element(tag="BUTTON", role="button"), False),
+    ("click", _element(tag="BUTTON", role="button"), True),
+    ("click", _element(tag="A", role="a"), True),
+    ("click", _element(tag="INPUT", type="submit"), True),
+    ("click", _element(tag="INPUT", type="text"), False),
+    ("click", _element(tag="DIV", role="link"), True),
+    ("select", _element(tag="SELECT", role="select"), True),
+    ("select", _element(tag="BUTTON", role="button"), False),
+    ("scroll_to", _element(tag="BUTTON", role="button"), None),
+])
+def test_which_elements_suit_which_action(action, element, fits):
+    assert DOMSnapshotCascade._fits_action(action, element) is fits

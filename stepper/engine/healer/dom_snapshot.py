@@ -9,8 +9,24 @@ candidate scores above 0.50.
 
   ≥ 0.85, unique     → embed_direct      (no AI call, healed_cfg ready)
   ≥ 0.85, ambiguous  → embed_candidates  (~20-40 tokens)
+  clear winner       → embed_direct      (no AI call — see below)
   0.50-0.85          → scoped DOM area   (~40-150 tokens)
   < 0.50             → aria snapshot     (~200-500 tokens)
+
+Clear winner:
+  The 0.85 bar alone never fired on a real login form. Measured on the SauceDemo
+  fixture, MiniLM ranks the right element first for all three heal steps — by
+  0.31 to 0.45 over the runner-up — at 0.73-0.79, so every heal fell to the
+  scoped band and needed an AI pick. An absolute score says how alike two
+  strings are; how far the best candidate leads the rest is what says the
+  choice is unambiguous. So a candidate is also healed directly when all hold:
+
+    - it suits the action: a fill only considers fields that take text, a
+      click only clickable elements (actions not listed here never qualify)
+    - its MiniLM score is ≥ _LOW_THRESHOLD
+    - it leads the next action-compatible candidate by ≥ _MARGIN — or, when it
+      is the only compatible candidate, scores ≥ _LONE_MIN
+    - the cross-encoder, when loaded, ranks it first among compatible ones
 
 Cross-encoder re-ranking:
   After MiniLM shortlists the top _TOP_N candidates, a cross-encoder
@@ -36,6 +52,25 @@ logger = logging.getLogger(__name__)
 _HIGH_THRESHOLD = 0.85
 _LOW_THRESHOLD = 0.50
 _TOP_N = 5
+_MARGIN = 0.25
+# With no other compatible candidate there is no runner-up to lead, and the
+# margin degenerates to the score itself. That is exactly the case where the
+# intended element is gone and something unrelated is left, so a lone candidate
+# must clear a higher bar than the floor a contested one does.
+_LONE_MIN = 0.65
+
+# What each action can act on. The tag comes from el.tagName, `type` from the
+# attribute; `role` is the explicit role attribute or, failing that, the
+# lower-cased tag (see _ELEMENT_QUERY_JS), so tag-named roles are harmless here.
+_TEXT_INPUT_TYPES_EXCLUDED = {
+    "submit", "button", "reset", "image", "checkbox", "radio", "hidden", "file",
+    "range", "color",
+}
+_CLICKABLE_INPUT_TYPES = {"submit", "button", "reset", "image", "checkbox", "radio"}
+_FILLABLE_ROLES = {"textbox", "searchbox", "combobox", "spinbutton"}
+_CLICKABLE_ROLES = {
+    "button", "link", "menuitem", "tab", "checkbox", "radio", "switch", "option",
+}
 
 _CROSS_ENCODER_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 _CROSS_ENCODER_LOCAL = (
@@ -173,6 +208,7 @@ class DOMSnapshotCascade:
         # Phase 1 — MiniLM bi-encoder: score all elements cheaply
         scored = cls._score_elements(query, elements)
         scored.sort(key=lambda x: x[1], reverse=True)
+        minilm_ranked = list(scored)
 
         # Phase 2 — Cross-encoder: re-rank the top _TOP_N candidates with
         # higher accuracy (reads query + element together in one pass)
@@ -197,6 +233,15 @@ class DOMSnapshotCascade:
                 )
             return cls._candidates_payload(high, "embed_candidates")
 
+        winner = cls._clear_winner(step.action, minilm_ranked, scored)
+        if winner is not None:
+            return DomPayload(
+                strategy_used="embed_direct",
+                content="",
+                healed_cfg=cls._element_to_cfg(winner),
+                token_estimate=0,
+            )
+
         if top_score >= _LOW_THRESHOLD:
             best_element, best_score = scored[0]
             scoped_html = await cls._scoped_html(page, best_element)
@@ -217,6 +262,68 @@ class DOMSnapshotCascade:
             )
 
         return await cls._aria_fallback(page, reason=f"top score {top_score:.2f} < {_LOW_THRESHOLD}")
+
+    # ── Clear-winner rule ─────────────────────────────────────────────────────
+
+    @staticmethod
+    def _fits_action(action: str, el: dict) -> bool | None:
+        """
+        Whether `el` is something `action` can act on. None for an action this
+        does not model — the clear-winner rule then never applies to it.
+        """
+        tag  = (el.get("tag") or "").upper()
+        typ  = (el.get("type") or "").lower()
+        role = (el.get("role") or "").lower()
+        if action == "fill":
+            if tag == "INPUT":
+                return typ not in _TEXT_INPUT_TYPES_EXCLUDED
+            return tag == "TEXTAREA" or role in _FILLABLE_ROLES
+        if action in ("click", "hover"):
+            if tag == "INPUT":
+                return typ in _CLICKABLE_INPUT_TYPES
+            return tag in ("BUTTON", "A") or role in _CLICKABLE_ROLES
+        if action == "select":
+            return tag == "SELECT" or role in ("combobox", "listbox")
+        return None
+
+    @classmethod
+    def _clear_winner(
+        cls,
+        action: str,
+        minilm_ranked: list[tuple[dict, float]],
+        final_ranked: list[tuple[dict, float]],
+    ) -> dict | None:
+        """
+        The element to heal to without an AI call, or None.
+
+        Margins are taken on the MiniLM scores, which are comparable across
+        every candidate; the cross-encoder only re-scores the top few, on its
+        own scale. It gets a veto instead: if it prefers a different compatible
+        element, the choice is not clear and the AI decides.
+        """
+        compatible = [(el, sc) for el, sc in minilm_ranked if cls._fits_action(action, el)]
+        if not compatible:
+            return None
+        best, best_score = compatible[0]
+        if len(compatible) == 1:
+            runner_up = 0.0
+            if best_score < _LONE_MIN:
+                return None
+        else:
+            runner_up = compatible[1][1]
+            # 1e-9: the margin is inclusive, and 0.70 - 0.45 is 0.2499999… in floats.
+            if best_score < _LOW_THRESHOLD or best_score - runner_up < _MARGIN - 1e-9:
+                return None
+        reranked_best = next(
+            (el for el, _ in final_ranked if cls._fits_action(action, el)), None
+        )
+        if reranked_best is not best:
+            return None
+        logger.info(
+            "[DOMSnapshotCascade] clear winner for %s: '%s' (%.3f, lead %.3f) — embed_direct",
+            action, cls._describe_element(best)[:60], best_score, best_score - runner_up,
+        )
+        return best
 
     # ── Query construction ────────────────────────────────────────────────────
 
@@ -371,7 +478,7 @@ class DOMSnapshotCascade:
             logger.warning(f"[DOMSnapshotCascade] DOM walk failed: {e}")
 
         content = json.dumps(snapshot, ensure_ascii=False) if snapshot else ""
-        logger.debug(f"[DOMSnapshotCascade] aria fallback ({reason})")
+        logger.info(f"[DOMSnapshotCascade] aria fallback ({reason})")
         return DomPayload(
             strategy_used="aria",
             content=content,
