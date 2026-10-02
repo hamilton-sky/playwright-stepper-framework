@@ -528,7 +528,10 @@ async def test_an_action_the_rule_does_not_model_is_unaffected(fixed_scores):
     ("fill",  _element(tag="INPUT", type="submit"), False),
     ("fill",  _element(tag="INPUT", type="checkbox"), False),
     ("fill",  _element(tag="TEXTAREA", role="textarea"), True),
-    ("fill",  _element(tag="DIV", role="textbox"), True),
+    ("fill",  _element(tag="DIV", role="textbox"), False),      # a role is not editability
+    ("fill",  _element(tag="DIV", role="textbox", editable=True), True),
+    ("fill",  _element(tag="BUTTON", role="combobox"), False),
+    ("fill",  _element(tag="INPUT", type="text", readonly=True), False),
     ("fill",  _element(tag="BUTTON", role="button"), False),
     ("click", _element(tag="BUTTON", role="button"), True),
     ("click", _element(tag="A", role="a"), True),
@@ -536,6 +539,8 @@ async def test_an_action_the_rule_does_not_model_is_unaffected(fixed_scores):
     ("click", _element(tag="INPUT", type="text"), False),
     ("click", _element(tag="DIV", role="link"), True),
     ("select", _element(tag="SELECT", role="select"), True),
+    ("select", _element(tag="DIV", role="listbox"), False),      # select_option needs <select>
+    ("select", _element(tag="BUTTON", role="combobox"), False),
     ("select", _element(tag="BUTTON", role="button"), False),
     ("scroll_to", _element(tag="BUTTON", role="button"), None),
 ])

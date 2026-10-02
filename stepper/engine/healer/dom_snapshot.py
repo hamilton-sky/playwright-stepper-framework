@@ -73,7 +73,6 @@ _INPUT_ROLES = {
     "checkbox": "checkbox", "radio": "radio",
     "submit": "button", "button": "button", "reset": "button", "image": "button",
 }
-_FILLABLE_ROLES = {"textbox", "searchbox", "combobox", "spinbutton"}
 _CLICKABLE_ROLES = {
     "button", "link", "menuitem", "tab", "checkbox", "radio", "switch", "option",
 }
@@ -96,6 +95,10 @@ _ELEMENT_QUERY_JS = """() =>
     title:       el.getAttribute('title'),
     // An <a> is a link only with an href; without one it has no implicit role.
     href:        el.hasAttribute('href'),
+    // What fill() and select_option() actually need — an ARIA role is a claim
+    // about semantics, not about whether the element takes input.
+    editable:    el.isContentEditable === true,
+    readonly:    el.readOnly === true,
     // Whether a click or fill could land at all. The clear-winner rule must
     // not heal straight to an element Playwright's actionability checks will
     // refuse — a closed menu's links are in the DOM but not on screen.
@@ -298,15 +301,21 @@ class DOMSnapshotCascade:
         ):
             return False
         if action == "fill":
+            # locator.fill() needs a native text input or textarea, or a
+            # contenteditable — a <button role="combobox"> has the role and
+            # refuses the fill, and the healer would pick it again every attempt.
+            if el.get("readonly"):
+                return False
             if tag == "INPUT":
                 return typ not in _TEXT_INPUT_TYPES_EXCLUDED
-            return tag == "TEXTAREA" or role in _FILLABLE_ROLES
+            return tag == "TEXTAREA" or bool(el.get("editable"))
         if action in ("click", "hover"):
             if tag == "INPUT":
                 return typ in _CLICKABLE_INPUT_TYPES
             return tag in ("BUTTON", "A") or role in _CLICKABLE_ROLES
         if action == "select":
-            return tag == "SELECT" or role in ("combobox", "listbox")
+            # select_option() works on a native <select> only.
+            return tag == "SELECT"
         return None
 
     @classmethod
