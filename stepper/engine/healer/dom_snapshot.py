@@ -82,8 +82,36 @@ _CROSS_ENCODER_LOCAL = (
     pathlib.Path(__file__).parents[2] / "models" / "cross-encoder-ms-marco-MiniLM-L-6-v2"
 )
 
-_ELEMENT_QUERY_JS = """() =>
-  [...document.querySelectorAll('button,a,input,select,textarea,[role],[aria-label]')].map(el => ({
+_ELEMENT_QUERY_JS = """() => {
+  // A CSS selector that matches this element and nothing else on the page,
+  // computed by the browser at capture time. Every healed cfg carries it, so a
+  // heal never depends on the role/name synthesis alone: get_by_role is tried
+  // first, and if the synthesised role is ever wrong it matches nothing and the
+  // resolver falls through to this — rather than to a description guess.
+  const unique = s => { try { return document.querySelectorAll(s).length === 1; } catch (e) { return false; } };
+  const selectorFor = el => {
+    if (el.id && unique('#' + CSS.escape(el.id))) return '#' + CSS.escape(el.id);
+    const tag = el.tagName.toLowerCase();
+    const nm = el.getAttribute('name');
+    if (nm) {
+      const s = tag + '[name="' + CSS.escape(nm) + '"]';
+      if (unique(s)) return s;
+    }
+    const parts = [];
+    for (let n = el; n && n.nodeType === 1 && n !== document.body; n = n.parentElement) {
+      let i = 1;
+      for (let sib = n.previousElementSibling; sib; sib = sib.previousElementSibling)
+        if (sib.tagName === n.tagName) i++;
+      parts.unshift(n.tagName.toLowerCase() + ':nth-of-type(' + i + ')');
+      const s = 'body > ' + parts.join(' > ');
+      if (unique(s)) return s;
+    }
+    return '';
+  };
+  return [...document.querySelectorAll('button,a,input,select,textarea,[role],[aria-label]')].map(el => ({
+    selector:    selectorFor(el),
+    // A text-like input with a list attribute (a datalist) is a combobox.
+    list:        el.tagName === 'INPUT' && el.hasAttribute('list'),
     tag:         el.tagName,
     text:        el.textContent?.trim().slice(0,80),
     role:        el.getAttribute('role') || el.tagName?.toLowerCase(),
@@ -126,8 +154,8 @@ _ELEMENT_QUERY_JS = """() =>
                       ['submit', 'button', 'reset'].includes((el.type || '').toLowerCase())
                         ? el.value
                         : undefined)
-  }))
-"""
+  }));
+}"""
 
 
 def _estimate_tokens(text: str) -> int:
@@ -444,6 +472,8 @@ class DOMSnapshotCascade:
             # password, a date — gets none, so the cfg falls to its placeholder
             # or id rather than a role get_by_role() would not find.
             typ = (el.get("type") or "text").lower()
+            if el.get("list") and typ in ("text", "search", "email", "tel", "url"):
+                return "combobox"            # backed by a <datalist>
             return _INPUT_ROLES.get(typ, "")
         if tag == "a":
             return "link" if el.get("href") else ""
@@ -479,8 +509,14 @@ class DOMSnapshotCascade:
             cfg["text"] = text
         elif elem_id:
             cfg["id"] = elem_id
-        elif tag:
+        elif not el.get("selector") and tag:
             cfg["css"] = tag
+        # The browser-computed unique selector rides along with whatever
+        # semantic identifier was chosen. The resolver tries the semantic one
+        # first (role 10 … css 60), so it changes nothing when that resolves,
+        # and it is the deterministic fallback when it does not.
+        if el.get("selector"):
+            cfg["css"] = el["selector"]
         return cfg
 
     @classmethod

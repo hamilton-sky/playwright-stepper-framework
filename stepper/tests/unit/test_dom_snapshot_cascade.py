@@ -677,3 +677,52 @@ async def test_the_veto_reaches_a_winner_below_the_pagewide_top_n(fixed_scores, 
     )
 
     assert payload.strategy_used != "embed_direct"
+
+
+# ── Every healed cfg carries a browser-computed unique selector ───────────────
+#
+# Review kept finding gaps in the role/name synthesis — a select's role, an
+# input's per-type role, a datalist, inputs known only by name. Each gap was a
+# heal the resolver could not find. _ELEMENT_QUERY_JS now has the browser compute
+# a selector that matches the element and nothing else, and every cfg carries it:
+# the semantic identifier is still tried first, and this is the deterministic
+# fallback when it does not resolve.
+
+def test_the_unique_selector_rides_along_with_the_semantic_identifier():
+    cfg = DOMSnapshotCascade._element_to_cfg(
+        _element(tag="INPUT", role="input", type="text", placeholder="Username",
+                 selector="#user-name")
+    )
+
+    assert cfg == {"priority": 0, "placeholder": "Username", "css": "#user-name"}
+
+
+def test_an_input_known_only_by_name_heals_to_its_selector_not_the_bare_tag():
+    """Was {"css": "input"} — every input on the form."""
+    cfg = DOMSnapshotCascade._element_to_cfg(
+        _element(tag="INPUT", role="input", type="text", name="username",
+                 selector='input[name="username"]')
+    )
+
+    assert cfg == {"priority": 0, "css": 'input[name="username"]'}
+
+
+def test_without_a_selector_the_bare_tag_is_still_the_last_resort():
+    cfg = DOMSnapshotCascade._element_to_cfg(_element(tag="INPUT", role="", text=""))
+
+    assert cfg == {"priority": 0, "css": "input"}
+
+
+@pytest.mark.parametrize("typ", ["text", "search", "email"])
+def test_a_datalist_input_is_a_combobox(typ):
+    el = _element(tag="INPUT", role="input", type=typ, list=True)
+
+    assert DOMSnapshotCascade._aria_role(el) == "combobox"
+
+
+def test_the_capture_script_computes_the_selector_in_the_browser():
+    """The selector is built from the live DOM, so it is unique at capture time."""
+    js = ds._ELEMENT_QUERY_JS
+    assert "selector:" in js
+    assert "querySelectorAll(s).length === 1" in js
+    assert "CSS.escape" in js
