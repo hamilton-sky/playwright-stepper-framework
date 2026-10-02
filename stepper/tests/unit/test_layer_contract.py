@@ -113,6 +113,31 @@ def _site_prefixes() -> set[str]:
     return prefixes
 
 
+def _site_action_names() -> set[str]:
+    """
+    Every name a site registers, read off the glue: each `action_name` and
+    each `registry.alias(...)` name. The prefix alone is not enough — a site
+    may declare `unprefixed_actions` (OpenLibrary's `collect_items`), and a
+    check keyed only on the prefix would let that action carry selectors.
+    """
+    names = set()
+    for glue in SITES.glob("*/pages/*.py"):
+        for node in ast.walk(ast.parse(glue.read_text(encoding="utf-8"))):
+            if (isinstance(node, ast.Assign)
+                    and any(isinstance(t, ast.Name) and t.id == "action_name" for t in node.targets)
+                    and isinstance(node.value, ast.Constant)
+                    and isinstance(node.value.value, str)):
+                names.add(node.value.value)
+            elif (isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "alias"
+                    and node.args
+                    and isinstance(node.args[0], ast.Constant)
+                    and isinstance(node.args[0].value, str)):
+                names.add(node.args[0].value)
+    return names
+
+
 def _steps(obj):
     """Every dict carrying an "action", however deeply nested."""
     if isinstance(obj, dict):
@@ -144,14 +169,23 @@ def test_there_are_workflows_and_site_prefixes_to_check():
     assert {"ol_", "sd_", "pt_", "ti_"} <= _site_prefixes()
 
 
+def test_unprefixed_site_actions_are_checked_too():
+    """`collect_items` is a site action without the prefix; it must not slip past."""
+    names = _site_action_names()
+    assert "collect_items" in names
+    assert "ol_collect_books" in names          # the alias
+    assert not any(n.startswith(p) for n in ("collect_items",) for p in _site_prefixes())
+
+
 @pytest.mark.parametrize("path", _workflows(), ids=_rel)
 def test_site_actions_in_a_workflow_carry_no_selectors(path):
     prefixes = tuple(_site_prefixes())
+    site_actions = _site_action_names()
     data = json.loads(path.read_text(encoding="utf-8"))
     bad = []
     for step in _steps(data):
         action = str(step.get("action", ""))
-        if not action.startswith(prefixes):
+        if not (action.startswith(prefixes) or action in site_actions):
             continue
         body = {k: v for k, v in step.items() if k != "action"}
         keys = _selector_keys(body)

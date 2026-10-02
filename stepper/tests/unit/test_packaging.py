@@ -175,6 +175,28 @@ def test_workflows_and_config_are_shipped_as_package_data(config):
     assert "config/*.yaml" in patterns
 
 
+def test_every_fixture_asset_is_shipped_as_package_data(config):
+    """
+    Each site's fixtures/ is served by a server.py next to it. The server is a
+    module, so a wheel ships it; the pages are data, so a wheel ships them only
+    if a pattern names their suffix. Missing one, the installed server 404s.
+    """
+    import fnmatch
+
+    patterns = config["tool"]["setuptools"]["package-data"]["*"]
+    assets = [
+        p for p in (_REPO_ROOT / "stepper" / "sites").glob("*/fixtures/*")
+        if p.is_file() and p.suffix not in (".py", ".md", ".pyc")
+    ]
+    assert assets, "no fixture assets found; this test would pass vacuously"
+
+    unshipped = [
+        str(p.relative_to(_REPO_ROOT)) for p in assets
+        if not any(fnmatch.fnmatch(f"fixtures/{p.name}", pat) for pat in patterns)
+    ]
+    assert not unshipped, "fixture assets no package-data pattern covers:\n  " + "\n  ".join(unshipped)
+
+
 def test_a_console_script_is_declared(config):
     """`stepper` on the PATH is the point of installing it."""
     assert config["project"]["scripts"]["stepper"] == "stepper.main:main"

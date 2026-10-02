@@ -44,7 +44,12 @@ exclude = ["stepper.tests*"]
 [tool.setuptools.package-data]
 # Workflows and site config are data, not code — without this a wheel ships the
 # actions but not a single workflow to run with them.
-"*" = ["workflows/*.json", "config/*.yaml", "data/*.json"]
+"*" = [
+    "workflows/*.json", "config/*.yaml", "data/*.json",
+    # The local site stand-ins. Without these a wheel ships each fixture
+    # server.py but not the pages it serves, and every route 404s.
+    "fixtures/*.html", "fixtures/*.js", "fixtures/*.css",
+]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
