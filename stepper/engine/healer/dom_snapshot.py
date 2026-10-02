@@ -157,7 +157,9 @@ _ELEMENT_QUERY_JS = """() => {
       const x = r.left + r.width / 2, y = r.top + r.height / 2;
       if (x < 0 || y < 0 || x > innerWidth || y > innerHeight) return false;
       const hit = document.elementFromPoint(x, y);
-      return !!hit && hit !== el && !el.contains(hit) && !hit.contains(el);
+      // A hit on a descendant is the element; a hit on an ancestor means the
+      // element itself takes no pointer events (pointer-events: none).
+      return !!hit && hit !== el && !el.contains(hit);
     })(),
     // A button-shaped <input> carries its whole visible label in `value`, and
     // an <input> has no textContent, so without this the healer sees
