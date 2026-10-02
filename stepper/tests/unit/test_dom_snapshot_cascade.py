@@ -540,3 +540,74 @@ async def test_an_action_the_rule_does_not_model_is_unaffected(fixed_scores):
 ])
 def test_which_elements_suit_which_action(action, element, fits):
     assert DOMSnapshotCascade._fits_action(action, element) is fits
+
+
+# ── Roles a healed cfg can actually resolve ───────────────────────────────────
+#
+# _ELEMENT_QUERY_JS falls back to the lower-cased tag when an element has no role
+# attribute. "a", "select" and "input" are not ARIA roles, so a healed
+# {"role": "select"} resolved to nothing. Found in review of the clear-winner rule,
+# which made those direct heals reachable; the ≥ 0.85 rung had the same hole.
+
+@pytest.mark.parametrize("element, role", [
+    (_element(tag="A", role="a", text="Home"), "link"),
+    (_element(tag="BUTTON", role="button", text="Save"), "button"),
+    (_element(tag="SELECT", role="select"), "combobox"),
+    (_element(tag="TEXTAREA", role="textarea"), "textbox"),
+    (_element(tag="INPUT", role="input", type="text"), "textbox"),
+    (_element(tag="INPUT", role="input", type=None), "textbox"),
+    (_element(tag="INPUT", role="input", type="submit"), "button"),
+    (_element(tag="INPUT", role="input", type="checkbox"), "checkbox"),
+    (_element(tag="DIV", role="div"), ""),                       # no implicit role
+    (_element(tag="DIV", role="tab"), "tab"),                    # explicit attribute kept
+    (_element(tag="A", role="button"), "button"),
+])
+def test_tag_derived_roles_become_aria_roles(element, role):
+    assert DOMSnapshotCascade._aria_role(element) == role
+
+
+def test_a_select_is_not_named_after_its_options():
+    """Its textContent is every option at once — never a usable accessible name."""
+    cfg = DOMSnapshotCascade._element_to_cfg(
+        _element(tag="SELECT", role="select", text="Name (A to Z) Name (Z to A)",
+                 id="sort")
+    )
+
+    assert cfg.get("role") is None
+    assert "Name (A to Z)" not in json.dumps(cfg)
+    assert cfg["id"] == "sort"
+
+
+def test_a_select_with_a_label_resolves_as_a_combobox():
+    cfg = DOMSnapshotCascade._element_to_cfg(
+        _element(tag="SELECT", role="select", aria="Sort by", text="A B C")
+    )
+
+    assert cfg["role"] == "combobox"
+    assert cfg["name"] == "Sort by"
+
+
+# ── Only actionable elements can be clear winners ─────────────────────────────
+
+@pytest.mark.parametrize("state", [{"hidden": True}, {"disabled": True}])
+def test_a_hidden_or_disabled_element_suits_no_action(state):
+    """
+    A closed menu's links are in the DOM but not on screen; Playwright's
+    actionability checks would refuse the healed click and spend the timeout.
+    """
+    el = _element(tag="BUTTON", role="button", **state)
+
+    for action in ("fill", "click", "hover", "select"):
+        assert DOMSnapshotCascade._fits_action(action, el) is False
+
+
+async def test_a_lone_hidden_button_is_not_healed_to(fixed_scores):
+    fixed_scores({"Logout": 0.90 - 0.10})
+    page = _page([_element(text="Logout", id="logout", hidden=True)],
+                 scoped_html="<nav></nav>")
+
+    payload = await DOMSnapshotCascade.capture(
+        page, _step(action="click", description="click logout")
+    )
+
+    assert payload.strategy_used != "embed_direct"

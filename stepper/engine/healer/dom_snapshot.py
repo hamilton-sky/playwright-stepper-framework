@@ -88,6 +88,11 @@ _ELEMENT_QUERY_JS = """() =>
     name:        el.getAttribute('name'),
     type:        el.getAttribute('type'),
     title:       el.getAttribute('title'),
+    // Whether a click or fill could land at all. The clear-winner rule must
+    // not heal straight to an element Playwright's actionability checks will
+    // refuse — a closed menu's links are in the DOM but not on screen.
+    hidden:      !(el.offsetWidth || el.offsetHeight || el.getClientRects().length),
+    disabled:    el.disabled === true || el.getAttribute('aria-disabled') === 'true',
     // A button-shaped <input> carries its whole visible label in `value`, and
     // an <input> has no textContent, so without this the healer sees
     // "input login-button submit" for a button that plainly reads "Login".
@@ -274,6 +279,10 @@ class DOMSnapshotCascade:
         tag  = (el.get("tag") or "").upper()
         typ  = (el.get("type") or "").lower()
         role = (el.get("role") or "").lower()
+        if action in ("fill", "click", "hover", "select") and (
+            el.get("hidden") or el.get("disabled")
+        ):
+            return False
         if action == "fill":
             if tag == "INPUT":
                 return typ not in _TEXT_INPUT_TYPES_EXCLUDED
@@ -391,10 +400,34 @@ class DOMSnapshotCascade:
     # ── Cfg synthesis ─────────────────────────────────────────────────────────
 
     @staticmethod
-    def _element_to_cfg(el: dict) -> dict:
-        cfg: dict[str, Any] = {"priority": 0}
+    def _aria_role(el: dict) -> str:
+        """
+        A role get_by_role() can resolve. _ELEMENT_QUERY_JS falls back to the
+        lower-cased tag when there is no role attribute, and "a", "select" or
+        "input" are not ARIA roles — a healed {"role": "select"} resolves to
+        nothing. Map those to the element's implicit role; drop the rest.
+        """
         role = (el.get("role") or "").strip()
+        tag = (el.get("tag") or "").lower()
+        if not role or role.lower() != tag:
+            return role                      # explicit role attribute, or none
+        if tag == "input":
+            typ = (el.get("type") or "text").lower()
+            if typ in ("submit", "button", "reset", "image"):
+                return "button"
+            if typ in ("checkbox", "radio"):
+                return typ
+            return "textbox"
+        return {"a": "link", "button": "button", "select": "combobox",
+                "textarea": "textbox"}.get(tag, "")
+
+    @classmethod
+    def _element_to_cfg(cls, el: dict) -> dict:
+        cfg: dict[str, Any] = {"priority": 0}
+        role = cls._aria_role(el)
         text = (el.get("text") or "").strip()
+        if (el.get("tag") or "").upper() == "SELECT":
+            text = ""   # a select's textContent is every option, not its name
         aria = (el.get("aria") or "").strip()
         placeholder = (el.get("placeholder") or "").strip()
         elem_id = (el.get("id") or "").strip()
