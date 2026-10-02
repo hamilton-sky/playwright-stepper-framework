@@ -65,14 +65,16 @@ def test_an_element_with_no_value_is_described_as_before():
 
 def test_a_healed_cfg_is_still_produced_for_the_button():
     """
-    Seeing the element is only half of it — the cfg has to resolve. An id is
-    enough here and is what this element offers.
+    Seeing the element is only half of it — the cfg has to resolve. The value
+    is a button-shaped input's accessible name, so the cfg is the same role+name
+    the resolver tries first, rather than the id it used to fall back to.
     """
     cfg = DOMSnapshotCascade._element_to_cfg(
         _el(id="login-button", name="login-button", type="submit", value="Login")
     )
 
-    assert cfg.get("id") == "login-button"
+    assert cfg.get("role") == "button"
+    assert cfg.get("name") == "Login"
 
 
 # ── Which values are captured, and which are deliberately not ─────────────────

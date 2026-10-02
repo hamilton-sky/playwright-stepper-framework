@@ -443,7 +443,8 @@ async def test_a_click_ignores_text_fields_and_heals_to_the_lone_button(fixed_sc
     )
 
     assert payload.strategy_used == "embed_direct"
-    assert payload.healed_cfg == {"priority": 0, "id": "login-button"}
+    # Its value is its accessible name — the most durable identifier it has.
+    assert payload.healed_cfg == {"priority": 0, "role": "button", "name": "Login"}
 
 
 @pytest.mark.parametrize("lead, expected", [
@@ -550,7 +551,8 @@ def test_which_elements_suit_which_action(action, element, fits):
 # which made those direct heals reachable; the ≥ 0.85 rung had the same hole.
 
 @pytest.mark.parametrize("element, role", [
-    (_element(tag="A", role="a", text="Home"), "link"),
+    (_element(tag="A", role="a", text="Home", href=True), "link"),
+    (_element(tag="A", role="a", text="Cart", href=False), ""),   # no href, no link role
     (_element(tag="BUTTON", role="button", text="Save"), "button"),
     (_element(tag="SELECT", role="select"), "combobox"),
     (_element(tag="TEXTAREA", role="textarea"), "textbox"),
@@ -628,3 +630,44 @@ def test_a_password_field_heals_to_its_placeholder_not_a_role():
 
     assert cfg.get("role") is None
     assert cfg == {"priority": 0, "label": "Password"}
+
+
+def test_a_submit_input_is_named_by_its_value():
+    """An <input type=submit> has no textContent; without this it healed to {"css": "input"}."""
+    cfg = DOMSnapshotCascade._element_to_cfg(
+        _element(tag="INPUT", role="input", type="submit", value="Login", id="")
+    )
+
+    assert cfg == {"priority": 0, "role": "button", "name": "Login"}
+
+
+def test_an_anchor_without_href_is_not_healed_to_a_link_role():
+    """SauceDemo's cart link is an <a> with a click handler and no href — no link role."""
+    cfg = DOMSnapshotCascade._element_to_cfg(
+        _element(tag="A", role="a", text="Cart", href=False, id="cart")
+    )
+
+    assert cfg.get("role") is None
+    assert cfg == {"priority": 0, "text": "Cart"}
+
+
+async def test_the_veto_reaches_a_winner_below_the_pagewide_top_n(fixed_scores, monkeypatch):
+    """
+    Five unsuitable elements outscoring the winner filled the page-wide re-rank,
+    so the winner was never re-ranked and the veto passed by default. The
+    compatible shortlist is re-ranked itself now.
+    """
+    links = [_element(tag="A", role="a", text=f"Docs {i}", href=True) for i in range(_TOP_N)]
+    fixed_scores({**{f"Docs {i}": 0.80 for i in range(_TOP_N)},
+                  "Username": 0.75, "Password": 0.20})
+    monkeypatch.setattr(
+        ds._CrossEncoderReranker, "instance",
+        classmethod(lambda cls: SimpleNamespace(rerank=lambda q, top: list(reversed(top)))),
+    )
+
+    payload = await DOMSnapshotCascade.capture(
+        _page(links + _login_form()[:2], scoped_html="<form></form>"),
+        _step(action="fill", description="type the username"),
+    )
+
+    assert payload.strategy_used != "embed_direct"

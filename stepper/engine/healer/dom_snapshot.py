@@ -94,6 +94,8 @@ _ELEMENT_QUERY_JS = """() =>
     name:        el.getAttribute('name'),
     type:        el.getAttribute('type'),
     title:       el.getAttribute('title'),
+    // An <a> is a link only with an href; without one it has no implicit role.
+    href:        el.hasAttribute('href'),
     // Whether a click or fill could land at all. The clear-winner rule must
     // not heal straight to an element Playwright's actionability checks will
     // refuse — a closed menu's links are in the DOM but not on screen.
@@ -250,7 +252,7 @@ class DOMSnapshotCascade:
                 )
             return cls._candidates_payload(high, "embed_candidates")
 
-        winner = cls._clear_winner(step.action, minilm_ranked, scored)
+        winner = cls._clear_winner(step.action, query, minilm_ranked)
         if winner is not None:
             return DomPayload(
                 strategy_used="embed_direct",
@@ -311,8 +313,8 @@ class DOMSnapshotCascade:
     def _clear_winner(
         cls,
         action: str,
+        query: str,
         minilm_ranked: list[tuple[dict, float]],
-        final_ranked: list[tuple[dict, float]],
     ) -> dict | None:
         """
         The element to heal to without an AI call, or None.
@@ -335,10 +337,12 @@ class DOMSnapshotCascade:
             # 1e-9: the margin is inclusive, and 0.70 - 0.45 is 0.2499999… in floats.
             if best_score < _LOW_THRESHOLD or best_score - runner_up < _MARGIN - 1e-9:
                 return None
-        reranked_best = next(
-            (el for el, _ in final_ranked if cls._fits_action(action, el)), None
-        )
-        if reranked_best is not best:
+        # Re-rank the compatible shortlist itself. Reading the veto off the
+        # page-wide re-ranking was wrong: five higher-scoring but unsuitable
+        # elements could fill its top N, leaving the winner un-reranked and the
+        # veto passed by default.
+        reranked = _CrossEncoderReranker.instance().rerank(query, compatible[:_TOP_N])
+        if not reranked or reranked[0][0] is not best:
             return None
         logger.info(
             "[DOMSnapshotCascade] clear winner for %s: '%s' (%.3f, lead %.3f) — embed_direct",
@@ -429,7 +433,9 @@ class DOMSnapshotCascade:
             # or id rather than a role get_by_role() would not find.
             typ = (el.get("type") or "text").lower()
             return _INPUT_ROLES.get(typ, "")
-        return {"a": "link", "button": "button", "select": "combobox",
+        if tag == "a":
+            return "link" if el.get("href") else ""
+        return {"button": "button", "select": "combobox",
                 "textarea": "textbox"}.get(tag, "")
 
     @classmethod
@@ -439,6 +445,11 @@ class DOMSnapshotCascade:
         text = (el.get("text") or "").strip()
         if (el.get("tag") or "").upper() == "SELECT":
             text = ""   # a select's textContent is every option, not its name
+        if not text and role == "button":
+            # A button-shaped <input> has no textContent; its value is its
+            # accessible name. _ELEMENT_QUERY_JS only collects value for
+            # submit/button/reset inputs, so this is never user-typed text.
+            text = (el.get("value") or "").strip()
         aria = (el.get("aria") or "").strip()
         placeholder = (el.get("placeholder") or "").strip()
         elem_id = (el.get("id") or "").strip()
