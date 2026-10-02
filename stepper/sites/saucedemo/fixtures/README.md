@@ -37,7 +37,8 @@ on one host and finishes on the other.
 | `sd_happy_path` | 6/6 — runs in CI |
 | `sd_multi_product` | 9/9 — runs in CI; order total $36.69 = 33.97 + 8% tax |
 | `sd_smoke_test` | 5/5 — runs in CI; the live-host run stays as the drift check |
-| `sd_heal_test`, `sd_full_heal_flow` | need the MiniLM embedding model (`sentence-transformers`, fetched from the Hugging Face hub) or an LLM key. Neither is available offline, so they are not in CI. |
+| `sd_heal_test` | runs in CI with `--heal 2 --no-heal-cache` and no LLM key, so its three broken selectors must be recovered by the embed-direct rung alone. Needs the MiniLM model, which CI downloads and caches; it cannot run where the Hugging Face hub is unreachable. |
+| `sd_full_heal_flow` | not in CI: the same three heals, followed by the checkout `sd_happy_path` already covers. |
 
 ## What it is and is not
 

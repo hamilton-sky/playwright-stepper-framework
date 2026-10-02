@@ -249,8 +249,13 @@ jobs:
       # drifted from the real site. These three cover what it never did — cart,
       # checkout and the collection clicks — and the first run of them found a
       # sort step that reported passed without the list ever being sorted.
-      # The two heal workflows are left out: they need the MiniLM model from
-      # the Hugging Face hub or an LLM key, and are measurements, not checks.
+      # sd_heal_test runs too: its broken selectors must be recovered by the
+      # embed-direct rung alone — MiniLM, cached above, and no LLM key, since
+      # this job has none. --no-heal-cache makes it heal from the page rather
+      # than replay heal_cache.json, and its final strict assert_visible is
+      # what makes a green result mean the login really happened.
+      # sd_full_heal_flow stays out: it is the same three heals followed by
+      # the checkout sd_happy_path already covers.
       - name: Run the SauceDemo workflows against local fixtures
         env:
           SAUCEDEMO_BASE_URL: http://127.0.0.1:8097
@@ -285,6 +290,12 @@ jobs:
               failed="$failed $wf"
             fi
           done
+
+          echo "── sd_heal_test (healer: embed-direct, no cache, no LLM key) ──"
+          if ! python stepper/main.py run sd_heal_test --heal 2 --no-heal-cache \
+                 --vars "$vars" --ci --ci-output reports/ci-sd-fixture-sd_heal_test.json; then
+            failed="$failed sd_heal_test"
+          fi
 
           if [ -n "$failed" ]; then
             echo "::error title=saucedemo workflows failed::$failed"

@@ -38,8 +38,9 @@ workflows use `ol_collect_books`.
 `SAUCEDEMO_BASE_URL` points the POMs elsewhere, and the workflows' `base_url`
 variable points the engine-level steps (`navigate`, `measure_performance`) —
 set both. `stepper/sites/saucedemo/fixtures/` holds a local stand-in, and CI
-runs `sd_happy_path`, `sd_multi_product` and `sd_smoke_test` against it; the
-live smoke run stays as the drift check:
+runs `sd_happy_path`, `sd_multi_product`, `sd_smoke_test` and — with
+`--heal 2 --no-heal-cache`, no LLM key — `sd_heal_test` against it; the live
+smoke run stays as the drift check:
 
 ```bash
 python stepper/sites/saucedemo/fixtures/server.py --port 8097 &
