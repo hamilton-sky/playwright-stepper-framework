@@ -749,6 +749,7 @@ async def run(
     ci: bool = False,
     ci_output: str | None = None,
     observers=None,
+    use_heal_cache: bool = True,
 ):
     """
     Plan, assemble and execute one run — the whole pipeline end to end.
@@ -776,6 +777,7 @@ async def run(
         record_video=record_video,
         variables=variables,
         max_heal_attempts=max_heal_attempts,
+        use_heal_cache=use_heal_cache,
         shadow=shadow,
         ci=ci,
         ci_output=ci_output,

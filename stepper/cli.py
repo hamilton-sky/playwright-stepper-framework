@@ -344,6 +344,9 @@ def cmd_run(args, pipeline) -> int:
         "record_video":      cfg.record_video,
         "variables":         cfg.variables,
         "max_heal_attempts": cfg.max_heal_attempts,
+        # Was missing: --no-heal-cache built a RunConfig that said so and then
+        # dropped it here, so every "measurement" replayed heal_cache.json.
+        "use_heal_cache":    cfg.use_heal_cache,
         "shadow":            cfg.shadow,
         "ci":                cfg.ci,
         "ci_output":         cfg.ci_output,

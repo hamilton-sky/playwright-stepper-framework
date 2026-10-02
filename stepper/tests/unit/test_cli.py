@@ -324,3 +324,44 @@ def test_run_with_data_exits_on_the_rows_results(tmp_path, statuses, expected):
     args = build_parser().parse_args(["run", str(wf), "--data", str(data)])
 
     assert cli.cmd_run(args, _data_pipeline(tmp_path, statuses)) == expected
+
+
+# ── run: every RunConfig field reaches the pipeline ──────────────────────────
+
+@pytest.mark.parametrize("argv, expected", [
+    ([], True),
+    (["--no-heal-cache"], False),
+])
+def test_no_heal_cache_reaches_the_pipeline(tmp_path, argv, expected):
+    """
+    --no-heal-cache was parsed into the RunConfig and then left out of the
+    keyword dict handed to pipeline.run(), so the cache was always used and a
+    run meant to measure the healer replayed heal_cache.json instead.
+    """
+    import dataclasses
+    from stepper import main as real_main
+
+    wf = tmp_path / "wf.json"
+    wf.write_text('{"steps": []}')
+    seen = {}
+
+    async def run(**kwargs):
+        seen.update(kwargs)
+        return []
+
+    pipeline = SimpleNamespace(
+        load_env=lambda: None, _stepper_root=tmp_path,
+        RunConfig=real_main.RunConfig, run=run,
+    )
+    args = build_parser().parse_args(["run", str(wf), *argv])
+
+    assert cli.cmd_run(args, pipeline) == 0
+    assert seen["use_heal_cache"] is expected
+
+    # The general form of the bug: a RunConfig field cmd_run sets but never
+    # forwards. Every forwarded name must also be one run() accepts.
+    import inspect
+    accepted = set(inspect.signature(real_main.run).parameters)
+    assert set(seen) <= accepted
+    fields = {f.name for f in dataclasses.fields(real_main.RunConfig)}
+    assert "use_heal_cache" in fields
