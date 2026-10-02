@@ -558,6 +558,12 @@ def test_which_elements_suit_which_action(action, element, fits):
     (_element(tag="INPUT", role="input", type=None), "textbox"),
     (_element(tag="INPUT", role="input", type="submit"), "button"),
     (_element(tag="INPUT", role="input", type="checkbox"), "checkbox"),
+    (_element(tag="INPUT", role="input", type="email"), "textbox"),
+    (_element(tag="INPUT", role="input", type="number"), "spinbutton"),
+    (_element(tag="INPUT", role="input", type="search"), "searchbox"),
+    (_element(tag="INPUT", role="input", type="range"), "slider"),
+    (_element(tag="INPUT", role="input", type="password"), ""),   # no implicit role
+    (_element(tag="INPUT", role="input", type="date"), ""),
     (_element(tag="DIV", role="div"), ""),                       # no implicit role
     (_element(tag="DIV", role="tab"), "tab"),                    # explicit attribute kept
     (_element(tag="A", role="button"), "button"),
@@ -611,3 +617,14 @@ async def test_a_lone_hidden_button_is_not_healed_to(fixed_scores):
     )
 
     assert payload.strategy_used != "embed_direct"
+
+
+def test_a_password_field_heals_to_its_placeholder_not_a_role():
+    """A password input has no implicit ARIA role; get_by_role('textbox') misses it."""
+    cfg = DOMSnapshotCascade._element_to_cfg(
+        _element(tag="INPUT", role="input", type="password", aria="Password",
+                 placeholder="Password")
+    )
+
+    assert cfg.get("role") is None
+    assert cfg == {"priority": 0, "label": "Password"}

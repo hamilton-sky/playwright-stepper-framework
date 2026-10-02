@@ -67,6 +67,12 @@ _TEXT_INPUT_TYPES_EXCLUDED = {
     "range", "color",
 }
 _CLICKABLE_INPUT_TYPES = {"submit", "button", "reset", "image", "checkbox", "radio"}
+_INPUT_ROLES = {
+    "text": "textbox", "email": "textbox", "tel": "textbox", "url": "textbox",
+    "search": "searchbox", "number": "spinbutton", "range": "slider",
+    "checkbox": "checkbox", "radio": "radio",
+    "submit": "button", "button": "button", "reset": "button", "image": "button",
+}
 _FILLABLE_ROLES = {"textbox", "searchbox", "combobox", "spinbutton"}
 _CLICKABLE_ROLES = {
     "button", "link", "menuitem", "tab", "checkbox", "radio", "switch", "option",
@@ -91,8 +97,14 @@ _ELEMENT_QUERY_JS = """() =>
     // Whether a click or fill could land at all. The clear-winner rule must
     // not heal straight to an element Playwright's actionability checks will
     // refuse — a closed menu's links are in the DOM but not on screen.
-    hidden:      !(el.offsetWidth || el.offsetHeight || el.getClientRects().length),
-    disabled:    el.disabled === true || el.getAttribute('aria-disabled') === 'true',
+    // checkVisibility() is the browser's own answer — display:none on any
+    // ancestor, visibility:hidden, content-visibility — where a layout-box test
+    // misses visibility:hidden. The box test is the fallback for old engines.
+    hidden:      el.checkVisibility
+                   ? !el.checkVisibility({visibilityProperty: true})
+                   : !(el.offsetWidth || el.offsetHeight || el.getClientRects().length),
+    // :disabled includes a control disabled by an ancestor <fieldset>.
+    disabled:    el.matches(':disabled') || el.getAttribute('aria-disabled') === 'true',
     // A button-shaped <input> carries its whole visible label in `value`, and
     // an <input> has no textContent, so without this the healer sees
     // "input login-button submit" for a button that plainly reads "Login".
@@ -412,12 +424,11 @@ class DOMSnapshotCascade:
         if not role or role.lower() != tag:
             return role                      # explicit role attribute, or none
         if tag == "input":
+            # The implicit role per type, from HTML-AAM. A type with none — a
+            # password, a date — gets none, so the cfg falls to its placeholder
+            # or id rather than a role get_by_role() would not find.
             typ = (el.get("type") or "text").lower()
-            if typ in ("submit", "button", "reset", "image"):
-                return "button"
-            if typ in ("checkbox", "radio"):
-                return typ
-            return "textbox"
+            return _INPUT_ROLES.get(typ, "")
         return {"a": "link", "button": "button", "select": "combobox",
                 "textarea": "textbox"}.get(tag, "")
 
