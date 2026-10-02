@@ -6,6 +6,28 @@ build-backend = "setuptools.build_meta"
 name = "playwright-stepper-framework"
 version = "0.1.0"
 requires-python = ">=3.10"
+# The floor the engine imports at startup. requirements.txt pins exact versions
+# for CI and the Claude Code web image; these are the ranges `pip install .`
+# resolves against, so an installed `stepper` can at least start.
+dependencies = [
+    "playwright>=1.56",
+    "python-dotenv>=1.0",
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+# visual_compare diffs screenshots with numpy + Pillow; without them it cannot
+# run, and its unit tests cannot be collected.
+visual   = ["numpy>=2.0", "Pillow>=10.0"]
+# Phase 2 of the resolver cascade embeds with MiniLM.
+semantic = ["sentence-transformers>=3.0"]
+# Phase 3 (AI pick) and the planner. Each provider is optional at runtime.
+ai       = ["anthropic>=0.86", "openai>=2.0", "groq>=1.0", "google-generativeai>=0.8"]
+# The unit suite collects test_visual_compare_action.py, which imports PIL and
+# exercises numpy — so a test install needs the visual extra too.
+test     = ["pytest>=9.0", "pytest-asyncio>=1.3", "allure-pytest>=2.15",
+            "playwright-stepper-framework[visual]"]
+all      = ["playwright-stepper-framework[visual,semantic,ai,test]"]
 
 [project.scripts]
 stepper = "stepper.main:main"
@@ -25,7 +47,12 @@ exclude = ["stepper.tests*"]
 [tool.setuptools.package-data]
 # Workflows and site config are data, not code — without this a wheel ships the
 # actions but not a single workflow to run with them.
-"*" = ["workflows/*.json", "config/*.yaml", "data/*.json"]
+"*" = [
+    "workflows/*.json", "config/*.yaml", "data/*.json",
+    # The local site stand-ins. Without these a wheel ships each fixture
+    # server.py but not the pages it serves, and every route 404s.
+    "fixtures/*.html", "fixtures/*.js", "fixtures/*.css",
+]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

@@ -28,7 +28,7 @@ playwright-stepper-framework/
 │   │   └── pages/                    # PageModule ABC + GlueAction base
 │   └── sites/                        # Glue layer — wires POMs into Stepper actions
 │       ├── openlibrary/pages/
-│       ├── saucedemo/pages/
+│       ├── saucedemo/pages/       # fixtures/ serves it locally, no network
 │       ├── phptravels/pages/     # fixtures/ serves it locally, no network
 │       ├── ti/                       # the-internet — generated from a crawl;
 │       │                             #   fixtures/ serves it locally, no network
@@ -44,7 +44,8 @@ playwright-stepper-framework/
 │
 ├── docs/
 │   ├── adding-your-app.md            # Point Stepper at your own app — six files
-│   └── playwright-pitfalls.md        # Seven failure modes and their guards
+│   ├── playwright-pitfalls.md        # Seven failure modes and their guards
+│   └── statuses-and-exit-codes.md    # What a run reports, and what CI can rely on
 ├── scripts/purge-model-history.sh    # Strip the old vendored model from git history
 ├── ARCHITECTURE.md                   # Full architecture diagrams
 └── CLAUDE.md                         # This file
@@ -67,6 +68,7 @@ Read the relevant rule file **before** making changes in that area:
 | Adding a new site end-to-end | [docs/adding-your-app.md](docs/adding-your-app.md) |
 | Generating a site from a live crawl | `/discover-site` then `/generate-poms` |
 | Playwright failure modes the POMs guard against | [docs/playwright-pitfalls.md](docs/playwright-pitfalls.md) |
+| Step statuses, exit codes, what counts as failed | [docs/statuses-and-exit-codes.md](docs/statuses-and-exit-codes.md) |
 | Full architecture diagrams | [ARCHITECTURE.md](ARCHITECTURE.md) |
 
 ---
@@ -108,9 +110,11 @@ python stepper/main.py run db_web_mixed \
 # The same domain with no browser at all
 python stepper/main.py run db_smoke
 
-# Watch the healer work on deliberately broken selectors. No API key needed —
-# the embed-direct rung calls no provider. --no-heal-cache is what makes this a
-# measurement rather than a replay of the committed heal_cache.json.
+# Watch the healer work on deliberately broken selectors. --no-heal-cache is
+# what makes this a measurement rather than a replay of the committed
+# heal_cache.json. It needs an LLM key (GROQ_API_KEY / GEMINI_API_KEY /
+# ANTHROPIC_API_KEY): keyless, the embed-direct rung cannot recover the username
+# field — its best match scores below 0.85 — and the run fails at step 2.
 python stepper/main.py run sd_heal_test --heal 2 --no-heal-cache --show
 
 # The eight the-internet flows, against checked-in fixtures on loopback. No
@@ -126,6 +130,12 @@ python stepper/sites/phptravels/fixtures/server.py --port 8098 &
 PHPTRAVELS_BASE_URL=http://127.0.0.1:8098 \
 PHPTRAVELS_EMAIL=user@phptravels.com PHPTRAVELS_PASSWORD=demouser \
     python stepper/main.py run hotel_booking
+
+# The SauceDemo flows, against checked-in fixtures on loopback. Both knobs:
+# SAUCEDEMO_BASE_URL for the POMs, base_url for the engine-level steps.
+python stepper/sites/saucedemo/fixtures/server.py --port 8097 &
+SAUCEDEMO_BASE_URL=http://127.0.0.1:8097 python stepper/main.py run sd_happy_path \
+    --vars '{"base_url": "http://127.0.0.1:8097"}'
 
 # Drive a running Electron app instead of launching a browser. Still the web
 # domain — same actions, same POMs, same resolver cascade; only the page's

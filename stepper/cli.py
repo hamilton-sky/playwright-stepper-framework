@@ -328,10 +328,13 @@ def cmd_run(args, pipeline) -> int:
         rows = json.loads(data_path.read_text(encoding="utf-8"))
         if not isinstance(rows, list):
             raise CommandError("--data file must contain a JSON array of objects")
-        asyncio.run(pipeline.run_data_rows(cfg, rows, cli_vars))
+        results = asyncio.run(pipeline.run_data_rows(cfg, rows, cli_vars))
         if args.allure_serve:
             pipeline.serve_allure(pipeline._stepper_root)
-        return 0
+        # The same rule as a single run: any failed step in any row fails the
+        # command. This returned 0 unconditionally, so a data-driven CI job
+        # whose every row failed still went green.
+        return _exit_code(results)
 
     results = asyncio.run(pipeline.run(**{
         "workflow_path":     cfg.workflow_path,
@@ -341,12 +344,20 @@ def cmd_run(args, pipeline) -> int:
         "record_video":      cfg.record_video,
         "variables":         cfg.variables,
         "max_heal_attempts": cfg.max_heal_attempts,
+        # Was missing: --no-heal-cache built a RunConfig that said so and then
+        # dropped it here, so every "measurement" replayed heal_cache.json.
+        "use_heal_cache":    cfg.use_heal_cache,
         "shadow":            cfg.shadow,
         "ci":                cfg.ci,
         "ci_output":         cfg.ci_output,
     }))
     # A failing workflow is a failing command — CI depends on the exit code.
-    return 1 if any(r.status == "failed" for r in results) else 0
+    return _exit_code(results)
+
+
+def _exit_code(results) -> int:
+    """1 if any step failed, else 0. The one place a run becomes an exit code."""
+    return 1 if any(r.status == "failed" for r in results or []) else 0
 
 
 # ── Parser ────────────────────────────────────────────────────────────────────

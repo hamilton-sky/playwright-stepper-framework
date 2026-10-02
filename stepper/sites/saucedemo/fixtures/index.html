@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Swag Labs</title>
+<link rel="stylesheet" href="/style.css">
+<script src="/app.js"></script>
+</head>
+<body>
+<div id="root">
+  <div class="login_container">
+    <div class="login_logo">Swag Labs</div>
+    <div class="login_wrapper">
+      <div class="login_wrapper-inner">
+        <div id="login_button_container" class="form_column">
+          <div class="login-box">
+            <form id="login-form">
+              <div class="form_group"><input class="input_error form_input" placeholder="Username" type="text" data-test="username" id="user-name" name="user-name" autocorrect="off" autocapitalize="none" value=""></div>
+              <div class="form_group"><input class="input_error form_input" placeholder="Password" type="password" data-test="password" id="password" name="password" autocorrect="off" autocapitalize="none" value=""></div>
+              <div class="error-message-container"></div>
+              <input type="submit" class="submit-button btn_action" data-test="login-button" id="login-button" name="login-button" value="Login">
+            </form>
+          </div>
+        </div>
+      </div>
+      <div class="login_credentials_wrap">
+        <div class="login_credentials_wrap-inner">
+          <div id="login_credentials" class="login_credentials" data-test="login-credentials"><h4>Accepted usernames are:</h4>standard_user<br>locked_out_user<br>problem_user<br>performance_glitch_user<br>error_user<br>visual_user<br></div>
+          <div class="login_password" data-test="login-password"><h4>Password for all users:</h4>secret_sauce</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>SD.loginPage();</script>
+</body>
+</html>

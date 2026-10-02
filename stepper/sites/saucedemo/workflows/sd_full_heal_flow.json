@@ -1,11 +1,14 @@
 {
   "name": "SauceDemo — full heal flow",
   "description": "Login with broken selectors (healer fires), collect products, sort, add to cart, checkout.",
+  "variables": {
+    "base_url": "https://www.saucedemo.com"
+  },
   "steps": [
     {
       "action": "navigate",
       "description": "Open SauceDemo login page",
-      "url": "https://www.saucedemo.com/"
+      "url": "{{base_url}}/"
     },
     {
       "action": "fill",

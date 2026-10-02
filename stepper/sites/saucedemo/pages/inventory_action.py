@@ -181,9 +181,32 @@ class SDInventoryPage(PageModule):
                 )
 
                 sort_option = step.extra.get("sort", InventoryPage.SORT_NAME_ASC)
-                await inventory_page.select_sort(sort_option)
+                valid = (InventoryPage.SORT_NAME_ASC, InventoryPage.SORT_NAME_DESC,
+                         InventoryPage.SORT_PRICE_ASC, InventoryPage.SORT_PRICE_DESC)
+                if sort_option not in valid:
+                    return StepResult(
+                        step=step, status="failed",
+                        error=f"sd_sort_products: unknown sort {sort_option!r} — "
+                              f"expected one of {list(valid)}",
+                    )
 
-                logger.info("sd_sort_products ✓ — sort set to '%s'", sort_option)
+                if not await inventory_page.select_sort(sort_option):
+                    return StepResult(
+                        step=step, status="failed",
+                        error=f"sd_sort_products: select_sort() did not act — the "
+                              f"dropdown does not read {sort_option!r} afterwards",
+                    )
+                # The dropdown holding the option is not the fact; the list being
+                # in that order is. A page that accepts the selection and never
+                # re-sorts used to report passed here.
+                if not await inventory_page.is_sorted_by(sort_option):
+                    return StepResult(
+                        step=step, status="failed",
+                        error=f"sd_sort_products: the products are not in "
+                              f"{sort_option!r} order after sorting",
+                    )
+
+                logger.info("sd_sort_products ✓ — products in '%s' order", sort_option)
                 return StepResult(step=step, status="passed")
 
             except Exception as e:

@@ -141,8 +141,9 @@ async def test_a_strategy_that_throws_does_not_become_a_fuzzy_match():
     bad.collect = AsyncMock(side_effect=RuntimeError("selector engine error"))
     r = _resolver(bad)
 
-    with pytest.raises(RuntimeError):
-        await r.resolve(MagicMock(), {"css": ".x"}, "desc", strict=True)
+    result = await r.resolve(MagicMock(), {"css": ".x"}, "desc", strict=True)
+    assert result.found is False
+    assert result.method == "strategy-error:css"
 
 
 # ── The default is unchanged ──────────────────────────────────────────────────

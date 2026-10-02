@@ -44,9 +44,12 @@ workflow with no browser steps never launches one.
 ## Quick Start
 
 ```bash
-# 1. Install
+# 1. Install — the exact pins CI uses
 pip install -r requirements.txt
 playwright install chromium
+#    …or as a package, choosing extras: visual (numpy, Pillow for
+#    visual_compare), semantic (MiniLM), ai (AI pick + planner), test, or all
+#    pip install -e ".[all]"
 
 #    Optional: pre-cache the ML models used by the semantic resolver and the
 #    healer. Both fall back to downloading on first use, so this is only needed
@@ -320,14 +323,16 @@ It finds the most recent `heal_suggestions.json` under `reports/`, shows a per-s
 before/after diff, and patches the JSON in place (`--yes` to skip confirmation).
 
 `sd_heal_test.json` and `sd_full_heal_flow.json` ship with deliberately broken selectors.
-Run them with `--heal 2 --no-heal-cache` to watch the cascade recover each one — the
-embed-direct rung needs no API key.
+Run them with `--heal 2 --no-heal-cache` and an LLM key to watch the cascade recover
+each one.
 
-They are **not** yet part of CI, and the honest reason is worth knowing: an
-`assert_*` step resolves through the full cascade, fuzzy fallbacks included, so an
-assertion can pass by matching a *different* element than the one it names. Until
-assertions resolve strictly, a green heal workflow would not prove the heal worked.
-Until then this is a claim about what the healer does, not a guarantee CI enforces.
+They are **not** part of CI, and the reason is a measured one. Run keyless against the
+SauceDemo fixtures, `sd_heal_test` fails at its first heal: the healer scores the
+username input between 0.50 and 0.85, which is the band that needs an AI pick, so the
+embed-direct rung cannot recover it alone. This had been documented as working without
+a key; it was never measured, because `--no-heal-cache` was silently ignored and every
+"measurement" replayed `heal_cache.json`. Making the keyless rung recover a login form
+is open work.
 
 ---
 
@@ -623,22 +628,13 @@ that value and the step reports `passed` for something that never happened. Wher
 other two rows raise, they are safe by comparison: `StepRunner`'s retry loop catches
 an exception into a failed step.
 
-One qualification on that first row, because "never raises" is not literally true.
-`_interact` wraps the *interaction* in a `try`, but the `resolver.resolve()` call sits
-outside it, so an exception thrown by a resolver strategy propagates. Measured with a
-strategy that throws:
-
-```
-resolver.resolve: RAISED RuntimeError
-_interact:        RAISED RuntimeError        ← not False
-```
-
-Every strategy shipped here catches its own exceptions and returns `[]` — verified the
-same way — so this needs a custom strategy that does not. The cascade does not isolate
-them from each other, which is arguably its own bug: one broken strategy takes down
-the whole chain rather than yielding to the next. Whether it *should* catch is a real
-question, though, since a swallowed exception turns a broken strategy into "element
-not found" everywhere. That one is still open, and is the last of its family left.
+One qualification on that first row. `_interact` wraps the *interaction* in a `try`,
+but the `resolver.resolve()` call sits outside it — so the cascade itself isolates its
+deterministic strategies. One whose `collect()` raises is logged at `ERROR` and skipped,
+and the others still run. If none of them finds the element, the result is not-found
+with `method="strategy-error:<name>"`, and the fuzzy fallbacks are **not** consulted:
+a broken strategy must not be papered over by a keyword match on the description.
+`stepper/tests/unit/test_strategy_isolation.py` holds both halves.
 
 The second path exists because the cascade resolves exactly one element, so picking
 the first of several rows or following a pagination link has to go to the driver

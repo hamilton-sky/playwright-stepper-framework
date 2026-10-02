@@ -404,10 +404,11 @@ class ParallelAction(ActionStrategy):
         mode          = step.extra.get("mode", "tabs")
 
         if not sub_steps_raw:
-            # A skip by choice, pinned by test_no_sub_steps_is_skipped_not_failed.
-            # It reads oddly beside `scroll_to`, which fails when no element is
-            # named — see design-patterns.md.
-            return StepResult(step=step, status="skipped",
+            # A step that cannot run as written is malformed, and a malformed
+            # step is `failed` — the same rule `scroll_to` follows when no
+            # element is named. `skipped` is reserved for a step deliberately
+            # not run (a false `when:`), and sits outside the exit code.
+            return StepResult(step=step, status="failed",
                               error="parallel: no sub-steps defined")
 
         sub_steps = [_dict_to_step_config(s) for s in sub_steps_raw]

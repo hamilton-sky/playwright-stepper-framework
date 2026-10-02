@@ -131,8 +131,23 @@ class ElementResolver:
             logger.warning("[ElementResolver] no cfg and no description → not-found")
             return ResolveResult(found=False, confidence=0.0, method="not-found")
 
+        # A strategy that raises is isolated rather than allowed to take down the
+        # chain — the others still get their turn. But it is not quietly turned
+        # into "no match" either: if nothing else finds the element, the result
+        # is not-found *naming the broken strategy*, and the fuzzy fallbacks are
+        # not consulted, so a broken strategy cannot be papered over by a
+        # keyword match on the description.
+        errored: list[str] = []
         for strategy in self._strategies:
-            candidates = await strategy.collect(page, cfg)
+            try:
+                candidates = await strategy.collect(page, cfg)
+            except Exception as exc:
+                errored.append(strategy.name)
+                logger.error(
+                    f"[ElementResolver] strategy '{strategy.name}' raised "
+                    f"{type(exc).__name__}: {exc} — skipping it"
+                )
+                continue
             if not candidates:
                 continue
 
@@ -166,6 +181,16 @@ class ElementResolver:
             )
             if result.found:
                 return result
+
+        if errored:
+            logger.error(
+                f"[ElementResolver] no match, and strategies {errored} raised — "
+                "reporting not-found rather than falling back to a fuzzy match"
+            )
+            return ResolveResult(
+                found=False, confidence=0.0,
+                method=f"strategy-error:{','.join(errored)}",
+            )
 
         if strict:
             logger.info(

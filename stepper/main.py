@@ -749,6 +749,7 @@ async def run(
     ci: bool = False,
     ci_output: str | None = None,
     observers=None,
+    use_heal_cache: bool = True,
 ):
     """
     Plan, assemble and execute one run — the whole pipeline end to end.
@@ -776,6 +777,7 @@ async def run(
         record_video=record_video,
         variables=variables,
         max_heal_attempts=max_heal_attempts,
+        use_heal_cache=use_heal_cache,
         shadow=shadow,
         ci=ci,
         ci_output=ci_output,
@@ -879,7 +881,7 @@ def apply_heals(workflow_path: Path, auto_yes: bool) -> None:
     print(f"{len(patches)} heal(s) applied to {workflow_path}. Commit to make permanent.")
 
 
-async def run_data_rows(cfg: RunConfig, rows: list[dict], cli_vars: dict) -> None:
+async def run_data_rows(cfg: RunConfig, rows: list[dict], cli_vars: dict) -> list:
     """
     Run one workflow once per data row, reusing whatever the domain can share.
 
@@ -887,11 +889,15 @@ async def run_data_rows(cfg: RunConfig, rows: list[dict], cli_vars: dict) -> Non
     resource and the resolver are built once for the whole set. For the web
     domain "shared" is one browser, so a hundred rows cost one launch and a
     hundred contexts — which is what this function existed to do.
+
+    Returns every row's step results, concatenated, so the caller can derive an
+    exit code. It used to return None and the CLI exited 0 whatever the rows did.
     """
     cfg      = _with_workflow_domain(cfg)
     settings = build_settings(cfg)
     resolver = build_resolver(settings.use_visual_ai)
     domain   = get_domain(cfg.domain)
+    all_results: list = []
 
     async with domain.shared(cfg, settings) as shared:
         for i, row in enumerate(rows, 1):
@@ -904,10 +910,12 @@ async def run_data_rows(cfg: RunConfig, rows: list[dict], cli_vars: dict) -> Non
             with _tee_logs_to_run_file(prepared.test_reporter):
                 try:
                     pipeline = await build_pipeline(prepared, sessions)
-                    await execute_pipeline(pipeline)
+                    all_results.extend(await execute_pipeline(pipeline))
                 finally:
                     # Closes this row's context; the shared browser outlives it.
                     await sessions.close_all()
+
+    return all_results
 
 
 def main() -> None:

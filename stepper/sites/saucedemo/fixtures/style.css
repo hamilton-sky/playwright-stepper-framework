@@ -1,0 +1,32 @@
+/* Enough layout that every interactive element has a real, clickable box —
+   Playwright's actionability checks refuse zero-size or hidden targets, and a
+   fixture that let them through would hide exactly that class of bug. */
+* { box-sizing: border-box; }
+body { margin: 0; font: 14px/1.4 -apple-system, "Helvetica Neue", Arial, sans-serif; color: #132322; background: #fff; }
+.login_logo, .app_logo { font-size: 24px; font-weight: 600; padding: 12px 0; text-align: center; }
+.login_wrapper-inner { max-width: 360px; margin: 24px auto; }
+.form_group { margin-bottom: 12px; }
+.form_input { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; }
+.form_input.error { border-color: #e2231a; }
+.error-message-container.error { background: #e2231a; color: #fff; padding: 8px 12px; border-radius: 4px; margin-bottom: 12px; }
+.error-message-container h3 { margin: 0; font-size: 14px; }
+.error-button { float: right; width: 18px; height: 18px; border: 0; background: transparent; }
+.btn, .submit-button { display: inline-block; padding: 8px 16px; min-width: 80px; border-radius: 4px; border: 1px solid #3ddc91; background: #3ddc91; color: #132322; cursor: pointer; font: inherit; }
+.btn_secondary { background: #fff; border-color: #132322; }
+.primary_header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; border-bottom: 1px solid #ddd; }
+.shopping_cart_link { display: inline-block; position: relative; width: 40px; height: 40px; cursor: pointer; background: #eee; border-radius: 4px; }
+.shopping_cart_badge { position: absolute; top: -6px; right: -6px; background: #e2231a; color: #fff; border-radius: 50%; min-width: 20px; height: 20px; text-align: center; font-size: 12px; line-height: 20px; }
+.bm-menu-wrap { position: fixed; top: 0; left: 0; width: 280px; height: 100%; background: #f3f3f3; padding: 48px 16px; z-index: 10; }
+.bm-item { display: block; padding: 8px 0; }
+.bm-cross-button { position: absolute; top: 8px; right: 8px; }
+.header_secondary_container { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; }
+.title { font-size: 18px; font-weight: 600; }
+.inventory_list { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; padding: 16px; }
+.inventory_item { border: 1px solid #ddd; border-radius: 8px; padding: 12px; }
+.inventory_item_img img { width: 100%; height: 80px; }
+.inventory_item_name, .inventory_details_name { font-weight: 600; color: #18583a; }
+.pricebar, .item_pricebar { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; }
+.cart_list, .summary_info, .checkout_info_wrapper, .checkout_complete_container, .inventory_details_container { padding: 0 16px; }
+.cart_item { display: flex; gap: 16px; border-bottom: 1px solid #ddd; padding: 12px 0; }
+.cart_footer, .checkout_buttons { display: flex; justify-content: space-between; padding: 16px; }
+.pony_express { width: 60px; height: 60px; }

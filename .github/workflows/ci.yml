@@ -244,6 +244,55 @@ jobs:
 
           python stepper/main.py run hotel_booking --ci --ci-output reports/ci-pt-hotel-booking.json
 
+      # The SauceDemo flows, against checked-in fixtures on loopback. The live
+      # smoke run above stays: it is the only check that the fixture has not
+      # drifted from the real site. These three cover what it never did — cart,
+      # checkout and the collection clicks — and the first run of them found a
+      # sort step that reported passed without the list ever being sorted.
+      # The two heal workflows are not here. Run keyless with --no-heal-cache,
+      # sd_heal_test fails: the healer scores the username input in the
+      # 0.50-0.85 band, which needs an AI pick, so embed-direct alone cannot
+      # recover it. Tuning the healer is follow-up work; see the fixtures README.
+      - name: Run the SauceDemo workflows against local fixtures
+        env:
+          SAUCEDEMO_BASE_URL: http://127.0.0.1:8097
+        run: |
+          python stepper/sites/saucedemo/fixtures/server.py --port 8097 &
+          server_pid=$!
+          trap 'kill $server_pid 2>/dev/null || true' EXIT
+
+          ready=no
+          for _ in $(seq 1 40); do
+            if ! kill -0 $server_pid 2>/dev/null; then
+              echo "::error title=saucedemo fixtures::the fixture server exited during startup (is port 8097 already in use?)"
+              exit 1
+            fi
+            if curl -sf --noproxy '*' http://127.0.0.1:8097/ >/dev/null; then
+              ready=yes; break
+            fi
+            sleep 0.25
+          done
+          if [ "$ready" != yes ]; then
+            echo "::error title=saucedemo fixtures::the fixture server never came up on 127.0.0.1:8097"
+            exit 1
+          fi
+
+          # base_url is the workflow variable the engine-level steps use;
+          # SAUCEDEMO_BASE_URL (above) is what the POMs use. Both, or neither.
+          vars='{"base_url": "http://127.0.0.1:8097"}'
+          failed=""
+          for wf in sd_happy_path sd_multi_product sd_smoke_test; do
+            echo "── $wf ──"
+            if ! python stepper/main.py run "$wf" --vars "$vars" --ci --ci-output "reports/ci-sd-fixture-$wf.json"; then
+              failed="$failed $wf"
+            fi
+          done
+
+          if [ -n "$failed" ]; then
+            echo "::error title=saucedemo workflows failed::$failed"
+            exit 1
+          fi
+
       # Every test under stepper/tests/ (excluding unit/) drives an OpenLibrary
       # workflow, so the whole step depends on the credentials.
       - name: Run stepper integration tests
