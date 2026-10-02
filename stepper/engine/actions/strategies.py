@@ -57,8 +57,8 @@ from stepper.engine.actions.flow import (
     EnsureLoginAction,
     PaginateAction,
     ParallelAction,
-    RunWorkflowAction,
 )
+from stepper.engine.actions.subflow import RunWorkflowAction
 from stepper.engine.actions.measurement import (
     MeasurePerformanceAction,
     VisualCompareAction,

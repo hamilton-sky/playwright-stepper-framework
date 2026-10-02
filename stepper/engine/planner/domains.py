@@ -11,8 +11,12 @@ runner previously answered only by failing partway through:
 Sub-steps count. `for_each_item`, `parallel` and `paginate` hold theirs as raw
 dicts inside `extra`, so a loop body is the easiest place for a second domain to
 hide — and since M4 it is a place the runner genuinely routes to a different
-session. The walk here has the same shape as the validator's `when`-clause walk,
-for the same reason: a nested step is a step.
+session.
+
+`_domains_in` below reads any dict carrying an `action`, which is looser than
+what PlanValidator does — see its docstring for why that is right here and
+wrong there. Which `extra` keys actually hold sub-steps is declared by the
+action itself (`ActionStrategy.sub_step_keys`), never guessed from the name.
 
 An action the registry does not know reports domain `None` rather than raising.
 Its real problem is that it is unregistered, PlanValidator already says so, and
@@ -20,6 +24,20 @@ a second error about its domain would only bury the first.
 """
 
 from __future__ import annotations
+
+
+def body_of(raw: dict) -> dict:
+    """
+    Where a raw step dict keeps its sub-steps — `dict_to_step_config`'s rule.
+
+    An explicit `extra` wins; without one, every non-top-level key is promoted
+    into extra, so `{"action": "for_each_item", "steps": [...]}` is a real and
+    supported shape. Reading only `raw["extra"]` misses it, and the runtime
+    does not: it runs those steps.
+    """
+    if "extra" in raw:
+        return raw["extra"] if isinstance(raw["extra"], dict) else {}
+    return raw
 
 
 def domains_in_step(step, registry) -> list[tuple[str, str | None]]:
@@ -64,6 +82,16 @@ def _domains_in(node, registry) -> list[tuple[str, str | None]]:
 
     Descends *through* a sub-step as well as recording it: a `for_each_item`
     nested inside a `parallel` carries its own body one level further down.
+
+    Deliberately looser than `sub_step_dicts` above, which walks only the
+    named containers. The asymmetry is the point, and it is about what each
+    answer costs when it is wrong:
+
+        missing a domain here  → no session opens, and the run dies partway
+        an extra name here     → unregistered, domain None, ignored
+
+    So discovery guesses wide. Validation cannot afford to: an extra name
+    there *rejects a valid workflow*, which is what `extra.vars` did.
     """
     found: list[tuple[str, str | None]] = []
     if isinstance(node, dict):

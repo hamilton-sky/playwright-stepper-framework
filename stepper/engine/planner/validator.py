@@ -10,7 +10,7 @@ from __future__ import annotations
 import difflib
 
 from stepper.engine.interfaces import StepConfig
-from stepper.engine.planner.domains import domains_in_step
+from stepper.engine.planner.domains import body_of, domains_in_step
 
 
 class PlanValidationError(Exception):
@@ -66,6 +66,15 @@ class PlanValidator:
                     f"unknown action '{step.action}'"
                     + _did_you_mean(step.action, known)
                 )
+
+            # Sub-steps are steps, and get the same checks. They live in extra,
+            # so the loop above never saw them: a typo inside a for_each_item
+            # body passed validate and surfaced only at run time, after a
+            # session had opened.
+            for problem, unknown in _sub_step_errors(
+                    step.action, step.extra, known, registry):
+                saw_unknown_action = saw_unknown_action or unknown
+                step_errors.append(problem)
 
             if not step.description:
                 step_errors.append("missing 'description'")
@@ -137,6 +146,91 @@ def _unknown_conditions_in(node, conditions) -> list[str]:
     elif isinstance(node, list):
         for item in node:
             found.extend(_unknown_conditions_in(item, conditions))
+    return found
+
+
+def _dispatch_keys(action_name, registry) -> tuple[str, ...]:
+    """
+    The `extra` keys this action dispatches sub-steps from, as it declares
+    them. Empty for anything the registry does not know — an unregistered
+    action already has an error of its own, and a second one about its body
+    would only bury it.
+    """
+    try:
+        action = registry.create(action_name)
+    except Exception:
+        return ()
+    return tuple(getattr(action, "sub_step_keys", ()) or ())
+
+
+def _sub_step_errors(action_name, extra, known: list[str],
+                     registry) -> list[tuple[str, bool]]:
+    """
+    The same checks a top-level step gets, applied to every sub-step below it,
+    plus the shape checks a nested body needs and a top-level list cannot.
+
+    Returns (message, names_an_unknown_action) pairs, in order, duplicates
+    kept: the same typo in two places is two things to fix, and the error list
+    is what a person reads.
+
+    A nested step is a step, so a missing action, an unregistered one and a
+    missing description each have to fail validation the way they do at the top
+    level. Extracting only the *names* that were already well-formed strings —
+    the first version of this — silently dropped a sub-step with no action at
+    all, which the factory then rejects at run time with a session already open.
+
+    Malformed *containers* are reported for the same reason rather than
+    skipped. A dispatcher hands each entry straight to `dict_to_step_config`,
+    so `{"steps": ["not a step"]}` dies with
+
+        AttributeError: 'str' object has no attribute 'get'
+
+    once the run has started. This is the one place that can say so first.
+    Note that `sub_step_dicts` stays lenient: it feeds domain *discovery*,
+    where a guess costs nothing and a crash costs the run.
+
+    Which keys hold sub-steps is asked of the action, never guessed from the
+    name. `extra` is an open bag of action-specific keys and factory.py
+    promises a new action needs "zero other changes", so a validator that
+    assumed any `extra.steps` was executable would reject an action using that
+    name for its own data. Guessing has already cost once here: `run_workflow`
+    passes arbitrary `extra.vars` through, and `{"vars": {"action": "archive"}}`
+    read as a sub-step naming an action.
+    """
+    found: list[tuple[str, bool]] = []
+    if not isinstance(extra, dict):
+        return found
+
+    for key in _dispatch_keys(action_name, registry):
+        if key not in extra:
+            continue
+        body = extra[key]
+        if not isinstance(body, list):
+            found.append((
+                f"extra.{key} is {type(body).__name__}, not a list of steps", False))
+            continue
+
+        for i, raw in enumerate(body, 1):
+            where = f"{key}[{i}]"
+            if not isinstance(raw, dict):
+                found.append((
+                    f"{where} is {type(raw).__name__}, not a step", False))
+                continue
+
+            action = raw.get("action")
+            label  = raw.get("description") or action or where
+
+            if not isinstance(action, str) or not action:
+                found.append((f"sub-step '{label}': missing 'action'", False))
+            elif action not in known:
+                found.append((
+                    f"unknown action '{action}' in a sub-step"
+                    + _did_you_mean(action, known), True))
+
+            if not raw.get("description"):
+                found.append((f"sub-step '{label}': missing 'description'", False))
+
+            found.extend(_sub_step_errors(action, body_of(raw), known, registry))
     return found
 
 

@@ -50,10 +50,64 @@ class MyAction(ActionStrategy):
         return StepResult(step=step, status="passed")
 ```
 
+### Which status to return
+
+There are five, and only two of them are yours to choose freely. Getting this wrong
+is how the engine used to report work it had not done.
+
+| Status | Means | Who returns it |
+|---|---|---|
+| `passed` | the step did its job | you |
+| `failed` | it did not — **including when it could not even try** | you |
+| `skipped` | the step was deliberately not run | `StepRunner`, for a false `when:` |
+| `healed` | the healer replaced a selector and the retry passed | `StepRunner` only |
+| `warned` | nothing produces it; kept in the vocabulary, unused | — |
+
+`skipped` has two other producers, both meaning "no work to do" rather than
+"something went wrong": `ol_add_to_shelf` when `context.collected_items` is empty,
+and `parallel` with no sub-steps. The second is inconsistent with `scroll_to`, which
+**fails** when no element is named — both are a step that cannot run as written. The
+difference is that `scroll_to`'s status was incidental and `parallel`'s was chosen
+and pinned (`test_no_sub_steps_is_skipped_not_failed`), so it stays until someone
+changes it on purpose. If you are adding an action: a malformed step is `failed`.
+
+**A step that did not act returns `failed`.** Not `skipped`, not `warned`. Only
+`failed` is read by every consumer that matters:
+
+```python
+success_rate = passed / (passed + failed)      # in the report
+return 1 if any(r.status == "failed" ...)      # the CLI's exit code
+if result.status in ("failed", "skipped"):     # the heal loop's trigger
+```
+
+`skipped` is outside the success rate's divisor and outside the exit code, and
+`warned` is outside all three. The page primitives returned `skipped` for a
+not-found element and `warned` for a below-threshold one, so a click that never
+happened produced `success_rate 1.0` and `exit 0` — and, being neither failed nor
+skipped, never reached the healer that existed to rescue it. See
+`stepper/tests/unit/test_not_found_fails_the_step.py`.
+
+**A dispatcher reports its sub-steps, and declares where they live.**
+`_run_sub_steps` returns a list of `StepResult`; if your action drops it and returns
+`passed`, every failure inside it disappears. `for_each_item` caught each per-item
+exception, took an error screenshot, and then reported the step passed. Continuing
+past a failure (`stop_on_failure=False`) is a legitimate choice; reporting it as
+success is not.
+
+Set `sub_step_keys` to the `extra` keys you read sub-steps from — `("steps",)` for
+`for_each_item` and `parallel`, `("login_steps",)` for `ensure_login`. That is what
+`PlanValidator` walks to check nested steps, and it has to be declared rather than
+inferred from the key name: `extra` is an open bag and `build_default_registry`
+promises a new action needs "zero other changes", so a validator that assumed any
+`extra.steps` was executable would reject an action using that name for its own
+data. Leave it `()` if your action is not a dispatcher — which is the default, so
+there is nothing to do.
+
 Put the class in the `stepper/engine/actions/` module that matches what it does —
 `basic.py` (page primitives), `assertions.py` (check or record state), `data.py`
-(rows in and out), `flow.py` (dispatches sub-steps), `measurement.py` (judge the
-render against a threshold) — re-export it from `strategies.py`, then register it
+(rows in and out), `flow.py` (dispatches sub-steps), `subflow.py` (runs another
+workflow), `measurement.py` (judge the render against a threshold) — re-export it
+from `strategies.py`, then register it
 in `build_default_registry()` in `stepper/engine/actions/factory.py`.
 
 `strategies.py` is a re-export shim, not a home for classes;

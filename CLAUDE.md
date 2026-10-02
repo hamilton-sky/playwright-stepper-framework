@@ -19,8 +19,8 @@ playwright-stepper-framework/
 │   ├── main.py                       # Entry point
 │   ├── engine/                       # Core framework modules
 │   │   ├── actions/                  # basic / assertions / data / flow /
-│   │   │                             #   measurement, + factory; strategies.py
-│   │   │                             #   re-exports them all
+│   │   │                             #   subflow / measurement, + factory;
+│   │   │                             #   strategies.py re-exports them all
 │   │   ├── resolvers/                # Element resolution cascade
 │   │   ├── runner/                   # StepRunner, when_eval
 │   │   ├── planner/                  # Claude AI planner / JSON planner

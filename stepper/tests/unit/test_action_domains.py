@@ -56,7 +56,7 @@ def test_the_documented_agnostic_actions_really_ignore_their_session():
     — catch it here rather than at runtime.
     """
     from stepper.engine.actions.data import LoadTestDataAction
-    from stepper.engine.actions.flow import RunWorkflowAction
+    from stepper.engine.actions.subflow import RunWorkflowAction
 
     for cls in (LoadTestDataAction, RunWorkflowAction):
         src = inspect.getsource(cls._execute)

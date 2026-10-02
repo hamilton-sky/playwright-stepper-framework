@@ -128,9 +128,9 @@ def build_default_registry(
     To add a new action:
       1. Write your ActionStrategy subclass in the actions module it belongs to
          — basic.py (page primitives), assertions.py (check or record state),
-         data.py (rows in and out), flow.py (dispatches sub-steps) or
-         measurement.py (judge the render against a threshold) — and re-export
-         it from strategies.py
+         data.py (rows in and out), flow.py (dispatches sub-steps),
+         subflow.py (runs another workflow) or measurement.py (judge the
+         render against a threshold) — and re-export it from strategies.py
       2. Add one .register() call here.
       Done. Zero other changes. (OCP)
 
