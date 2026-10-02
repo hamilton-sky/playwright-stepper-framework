@@ -51,6 +51,15 @@ def _step(**kw) -> StepConfig:
     return StepConfig(**base)
 
 
+def _rung_step(**kw) -> StepConfig:
+    """
+    A step for testing the score rungs themselves. Its action is one the
+    clear-winner rule does not model, so a lone element is judged on the
+    thresholds alone — the rule has its own tests further down.
+    """
+    return _step(action="scroll_to", **kw)
+
+
 def _page(elements: list[dict], scoped_html: str = "", walk=None):
     """
     A page stub whose evaluate() dispatches on the JS it is handed, the way the
@@ -161,7 +170,7 @@ async def test_a_middling_score_sends_scoped_dom_not_the_whole_page(fixed_scores
     page = _page([_element(text="Submit", id="submit")],
                  scoped_html="<form><button id='submit'>Submit</button></form>")
 
-    payload = await DOMSnapshotCascade.capture(page, _step())
+    payload = await DOMSnapshotCascade.capture(page, _rung_step())
 
     assert payload.strategy_used == "scoped"
     assert payload.healed_cfg is None
@@ -180,7 +189,7 @@ async def test_scoped_dom_survives_an_element_with_nothing_to_scope_to(fixed_sco
     fixed_scores({"Submit": 0.70})
     page = _page([_element(text="Submit", id="", aria=None)])
 
-    payload = await DOMSnapshotCascade.capture(page, _step())
+    payload = await DOMSnapshotCascade.capture(page, _rung_step())
 
     assert payload.strategy_used == "scoped"
     assert "scoped_html" not in json.loads(payload.content)
@@ -245,7 +254,7 @@ async def test_each_threshold_selects_its_rung(fixed_scores, top_score, expected
     fixed_scores({"Target": top_score})
     page = _page([_element(text="Target", id="t")], walk={"tag": "body"})
 
-    payload = await DOMSnapshotCascade.capture(page, _step())
+    payload = await DOMSnapshotCascade.capture(page, _rung_step())
 
     assert payload.strategy_used == expected
 
@@ -370,3 +379,455 @@ def test_a_thin_description_is_padded_from_the_action_name():
 
     assert len(query) > len("go")
     assert "cart" in query
+
+
+# ── The clear-winner rule ─────────────────────────────────────────────────────
+#
+# Measured on the SauceDemo login fixture, MiniLM put the right element first for
+# every heal step but never at ≥ 0.85: username 0.790 (runner-up 0.341), password
+# 0.755 (0.382), Login 0.728 (alone among clickables). Every heal fell to the
+# scoped rung and needed an AI pick. The rule: a candidate that suits the action
+# and clearly leads the other suitable candidates is healed directly.
+
+from stepper.engine.healer.dom_snapshot import _LONE_MIN, _MARGIN  # noqa: E402
+
+
+def _login_form():
+    return [
+        _element(tag="INPUT", role="input", placeholder="Username", name="user-name",
+                 id="user-name", type="text"),
+        _element(tag="INPUT", role="input", placeholder="Password", name="password",
+                 id="password", type="password"),
+        _element(tag="INPUT", role="input", name="login-button", id="login-button",
+                 type="submit", value="Login"),
+    ]
+
+
+async def test_the_measured_login_form_heals_with_no_ai_call(fixed_scores):
+    """The numbers from the fixture: a 0.79 leading by 0.45 is not ambiguous."""
+    fixed_scores({"Username": 0.79, "Login": 0.34, "Password": 0.25})
+
+    payload = await DOMSnapshotCascade.capture(
+        _page(_login_form()),
+        _step(action="fill", description="Type username into the username field"),
+    )
+
+    assert payload.strategy_used == "embed_direct"
+    assert payload.healed_cfg["placeholder"] == "Username"
+    assert payload.token_estimate == 0
+
+
+async def test_a_fill_never_heals_onto_a_button(fixed_scores):
+    """
+    The submit button outscoring every field is not a reason to type into it. Only
+    elements that take text are candidates for a fill, so the answer stays with
+    the AI rather than becoming a confident wrong one.
+    """
+    fixed_scores({"Login": 0.80, "Username": 0.40, "Password": 0.38})
+
+    payload = await DOMSnapshotCascade.capture(
+        _page(_login_form(), walk={"tag": "body"}),
+        _step(action="fill", description="type into the login field"),
+    )
+
+    assert payload.strategy_used != "embed_direct"
+
+
+async def test_a_click_ignores_text_fields_and_heals_to_the_lone_button(fixed_scores):
+    """Text inputs are not clickable targets; the submit input is the one candidate."""
+    fixed_scores({"Login": 0.73, "Username": 0.30, "Password": 0.42})
+
+    payload = await DOMSnapshotCascade.capture(
+        _page(_login_form()),
+        _step(action="click", description="Click the Login button to submit credentials"),
+    )
+
+    assert payload.strategy_used == "embed_direct"
+    # Its value is its accessible name — the most durable identifier it has.
+    assert payload.healed_cfg == {"priority": 0, "role": "button", "name": "Login"}
+
+
+@pytest.mark.parametrize("lead, expected", [
+    (_MARGIN, "embed_direct"),            # inclusive
+    (_MARGIN - 0.01, "scoped"),
+])
+async def test_the_lead_must_reach_the_margin(fixed_scores, lead, expected):
+    fixed_scores({"Username": 0.70, "Password": round(0.70 - lead, 4)})
+
+    payload = await DOMSnapshotCascade.capture(
+        _page(_login_form()[:2]),
+        _step(action="fill", description="type the username"),
+    )
+
+    assert payload.strategy_used == expected
+
+
+async def test_a_clear_lead_still_needs_the_floor(fixed_scores):
+    """0.45 over 0.10 leads by plenty, and is still a weak match for anything."""
+    fixed_scores({"Username": 0.45, "Password": 0.10})
+
+    payload = await DOMSnapshotCascade.capture(
+        _page(_login_form()[:2], walk={"tag": "body"}),
+        _step(action="fill", description="type the username"),
+    )
+
+    assert payload.strategy_used == "aria"
+
+
+@pytest.mark.parametrize("score, expected", [
+    (_LONE_MIN, "embed_direct"),
+    (_LONE_MIN - 0.01, "scoped"),
+])
+async def test_a_lone_candidate_has_to_clear_a_higher_bar(fixed_scores, score, expected):
+    """
+    With nothing to lead, the margin is the score itself — the case where the
+    target is gone and something unrelated is left. So it needs more than the
+    0.50 floor a contested winner does.
+    """
+    fixed_scores({"Accept": score})
+
+    payload = await DOMSnapshotCascade.capture(
+        _page([_element(text="Accept", id="accept")]),
+        _step(action="click", description="click the login button"),
+    )
+
+    assert payload.strategy_used == expected
+
+
+async def test_the_cross_encoder_can_veto_the_winner(fixed_scores, monkeypatch):
+    """If the re-ranker prefers a different suitable element, the AI decides."""
+    fixed_scores({"Username": 0.79, "Password": 0.30})
+    monkeypatch.setattr(
+        ds._CrossEncoderReranker, "instance",
+        classmethod(lambda cls: SimpleNamespace(rerank=lambda q, top: list(reversed(top)))),
+    )
+
+    payload = await DOMSnapshotCascade.capture(
+        _page(_login_form()[:2], scoped_html="<form></form>"),
+        _step(action="fill", description="type the username"),
+    )
+
+    assert payload.strategy_used != "embed_direct"
+
+
+async def test_an_action_the_rule_does_not_model_is_unaffected(fixed_scores):
+    fixed_scores({"Username": 0.79, "Password": 0.20})
+
+    payload = await DOMSnapshotCascade.capture(
+        _page(_login_form()[:2], scoped_html="<form></form>"),
+        _step(action="scroll_to", description="scroll to the username"),
+    )
+
+    assert payload.strategy_used == "scoped"
+
+
+@pytest.mark.parametrize("action, element, fits", [
+    ("fill",  _element(tag="INPUT", type="text"), True),
+    ("fill",  _element(tag="INPUT", type="password"), True),
+    ("fill",  _element(tag="INPUT", type=None), True),          # type defaults to text
+    ("fill",  _element(tag="INPUT", type="submit"), False),
+    ("fill",  _element(tag="INPUT", type="checkbox"), False),
+    ("fill",  _element(tag="TEXTAREA", role="textarea"), True),
+    ("fill",  _element(tag="DIV", role="textbox"), False),      # a role is not editability
+    ("fill",  _element(tag="DIV", role="textbox", editable=True), True),
+    ("fill",  _element(tag="BUTTON", role="combobox"), False),
+    ("fill",  _element(tag="INPUT", type="text", readonly=True), False),
+    ("fill",  _element(tag="BUTTON", role="button"), False),
+    ("click", _element(tag="BUTTON", role="button"), True),
+    ("click", _element(tag="A", role="a"), True),
+    ("click", _element(tag="INPUT", type="submit"), True),
+    ("click", _element(tag="INPUT", type="text"), False),
+    ("click", _element(tag="DIV", role="link"), True),
+    ("select", _element(tag="SELECT", role="select"), True),
+    ("select", _element(tag="DIV", role="listbox"), False),      # select_option needs <select>
+    ("select", _element(tag="BUTTON", role="combobox"), False),
+    ("select", _element(tag="BUTTON", role="button"), False),
+    ("scroll_to", _element(tag="BUTTON", role="button"), None),
+])
+def test_which_elements_suit_which_action(action, element, fits):
+    assert DOMSnapshotCascade._fits_action(action, element) is fits
+
+
+# ── Roles a healed cfg can actually resolve ───────────────────────────────────
+#
+# _ELEMENT_QUERY_JS falls back to the lower-cased tag when an element has no role
+# attribute. "a", "select" and "input" are not ARIA roles, so a healed
+# {"role": "select"} resolved to nothing. Found in review of the clear-winner rule,
+# which made those direct heals reachable; the ≥ 0.85 rung had the same hole.
+
+@pytest.mark.parametrize("element, role", [
+    (_element(tag="A", role="a", text="Home", href=True), "link"),
+    (_element(tag="A", role="a", text="Cart", href=False), ""),   # no href, no link role
+    (_element(tag="BUTTON", role="button", text="Save"), "button"),
+    (_element(tag="SELECT", role="select"), "combobox"),
+    (_element(tag="SELECT", role="select", multirow=True), "listbox"),
+    (_element(tag="TEXTAREA", role="textarea"), "textbox"),
+    (_element(tag="INPUT", role="input", type="text"), "textbox"),
+    (_element(tag="INPUT", role="input", type=None), "textbox"),
+    (_element(tag="INPUT", role="input", type="submit"), "button"),
+    (_element(tag="INPUT", role="input", type="checkbox"), "checkbox"),
+    (_element(tag="INPUT", role="input", type="email"), "textbox"),
+    (_element(tag="INPUT", role="input", type="number"), "spinbutton"),
+    (_element(tag="INPUT", role="input", type="search"), "searchbox"),
+    (_element(tag="INPUT", role="input", type="range"), "slider"),
+    (_element(tag="INPUT", role="input", type="password"), ""),   # no implicit role
+    (_element(tag="INPUT", role="input", type="date"), ""),
+    (_element(tag="DIV", role="div"), ""),                       # no implicit role
+    (_element(tag="DIV", role="tab"), "tab"),                    # explicit attribute kept
+    (_element(tag="A", role="button"), "button"),
+])
+def test_tag_derived_roles_become_aria_roles(element, role):
+    assert DOMSnapshotCascade._aria_role(element) == role
+
+
+def test_a_select_is_not_named_after_its_options():
+    """Its textContent is every option at once — never a usable accessible name."""
+    cfg = DOMSnapshotCascade._element_to_cfg(
+        _element(tag="SELECT", role="select", text="Name (A to Z) Name (Z to A)",
+                 id="sort")
+    )
+
+    assert cfg.get("role") is None
+    assert "Name (A to Z)" not in json.dumps(cfg)
+    assert cfg["id"] == "sort"
+
+
+def test_a_select_with_a_label_resolves_as_a_combobox():
+    cfg = DOMSnapshotCascade._element_to_cfg(
+        _element(tag="SELECT", role="select", aria="Sort by", text="A B C")
+    )
+
+    assert cfg["role"] == "combobox"
+    assert cfg["name"] == "Sort by"
+
+
+# ── Only actionable elements can be clear winners ─────────────────────────────
+
+@pytest.mark.parametrize("state", [{"hidden": True}, {"disabled": True}])
+def test_a_hidden_or_disabled_element_suits_no_action(state):
+    """
+    A closed menu's links are in the DOM but not on screen; Playwright's
+    actionability checks would refuse the healed click and spend the timeout.
+    """
+    el = _element(tag="BUTTON", role="button", **state)
+
+    for action in ("fill", "click", "hover", "select"):
+        assert DOMSnapshotCascade._fits_action(action, el) is False
+
+
+async def test_a_lone_hidden_button_is_not_healed_to(fixed_scores):
+    fixed_scores({"Logout": 0.90 - 0.10})
+    page = _page([_element(text="Logout", id="logout", hidden=True)],
+                 scoped_html="<nav></nav>")
+
+    payload = await DOMSnapshotCascade.capture(
+        page, _step(action="click", description="click logout")
+    )
+
+    assert payload.strategy_used != "embed_direct"
+
+
+def test_a_password_field_heals_to_its_placeholder_not_a_role():
+    """A password input has no implicit ARIA role; get_by_role('textbox') misses it."""
+    cfg = DOMSnapshotCascade._element_to_cfg(
+        _element(tag="INPUT", role="input", type="password", aria="Password",
+                 placeholder="Password")
+    )
+
+    assert cfg.get("role") is None
+    assert cfg == {"priority": 0, "label": "Password"}
+
+
+def test_a_submit_input_is_named_by_its_value():
+    """An <input type=submit> has no textContent; without this it healed to {"css": "input"}."""
+    cfg = DOMSnapshotCascade._element_to_cfg(
+        _element(tag="INPUT", role="input", type="submit", value="Login", id="")
+    )
+
+    assert cfg == {"priority": 0, "role": "button", "name": "Login"}
+
+
+def test_an_anchor_without_href_is_not_healed_to_a_link_role():
+    """SauceDemo's cart link is an <a> with a click handler and no href — no link role."""
+    cfg = DOMSnapshotCascade._element_to_cfg(
+        _element(tag="A", role="a", text="Cart", href=False, id="cart")
+    )
+
+    assert cfg.get("role") is None
+    assert cfg == {"priority": 0, "text": "Cart"}
+
+
+async def test_the_veto_reaches_a_winner_below_the_pagewide_top_n(fixed_scores, monkeypatch):
+    """
+    Five unsuitable elements outscoring the winner filled the page-wide re-rank,
+    so the winner was never re-ranked and the veto passed by default. The
+    compatible shortlist is re-ranked itself now.
+    """
+    links = [_element(tag="A", role="a", text=f"Docs {i}", href=True) for i in range(_TOP_N)]
+    fixed_scores({**{f"Docs {i}": 0.80 for i in range(_TOP_N)},
+                  "Username": 0.75, "Password": 0.20})
+    monkeypatch.setattr(
+        ds._CrossEncoderReranker, "instance",
+        classmethod(lambda cls: SimpleNamespace(rerank=lambda q, top: list(reversed(top)))),
+    )
+
+    payload = await DOMSnapshotCascade.capture(
+        _page(links + _login_form()[:2], scoped_html="<form></form>"),
+        _step(action="fill", description="type the username"),
+    )
+
+    assert payload.strategy_used != "embed_direct"
+
+
+# ── Every healed cfg carries a browser-computed unique selector ───────────────
+#
+# Review kept finding gaps in the role/name synthesis — a select's role, an
+# input's per-type role, a datalist, inputs known only by name. Each gap was a
+# heal the resolver could not find. _ELEMENT_QUERY_JS now has the browser compute
+# a selector that matches the element and nothing else, and every cfg carries it:
+# the semantic identifier is still tried first, and this is the deterministic
+# fallback when it does not resolve.
+
+def test_the_unique_selector_rides_along_with_the_semantic_identifier():
+    cfg = DOMSnapshotCascade._element_to_cfg(
+        _element(tag="INPUT", role="input", type="text", placeholder="Username",
+                 selector="#user-name")
+    )
+
+    assert cfg == {"priority": 0, "placeholder": "Username", "css": "#user-name"}
+
+
+def test_an_input_known_only_by_name_heals_to_its_selector_not_the_bare_tag():
+    """Was {"css": "input"} — every input on the form."""
+    cfg = DOMSnapshotCascade._element_to_cfg(
+        _element(tag="INPUT", role="input", type="text", name="username",
+                 selector='input[name="username"]')
+    )
+
+    assert cfg == {"priority": 0, "css": 'input[name="username"]'}
+
+
+def test_without_a_selector_the_bare_tag_is_still_the_last_resort():
+    cfg = DOMSnapshotCascade._element_to_cfg(_element(tag="INPUT", role="", text=""))
+
+    assert cfg == {"priority": 0, "css": "input"}
+
+
+@pytest.mark.parametrize("typ", ["text", "search", "email"])
+def test_a_datalist_input_is_a_combobox(typ):
+    el = _element(tag="INPUT", role="input", type=typ, list=True)
+
+    assert DOMSnapshotCascade._aria_role(el) == "combobox"
+
+
+def test_the_capture_script_computes_the_selector_in_the_browser():
+    """The selector is built from the live DOM, so it is unique at capture time."""
+    js = ds._ELEMENT_QUERY_JS
+    assert "selector:" in js
+    # Unique is not enough — an intermediate `body > input` path can be unique and
+    # still be another element. The match must be the element itself.
+    assert "m.length === 1 && m[0] === el" in js
+    assert "CSS.escape" in js
+
+
+# ── Covered targets, and a semantic identifier that names another element ────
+
+def test_a_covered_element_is_no_click_or_hover_target():
+    """An overlay on top means Playwright's click waits for events that never come."""
+    el = _element(tag="BUTTON", role="button", covered=True)
+
+    assert DOMSnapshotCascade._fits_action("click", el) is False
+    assert DOMSnapshotCascade._fits_action("hover", el) is False
+
+
+def _locator(count: int, same: bool):
+    loc = MagicMock()
+    loc.count = AsyncMock(return_value=count)
+    loc.evaluate = AsyncMock(return_value=same)
+    return loc
+
+
+@pytest.mark.parametrize("count, same, keeps_semantic", [
+    (1, True, True),      # resolves uniquely, to the chosen element
+    (1, False, False),    # resolves uniquely — to a different element
+    (2, True, False),     # ambiguous
+    (0, False, False),    # resolves to nothing
+])
+async def test_a_direct_heal_keeps_its_semantic_identifier_only_if_it_pins_the_target(
+    count, same, keeps_semantic
+):
+    page = MagicMock()
+    page.get_by_role = MagicMock(return_value=_locator(count, same))
+    cfg = {"priority": 0, "role": "button", "name": "Delete", "css": "#a"}
+
+    out = await DOMSnapshotCascade._pinned_cfg(page, cfg)
+
+    if keeps_semantic:
+        assert out == cfg
+    else:
+        assert out == {"priority": 0, "css": "#a"}
+    page.get_by_role.assert_called_once_with("button", name="Delete", exact=True)
+
+
+async def test_a_failed_semantic_check_pins_the_selector():
+    page = MagicMock()
+    page.get_by_placeholder = MagicMock(side_effect=RuntimeError("context destroyed"))
+
+    out = await DOMSnapshotCascade._pinned_cfg(
+        page, {"priority": 0, "placeholder": "Username", "css": "#user-name"}
+    )
+
+    assert out == {"priority": 0, "css": "#user-name"}
+
+
+async def test_without_a_pinned_selector_the_cfg_is_left_alone():
+    page = MagicMock()
+    cfg = {"priority": 0, "placeholder": "Username"}
+
+    assert await DOMSnapshotCascade._pinned_cfg(page, cfg) is cfg
+    page.get_by_placeholder.assert_not_called()
+
+
+# ── The winner is the best candidate on the page, not the best suitable one ──
+#
+# Ranking only suitable candidates let a higher-scoring unsuitable element — the
+# real target — drop out, and the runner-up became the "clear winner": the wrong
+# element. Every candidate competes now; an unsuitable top candidate escalates.
+
+async def test_a_click_meant_for_a_text_input_does_not_heal_to_the_submit_button(fixed_scores):
+    """The intended input scores 0.80; the submit button 0.65 must not be promoted."""
+    fixed_scores({"Username": 0.80, "Login": 0.65, "Password": 0.20})
+
+    payload = await DOMSnapshotCascade.capture(
+        _page(_login_form(), scoped_html="<form></form>"),
+        _step(action="click", description="click into the username field"),
+    )
+
+    assert payload.strategy_used != "embed_direct"
+
+
+async def test_a_hover_meant_for_a_disabled_trigger_does_not_heal_to_its_neighbour(fixed_scores):
+    fixed_scores({"Info": 0.85 - 0.05, "Help": 0.66})
+    page = _page([
+        _element(text="Info", id="info", disabled=True),
+        _element(text="Help", id="help"),
+    ], scoped_html="<div></div>")
+
+    payload = await DOMSnapshotCascade.capture(
+        page, _step(action="hover", description="hover the info icon")
+    )
+
+    assert payload.strategy_used != "embed_direct"
+
+
+async def test_the_lead_is_over_the_next_candidate_of_any_kind(fixed_scores):
+    """A fill whose best field leads the other field by plenty but an unrelated
+    button by little is not a clear choice."""
+    fixed_scores({"Username": 0.75, "Login": 0.60, "Password": 0.20})
+
+    payload = await DOMSnapshotCascade.capture(
+        _page(_login_form(), scoped_html="<form></form>"),
+        _step(action="fill", description="type the username"),
+    )
+
+    assert payload.strategy_used != "embed_direct"

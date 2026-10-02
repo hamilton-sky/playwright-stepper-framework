@@ -37,24 +37,32 @@ on one host and finishes on the other.
 | `sd_happy_path` | 6/6 — runs in CI |
 | `sd_multi_product` | 9/9 — runs in CI; order total $36.69 = 33.97 + 8% tax |
 | `sd_smoke_test` | 5/5 — runs in CI; the live-host run stays as the drift check |
-| `sd_heal_test`, `sd_full_heal_flow` | not in CI. Run keyless with `--heal 2 --no-heal-cache`, `sd_heal_test` fails at step 2 — see below. |
+| `sd_heal_test`, `sd_full_heal_flow` | run in CI with `--heal 2 --no-heal-cache` and every AI key unset, so each broken selector must heal through the no-AI path. |
 
-## The keyless healer cannot recover the username field
+## Making the keyless heal real
 
-CI ran `sd_heal_test` here with `--heal 2 --no-heal-cache` and every AI key unset.
-Step 2 ("Type username into the username field", selector deliberately broken)
-failed: the healer's `DOMSnapshotCascade` scored its best candidate between 0.50
-and 0.85, returned `strategy=scoped` rather than `embed_direct`, and a scoped heal
-needs an AI pick. With no provider, both attempts failed.
+The first keyless run of `sd_heal_test` here failed at step 2. Measured with
+MiniLM, the healer ranked the right element first for all three heal steps,
+but never at the 0.85 that triggered a no-AI heal:
 
-The input the healer embeds — tag `input`, placeholder `Username`, name
-`user-name`, type `text` — is the same on the live site, so the long-standing
-claim that this workflow heals "with no API key" very likely never held. It
-went unmeasured because `--no-heal-cache` used to be ignored, so every run
-replayed the committed `heal_cache.json`.
+| Step | Right element | Score | Runner-up |
+|---|---|---|---|
+| fill username | `input Username` | 0.790 | 0.341 |
+| fill password | `input Password` | 0.755 | 0.382 |
+| click Login | `input Login submit` | 0.728 | — (only clickable) |
 
-Open work: what `_describe_element` embeds, or where the 0.85 `embed_direct`
-threshold sits. Until then the heal workflows need an LLM key.
+An absolute score says how alike two strings are; the lead over the next
+candidate says whether the choice is ambiguous. `DOMSnapshotCascade` now also
+heals directly to a *clear winner*: the best match on the page, which must suit
+the action, score at least 0.50 and lead the next candidate of any kind by at
+least 0.25. If the best match does not suit the action, the AI decides — the
+runner-up is never promoted. When CI's cross-encoder is loaded it must rank the
+same element first, and the healed locator is checked on the live page to name
+that element.
+
+Running it also found the workflows wrong: the engine's `fill` presses Enter
+by default, so filling the password submitted the form before the "Click the
+Login button" step ran. Both heal workflows now set `press_enter: false`.
 
 ## What it is and is not
 
