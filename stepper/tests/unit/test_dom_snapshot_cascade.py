@@ -728,3 +728,61 @@ def test_the_capture_script_computes_the_selector_in_the_browser():
     # still be another element. The match must be the element itself.
     assert "m.length === 1 && m[0] === el" in js
     assert "CSS.escape" in js
+
+
+# ── Covered targets, and a semantic identifier that names another element ────
+
+def test_a_covered_element_is_no_click_or_hover_target():
+    """An overlay on top means Playwright's click waits for events that never come."""
+    el = _element(tag="BUTTON", role="button", covered=True)
+
+    assert DOMSnapshotCascade._fits_action("click", el) is False
+    assert DOMSnapshotCascade._fits_action("hover", el) is False
+
+
+def _locator(count: int, same: bool):
+    loc = MagicMock()
+    loc.count = AsyncMock(return_value=count)
+    loc.evaluate = AsyncMock(return_value=same)
+    return loc
+
+
+@pytest.mark.parametrize("count, same, keeps_semantic", [
+    (1, True, True),      # resolves uniquely, to the chosen element
+    (1, False, False),    # resolves uniquely — to a different element
+    (2, True, False),     # ambiguous
+    (0, False, False),    # resolves to nothing
+])
+async def test_a_direct_heal_keeps_its_semantic_identifier_only_if_it_pins_the_target(
+    count, same, keeps_semantic
+):
+    page = MagicMock()
+    page.get_by_role = MagicMock(return_value=_locator(count, same))
+    cfg = {"priority": 0, "role": "button", "name": "Delete", "css": "#a"}
+
+    out = await DOMSnapshotCascade._pinned_cfg(page, cfg)
+
+    if keeps_semantic:
+        assert out == cfg
+    else:
+        assert out == {"priority": 0, "css": "#a"}
+    page.get_by_role.assert_called_once_with("button", name="Delete", exact=True)
+
+
+async def test_a_failed_semantic_check_pins_the_selector():
+    page = MagicMock()
+    page.get_by_placeholder = MagicMock(side_effect=RuntimeError("context destroyed"))
+
+    out = await DOMSnapshotCascade._pinned_cfg(
+        page, {"priority": 0, "placeholder": "Username", "css": "#user-name"}
+    )
+
+    assert out == {"priority": 0, "css": "#user-name"}
+
+
+async def test_without_a_pinned_selector_the_cfg_is_left_alone():
+    page = MagicMock()
+    cfg = {"priority": 0, "placeholder": "Username"}
+
+    assert await DOMSnapshotCascade._pinned_cfg(page, cfg) is cfg
+    page.get_by_placeholder.assert_not_called()

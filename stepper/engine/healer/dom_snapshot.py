@@ -146,6 +146,18 @@ _ELEMENT_QUERY_JS = """() => {
     disabled:    el.matches(':disabled') || el.closest('[aria-disabled="true"]') !== null,
     // A <select> with multiple or size > 1 is a listbox, not a combobox.
     multirow:    el.tagName === 'SELECT' && (el.multiple || el.size > 1),
+    // Whether something else sits on top of the element's centre — a fixed
+    // overlay, a cookie banner. Playwright's click waits for the target to
+    // receive events and would time out. Off-screen is not covered: Playwright
+    // scrolls into view first.
+    covered:     (() => {
+      const r = el.getBoundingClientRect();
+      if (!r.width || !r.height) return false;
+      const x = r.left + r.width / 2, y = r.top + r.height / 2;
+      if (x < 0 || y < 0 || x > innerWidth || y > innerHeight) return false;
+      const hit = document.elementFromPoint(x, y);
+      return !!hit && hit !== el && !el.contains(hit) && !hit.contains(el);
+    })(),
     // A button-shaped <input> carries its whole visible label in `value`, and
     // an <input> has no textContent, so without this the healer sees
     // "input login-button submit" for a button that plainly reads "Login".
@@ -286,7 +298,7 @@ class DOMSnapshotCascade:
                 return DomPayload(
                     strategy_used="embed_direct",
                     content="",
-                    healed_cfg=cls._element_to_cfg(element),
+                    healed_cfg=await cls._pinned_cfg(page, cls._element_to_cfg(element)),
                     token_estimate=0,
                 )
             return cls._candidates_payload(high, "embed_candidates")
@@ -296,7 +308,7 @@ class DOMSnapshotCascade:
             return DomPayload(
                 strategy_used="embed_direct",
                 content="",
-                healed_cfg=cls._element_to_cfg(winner),
+                healed_cfg=await cls._pinned_cfg(page, cls._element_to_cfg(winner)),
                 token_estimate=0,
             )
 
@@ -320,6 +332,48 @@ class DOMSnapshotCascade:
             )
 
         return await cls._aria_fallback(page, reason=f"top score {top_score:.2f} < {_LOW_THRESHOLD}")
+
+    # ── A direct heal must point at the element that was chosen ──────────────
+
+    @staticmethod
+    async def _pinned_cfg(page, cfg: dict) -> dict:
+        """
+        Keep the semantic identifier only if it resolves to the chosen element.
+
+        The resolver tries role/label/placeholder/text before css and stops at
+        the first unique match. A role+name built from raw textContent can
+        uniquely match a *different* element — a button named by
+        aria-labelledby whose icon text is another button's name — and the
+        browser-computed selector that pins the real target is never reached.
+        So check it on the live page, the way the resolver will call it, and
+        if it is ambiguous, missing or another element, heal to the pinned
+        selector alone.
+        """
+        css = cfg.get("css")
+        semantic = [k for k in ("role", "label", "placeholder", "text") if k in cfg]
+        if not css or not semantic:
+            return cfg
+        try:
+            if "role" in cfg:
+                loc = (page.get_by_role(cfg["role"], name=cfg["name"], exact=True)
+                       if cfg.get("name") else page.get_by_role(cfg["role"]))
+            elif "label" in cfg:
+                loc = page.get_by_label(cfg["label"])
+            elif "placeholder" in cfg:
+                loc = page.get_by_placeholder(cfg["placeholder"])
+            else:
+                loc = page.get_by_text(cfg["text"], exact=True)
+            if await loc.count() == 1 and await loc.evaluate(
+                "(e, s) => e === document.querySelector(s)", css
+            ):
+                return cfg
+        except Exception as exc:
+            logger.debug(f"[DOMSnapshotCascade] semantic check failed ({exc}) — pinning css")
+        logger.info(
+            "[DOMSnapshotCascade] semantic identifier does not pin the chosen "
+            "element — healing to %s", css,
+        )
+        return {"priority": cfg.get("priority", 0), "css": css}
 
     # ── Clear-winner rule ─────────────────────────────────────────────────────
 
@@ -346,6 +400,8 @@ class DOMSnapshotCascade:
                 return typ not in _TEXT_INPUT_TYPES_EXCLUDED
             return tag == "TEXTAREA" or bool(el.get("editable"))
         if action in ("click", "hover"):
+            if el.get("covered"):
+                return False
             if tag == "INPUT":
                 return typ in _CLICKABLE_INPUT_TYPES
             return tag in ("BUTTON", "A") or role in _CLICKABLE_ROLES
