@@ -786,3 +786,48 @@ async def test_without_a_pinned_selector_the_cfg_is_left_alone():
 
     assert await DOMSnapshotCascade._pinned_cfg(page, cfg) is cfg
     page.get_by_placeholder.assert_not_called()
+
+
+# ── The winner is the best candidate on the page, not the best suitable one ──
+#
+# Ranking only suitable candidates let a higher-scoring unsuitable element — the
+# real target — drop out, and the runner-up became the "clear winner": the wrong
+# element. Every candidate competes now; an unsuitable top candidate escalates.
+
+async def test_a_click_meant_for_a_text_input_does_not_heal_to_the_submit_button(fixed_scores):
+    """The intended input scores 0.80; the submit button 0.65 must not be promoted."""
+    fixed_scores({"Username": 0.80, "Login": 0.65, "Password": 0.20})
+
+    payload = await DOMSnapshotCascade.capture(
+        _page(_login_form(), scoped_html="<form></form>"),
+        _step(action="click", description="click into the username field"),
+    )
+
+    assert payload.strategy_used != "embed_direct"
+
+
+async def test_a_hover_meant_for_a_disabled_trigger_does_not_heal_to_its_neighbour(fixed_scores):
+    fixed_scores({"Info": 0.85 - 0.05, "Help": 0.66})
+    page = _page([
+        _element(text="Info", id="info", disabled=True),
+        _element(text="Help", id="help"),
+    ], scoped_html="<div></div>")
+
+    payload = await DOMSnapshotCascade.capture(
+        page, _step(action="hover", description="hover the info icon")
+    )
+
+    assert payload.strategy_used != "embed_direct"
+
+
+async def test_the_lead_is_over_the_next_candidate_of_any_kind(fixed_scores):
+    """A fill whose best field leads the other field by plenty but an unrelated
+    button by little is not a clear choice."""
+    fixed_scores({"Username": 0.75, "Login": 0.60, "Password": 0.20})
+
+    payload = await DOMSnapshotCascade.capture(
+        _page(_login_form(), scoped_html="<form></form>"),
+        _step(action="fill", description="type the username"),
+    )
+
+    assert payload.strategy_used != "embed_direct"

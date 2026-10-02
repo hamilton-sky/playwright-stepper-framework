@@ -53,10 +53,12 @@ but never at the 0.85 that triggered a no-AI heal:
 
 An absolute score says how alike two strings are; the lead over the next
 candidate says whether the choice is ambiguous. `DOMSnapshotCascade` now also
-heals directly to a *clear winner*: an element that suits the action, scores at
-least 0.50 and leads the next suitable candidate by at least 0.25 — or, if it is
-the only suitable one, scores at least 0.65. When CI's cross-encoder is loaded
-it must rank the same element first, or the AI decides as before.
+heals directly to a *clear winner*: the best match on the page, which must suit
+the action, score at least 0.50 and lead the next candidate of any kind by at
+least 0.25. If the best match does not suit the action, the AI decides — the
+runner-up is never promoted. When CI's cross-encoder is loaded it must rank the
+same element first, and the healed locator is checked on the live page to name
+that element.
 
 Running it also found the workflows wrong: the engine's `fill` presses Enter
 by default, so filling the password submitted the form before the "Click the

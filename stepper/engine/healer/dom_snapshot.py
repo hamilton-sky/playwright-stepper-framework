@@ -21,12 +21,13 @@ Clear winner:
   strings are; how far the best candidate leads the rest is what says the
   choice is unambiguous. So a candidate is also healed directly when all hold:
 
-    - it suits the action: a fill only considers fields that take text, a
-      click only clickable elements (actions not listed here never qualify)
+    - it is the best candidate on the page, and it suits the action: a fill
+      needs a field that takes text, a click a clickable, visible, enabled,
+      uncovered element (actions not modelled here never qualify)
     - its MiniLM score is ≥ _LOW_THRESHOLD
-    - it leads the next action-compatible candidate by ≥ _MARGIN — or, when it
-      is the only compatible candidate, scores ≥ _LONE_MIN
-    - the cross-encoder, when loaded, ranks it first among compatible ones
+    - it leads the next candidate of any kind by ≥ _MARGIN — or, when it is
+      the only candidate, scores ≥ _LONE_MIN
+    - the cross-encoder, when loaded, also ranks it first
 
 Cross-encoder re-ranking:
   After MiniLM shortlists the top _TOP_N candidates, a cross-encoder
@@ -53,8 +54,8 @@ _HIGH_THRESHOLD = 0.85
 _LOW_THRESHOLD = 0.50
 _TOP_N = 5
 _MARGIN = 0.25
-# With no other compatible candidate there is no runner-up to lead, and the
-# margin degenerates to the score itself. That is exactly the case where the
+# With no other candidate there is no runner-up to lead, and the margin
+# degenerates to the score itself. That is exactly the case where the
 # intended element is gone and something unrelated is left, so a lone candidate
 # must clear a higher bar than the floor a contested one does.
 _LONE_MIN = 0.65
@@ -420,29 +421,34 @@ class DOMSnapshotCascade:
         """
         The element to heal to without an AI call, or None.
 
+        The winner is the best candidate on the whole page, never merely the
+        best *suitable* one. Ranking only the suitable candidates let a
+        higher-scoring unsuitable element — the real target, when it is a
+        disabled tooltip trigger for a hover, a text input for a click — drop
+        out, and the runner-up became the "clear winner": the wrong element. So
+        every candidate competes; if the top one does not suit the action, or
+        does not clearly lead the next candidate of any kind, the AI decides.
+
         Margins are taken on the MiniLM scores, which are comparable across
         every candidate; the cross-encoder only re-scores the top few, on its
-        own scale. It gets a veto instead: if it prefers a different compatible
-        element, the choice is not clear and the AI decides.
+        own scale. It gets a veto instead: if it ranks a different element
+        first, the choice is not clear.
         """
-        compatible = [(el, sc) for el, sc in minilm_ranked if cls._fits_action(action, el)]
-        if not compatible:
+        if not minilm_ranked:
             return None
-        best, best_score = compatible[0]
-        if len(compatible) == 1:
+        best, best_score = minilm_ranked[0]
+        if not cls._fits_action(action, best):
+            return None
+        if len(minilm_ranked) == 1:
             runner_up = 0.0
             if best_score < _LONE_MIN:
                 return None
         else:
-            runner_up = compatible[1][1]
+            runner_up = minilm_ranked[1][1]
             # 1e-9: the margin is inclusive, and 0.70 - 0.45 is 0.2499999… in floats.
             if best_score < _LOW_THRESHOLD or best_score - runner_up < _MARGIN - 1e-9:
                 return None
-        # Re-rank the compatible shortlist itself. Reading the veto off the
-        # page-wide re-ranking was wrong: five higher-scoring but unsuitable
-        # elements could fill its top N, leaving the winner un-reranked and the
-        # veto passed by default.
-        reranked = _CrossEncoderReranker.instance().rerank(query, compatible[:_TOP_N])
+        reranked = _CrossEncoderReranker.instance().rerank(query, minilm_ranked[:_TOP_N])
         if not reranked or reranked[0][0] is not best:
             return None
         logger.info(

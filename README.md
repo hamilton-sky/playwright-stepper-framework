@@ -330,9 +330,10 @@ unset.
 It did not always work. With the cache genuinely off, the healer scored the right
 login-form element first for every step but never at the 0.85 that triggered a no-AI
 heal (0.73–0.79), so each heal needed an AI pick. A heal now also skips the AI when the
-candidate is a *clear winner*: it suits the action (a fill only considers fields that
-take text), scores at least 0.50, and leads the next suitable candidate by at least
-0.25 — or, when it is the only suitable one, scores at least 0.65.
+candidate is a *clear winner*: it is the best match on the page and suits the action (a
+fill needs a field that takes text; a click a visible, enabled, uncovered control),
+scores at least 0.50, and leads the next candidate of any kind by at least 0.25. If the
+best match does not suit the action, the AI decides — the runner-up is never promoted.
 
 ---
 
