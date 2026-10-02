@@ -560,6 +560,7 @@ def test_which_elements_suit_which_action(action, element, fits):
     (_element(tag="A", role="a", text="Cart", href=False), ""),   # no href, no link role
     (_element(tag="BUTTON", role="button", text="Save"), "button"),
     (_element(tag="SELECT", role="select"), "combobox"),
+    (_element(tag="SELECT", role="select", multirow=True), "listbox"),
     (_element(tag="TEXTAREA", role="textarea"), "textbox"),
     (_element(tag="INPUT", role="input", type="text"), "textbox"),
     (_element(tag="INPUT", role="input", type=None), "textbox"),

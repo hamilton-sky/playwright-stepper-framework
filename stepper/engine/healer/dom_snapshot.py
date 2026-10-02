@@ -108,8 +108,11 @@ _ELEMENT_QUERY_JS = """() =>
     hidden:      el.checkVisibility
                    ? !el.checkVisibility({visibilityProperty: true})
                    : !(el.offsetWidth || el.offsetHeight || el.getClientRects().length),
-    // :disabled includes a control disabled by an ancestor <fieldset>.
-    disabled:    el.matches(':disabled') || el.getAttribute('aria-disabled') === 'true',
+    // :disabled includes a control disabled by an ancestor <fieldset>, and
+    // aria-disabled applies to descendants, so the ancestor chain is checked.
+    disabled:    el.matches(':disabled') || el.closest('[aria-disabled="true"]') !== null,
+    // A <select> with multiple or size > 1 is a listbox, not a combobox.
+    multirow:    el.tagName === 'SELECT' && (el.multiple || el.size > 1),
     // A button-shaped <input> carries its whole visible label in `value`, and
     // an <input> has no textContent, so without this the healer sees
     // "input login-button submit" for a button that plainly reads "Login".
@@ -444,8 +447,9 @@ class DOMSnapshotCascade:
             return _INPUT_ROLES.get(typ, "")
         if tag == "a":
             return "link" if el.get("href") else ""
-        return {"button": "button", "select": "combobox",
-                "textarea": "textbox"}.get(tag, "")
+        if tag == "select":
+            return "listbox" if el.get("multirow") else "combobox"
+        return {"button": "button", "textarea": "textbox"}.get(tag, "")
 
     @classmethod
     def _element_to_cfg(cls, el: dict) -> dict:
