@@ -44,9 +44,12 @@ workflow with no browser steps never launches one.
 ## Quick Start
 
 ```bash
-# 1. Install
+# 1. Install — the exact pins CI uses
 pip install -r requirements.txt
 playwright install chromium
+#    …or as a package, choosing extras: visual (numpy, Pillow for
+#    visual_compare), semantic (MiniLM), ai (AI pick + planner), test, or all
+#    pip install -e ".[all]"
 
 #    Optional: pre-cache the ML models used by the semantic resolver and the
 #    healer. Both fall back to downloading on first use, so this is only needed

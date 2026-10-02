@@ -279,3 +279,48 @@ def test_run_rejects_neither_a_workflow_nor_a_task():
 
     with pytest.raises(CommandError, match="exactly one"):
         cli.cmd_run(args, pipeline)
+
+
+# ── run --data: a data-driven run has an exit code too ───────────────────────
+
+def _data_pipeline(tmp_path, statuses):
+    from dataclasses import dataclass
+
+    @dataclass
+    class _Cfg:
+        workflow_path: str = ""
+        task: object = None
+        headless: bool = True
+        allure_serve: bool = False
+        record_video: bool = False
+        variables: object = None
+        max_heal_attempts: int = 0
+        use_heal_cache: bool = True
+        shadow: bool = False
+        ci: bool = False
+        ci_output: object = None
+
+    async def run_data_rows(cfg, rows, cli_vars):
+        return [SimpleNamespace(status=s) for s in statuses]
+
+    return SimpleNamespace(
+        load_env=lambda: None, _stepper_root=tmp_path,
+        RunConfig=_Cfg, run_data_rows=run_data_rows,
+    )
+
+
+@pytest.mark.parametrize("statuses, expected", [
+    (["passed", "passed"], 0),
+    (["passed", "failed"], 1),        # one bad row fails the command
+    (["skipped"], 0),                 # a when: skip is not a failure
+    ([], 0),
+])
+def test_run_with_data_exits_on_the_rows_results(tmp_path, statuses, expected):
+    wf = tmp_path / "wf.json"
+    wf.write_text('{"steps": []}')
+    data = tmp_path / "rows.json"
+    data.write_text('[{"q": "a"}, {"q": "b"}]')
+
+    args = build_parser().parse_args(["run", str(wf), "--data", str(data)])
+
+    assert cli.cmd_run(args, _data_pipeline(tmp_path, statuses)) == expected

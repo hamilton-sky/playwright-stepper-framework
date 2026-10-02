@@ -44,7 +44,8 @@ playwright-stepper-framework/
 │
 ├── docs/
 │   ├── adding-your-app.md            # Point Stepper at your own app — six files
-│   └── playwright-pitfalls.md        # Seven failure modes and their guards
+│   ├── playwright-pitfalls.md        # Seven failure modes and their guards
+│   └── statuses-and-exit-codes.md    # What a run reports, and what CI can rely on
 ├── scripts/purge-model-history.sh    # Strip the old vendored model from git history
 ├── ARCHITECTURE.md                   # Full architecture diagrams
 └── CLAUDE.md                         # This file
@@ -67,6 +68,7 @@ Read the relevant rule file **before** making changes in that area:
 | Adding a new site end-to-end | [docs/adding-your-app.md](docs/adding-your-app.md) |
 | Generating a site from a live crawl | `/discover-site` then `/generate-poms` |
 | Playwright failure modes the POMs guard against | [docs/playwright-pitfalls.md](docs/playwright-pitfalls.md) |
+| Step statuses, exit codes, what counts as failed | [docs/statuses-and-exit-codes.md](docs/statuses-and-exit-codes.md) |
 | Full architecture diagrams | [ARCHITECTURE.md](ARCHITECTURE.md) |
 
 ---
