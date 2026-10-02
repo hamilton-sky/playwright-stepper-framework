@@ -250,8 +250,8 @@ jobs:
       # checkout and the collection clicks — and the first run of them found a
       # sort step that reported passed without the list ever being sorted.
       # sd_heal_test runs too: its broken selectors must be recovered by the
-      # embed-direct rung alone — MiniLM, cached above, and no LLM key, since
-      # this job has none. --no-heal-cache makes it heal from the page rather
+      # embed-direct rung alone — MiniLM, cached above, and no LLM key (the
+      # step unsets them). --no-heal-cache makes it heal from the page rather
       # than replay heal_cache.json, and its final strict assert_visible is
       # what makes a green result mean the login really happened.
       # sd_full_heal_flow stays out: it is the same three heals followed by
@@ -291,8 +291,13 @@ jobs:
             fi
           done
 
+          # The job's env carries the AI keys from secrets (empty today). Strip
+          # them for this run so a provider can never rescue a heal the
+          # keyless embed-direct rung missed — otherwise this check would stay
+          # green with the offline path broken as soon as a secret is added.
           echo "── sd_heal_test (healer: embed-direct, no cache, no LLM key) ──"
-          if ! python stepper/main.py run sd_heal_test --heal 2 --no-heal-cache \
+          if ! env -u GROQ_API_KEY -u GEMINI_API_KEY -u ANTHROPIC_API_KEY \
+                 python stepper/main.py run sd_heal_test --heal 2 --no-heal-cache \
                  --vars "$vars" --ci --ci-output reports/ci-sd-fixture-sd_heal_test.json; then
             failed="$failed sd_heal_test"
           fi
