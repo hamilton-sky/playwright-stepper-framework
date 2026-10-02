@@ -35,6 +35,22 @@ workflows use `ol_collect_books`.
 | `sd_view_cart` | `cart_action.py` | `CartPage` |
 | `sd_checkout` | `checkout_action.py` | `CartPage` + `CheckoutInfoPage` + `CheckoutOverviewPage` + `CheckoutCompletePage` |
 
+`SAUCEDEMO_BASE_URL` points the POMs elsewhere, and the workflows' `base_url`
+variable points the engine-level steps (`navigate`, `measure_performance`) —
+set both. `stepper/sites/saucedemo/fixtures/` holds a local stand-in, and CI
+runs `sd_happy_path`, `sd_multi_product` and `sd_smoke_test` against it; the
+live smoke run stays as the drift check:
+
+```bash
+python stepper/sites/saucedemo/fixtures/server.py --port 8097 &
+SAUCEDEMO_BASE_URL=http://127.0.0.1:8097 \
+    python stepper/main.py run sd_multi_product --vars '{"base_url": "http://127.0.0.1:8097"}'
+```
+
+The first run against it found `sd_sort_products` returning `passed` without
+the list ever being sorted. It now reads the dropdown back and checks the
+products are in that order (`test_saucedemo_sort_is_verified.py`).
+
 ### phpTravels (`stepper/sites/phptravels/pages/`)
 
 | Action name | Glue file | POM(s) used |

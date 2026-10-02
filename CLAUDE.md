@@ -28,7 +28,7 @@ playwright-stepper-framework/
 │   │   └── pages/                    # PageModule ABC + GlueAction base
 │   └── sites/                        # Glue layer — wires POMs into Stepper actions
 │       ├── openlibrary/pages/
-│       ├── saucedemo/pages/
+│       ├── saucedemo/pages/       # fixtures/ serves it locally, no network
 │       ├── phptravels/pages/     # fixtures/ serves it locally, no network
 │       ├── ti/                       # the-internet — generated from a crawl;
 │       │                             #   fixtures/ serves it locally, no network
@@ -128,6 +128,12 @@ python stepper/sites/phptravels/fixtures/server.py --port 8098 &
 PHPTRAVELS_BASE_URL=http://127.0.0.1:8098 \
 PHPTRAVELS_EMAIL=user@phptravels.com PHPTRAVELS_PASSWORD=demouser \
     python stepper/main.py run hotel_booking
+
+# The SauceDemo flows, against checked-in fixtures on loopback. Both knobs:
+# SAUCEDEMO_BASE_URL for the POMs, base_url for the engine-level steps.
+python stepper/sites/saucedemo/fixtures/server.py --port 8097 &
+SAUCEDEMO_BASE_URL=http://127.0.0.1:8097 python stepper/main.py run sd_happy_path \
+    --vars '{"base_url": "http://127.0.0.1:8097"}'
 
 # Drive a running Electron app instead of launching a browser. Still the web
 # domain — same actions, same POMs, same resolver cascade; only the page's

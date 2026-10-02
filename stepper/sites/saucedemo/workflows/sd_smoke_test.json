@@ -3,6 +3,7 @@
   "description": "Quick sanity check: login works, inventory loads, performance is acceptable. Does NOT add to cart or checkout — read-only.",
   "continue_on_failure": true,
   "variables": {
+    "base_url": "https://www.saucedemo.com",
     "threshold_ms": 3000
   },
   "steps": [
@@ -24,7 +25,7 @@
     {
       "action": "measure_performance",
       "description": "Measure inventory page load time (threshold: {{threshold_ms}}ms)",
-      "url": "https://www.saucedemo.com/inventory.html",
+      "url": "{{base_url}}/inventory.html",
       "extra": {
         "threshold_ms": "{{threshold_ms}}",
         "output_path": "sites/saucedemo/artifacts/perf_smoke.json"

@@ -87,7 +87,14 @@ class InventoryPage(BasePage):
 
     # ── Sort ──────────────────────────────────────────────────────────────────
 
-    async def select_sort(self, option: str) -> None:
+    async def select_sort(self, option: str) -> bool:
+        """
+        Choose a sort option. Returns whether the dropdown now holds it.
+
+        That is the dropdown's state, not the list's: a page can accept the
+        selection and still not re-sort. Whether the products are actually in
+        that order is the caller's to read back (see is_sorted_by).
+        """
         css = self.Locators.SORT_DROPDOWN.css
         if self._page:
             await self._page.select_option(css, option)
@@ -96,7 +103,26 @@ class InventoryPage(BasePage):
                 f"document.querySelector('{css}').value = '{option}';"
                 f"document.querySelector('{css}').dispatchEvent(new Event('change'));"
             )
-        logger.info("Sort option set to: %s", option)
+        current = await self._driver.evaluate(
+            f"(document.querySelector({css!r}) || {{}}).value || ''"
+        )
+        logger.info("Sort option set to: %s (dropdown reads %r)", option, current)
+        return current == option
+
+    async def is_sorted_by(self, option: str) -> bool:
+        """Whether the products on the page are in `option`'s order."""
+        products = await self.get_all_products()
+        if not products:
+            return False
+        names  = [p.name for p in products]
+        prices = [p.price for p in products]
+        expected = {
+            self.SORT_NAME_ASC:   lambda: names == sorted(names),
+            self.SORT_NAME_DESC:  lambda: names == sorted(names, reverse=True),
+            self.SORT_PRICE_ASC:  lambda: prices == sorted(prices),
+            self.SORT_PRICE_DESC: lambda: prices == sorted(prices, reverse=True),
+        }.get(option)
+        return bool(expected and expected())
 
     # ── Product reads ─────────────────────────────────────────────────────────
 
