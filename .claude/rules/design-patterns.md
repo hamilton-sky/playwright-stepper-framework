@@ -63,13 +63,12 @@ is how the engine used to report work it had not done.
 | `healed` | the healer replaced a selector and the retry passed | `StepRunner` only |
 | `warned` | nothing produces it; kept in the vocabulary, unused | — |
 
-`skipped` has two other producers, both meaning "no work to do" rather than
-"something went wrong": `ol_add_to_shelf` when `context.collected_items` is empty,
-and `parallel` with no sub-steps. The second is inconsistent with `scroll_to`, which
-**fails** when no element is named — both are a step that cannot run as written. The
-difference is that `scroll_to`'s status was incidental and `parallel`'s was chosen
-and pinned (`test_no_sub_steps_is_skipped_not_failed`), so it stays until someone
-changes it on purpose. If you are adding an action: a malformed step is `failed`.
+`skipped` has one other producer, meaning "no work to do" rather than "something
+went wrong": `ol_add_to_shelf` when `context.collected_items` is empty. A step that
+cannot run as written is different — `parallel` with no sub-steps and `scroll_to`
+with no element are both **malformed**, and both return `failed`
+(`test_no_sub_steps_is_a_configuration_failure`). If you are adding an action: a
+malformed step is `failed`.
 
 **A step that did not act returns `failed`.** Not `skipped`, not `warned`. Only
 `failed` is read by every consumer that matters:

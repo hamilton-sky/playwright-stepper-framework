@@ -168,12 +168,13 @@ def test_read_only_sub_steps_are_allowed(page):
 
 # ── Empty input ───────────────────────────────────────────────────────────────
 
-def test_no_sub_steps_is_skipped_not_failed(page):
+def test_no_sub_steps_is_a_configuration_failure(page):
+    """Malformed, not deliberately skipped — so it must reach the exit code."""
     action = ParallelAction(FakeFactory({}))
 
     result = run(action, page, parallel_step([]))
 
-    assert result.status == "skipped"
+    assert result.status == "failed"
     assert "no sub-steps" in result.error
 
 

@@ -623,22 +623,13 @@ that value and the step reports `passed` for something that never happened. Wher
 other two rows raise, they are safe by comparison: `StepRunner`'s retry loop catches
 an exception into a failed step.
 
-One qualification on that first row, because "never raises" is not literally true.
-`_interact` wraps the *interaction* in a `try`, but the `resolver.resolve()` call sits
-outside it, so an exception thrown by a resolver strategy propagates. Measured with a
-strategy that throws:
-
-```
-resolver.resolve: RAISED RuntimeError
-_interact:        RAISED RuntimeError        ← not False
-```
-
-Every strategy shipped here catches its own exceptions and returns `[]` — verified the
-same way — so this needs a custom strategy that does not. The cascade does not isolate
-them from each other, which is arguably its own bug: one broken strategy takes down
-the whole chain rather than yielding to the next. Whether it *should* catch is a real
-question, though, since a swallowed exception turns a broken strategy into "element
-not found" everywhere. That one is still open, and is the last of its family left.
+One qualification on that first row. `_interact` wraps the *interaction* in a `try`,
+but the `resolver.resolve()` call sits outside it — so the cascade itself isolates its
+deterministic strategies. One whose `collect()` raises is logged at `ERROR` and skipped,
+and the others still run. If none of them finds the element, the result is not-found
+with `method="strategy-error:<name>"`, and the fuzzy fallbacks are **not** consulted:
+a broken strategy must not be papered over by a keyword match on the description.
+`stepper/tests/unit/test_strategy_isolation.py` holds both halves.
 
 The second path exists because the cascade resolves exactly one element, so picking
 the first of several rows or following a pagination link has to go to the driver
