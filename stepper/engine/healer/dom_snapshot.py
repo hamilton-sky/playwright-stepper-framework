@@ -88,14 +88,19 @@ _ELEMENT_QUERY_JS = """() => {
   // heal never depends on the role/name synthesis alone: get_by_role is tried
   // first, and if the synthesised role is ever wrong it matches nothing and the
   // resolver falls through to this — rather than to a description guess.
-  const unique = s => { try { return document.querySelectorAll(s).length === 1; } catch (e) { return false; } };
+  // Unique AND the target: an intermediate path such as `body > input` can be
+  // unique on the page and still be some other element.
+  const pins = (s, el) => {
+    try { const m = document.querySelectorAll(s); return m.length === 1 && m[0] === el; }
+    catch (e) { return false; }
+  };
   const selectorFor = el => {
-    if (el.id && unique('#' + CSS.escape(el.id))) return '#' + CSS.escape(el.id);
+    if (el.id && pins('#' + CSS.escape(el.id), el)) return '#' + CSS.escape(el.id);
     const tag = el.tagName.toLowerCase();
     const nm = el.getAttribute('name');
     if (nm) {
       const s = tag + '[name="' + CSS.escape(nm) + '"]';
-      if (unique(s)) return s;
+      if (pins(s, el)) return s;
     }
     const parts = [];
     for (let n = el; n && n.nodeType === 1 && n !== document.body; n = n.parentElement) {
@@ -104,7 +109,7 @@ _ELEMENT_QUERY_JS = """() => {
         if (sib.tagName === n.tagName) i++;
       parts.unshift(n.tagName.toLowerCase() + ':nth-of-type(' + i + ')');
       const s = 'body > ' + parts.join(' > ');
-      if (unique(s)) return s;
+      if (pins(s, el)) return s;
     }
     return '';
   };

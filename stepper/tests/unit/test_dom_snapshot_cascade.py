@@ -724,5 +724,7 @@ def test_the_capture_script_computes_the_selector_in_the_browser():
     """The selector is built from the live DOM, so it is unique at capture time."""
     js = ds._ELEMENT_QUERY_JS
     assert "selector:" in js
-    assert "querySelectorAll(s).length === 1" in js
+    # Unique is not enough — an intermediate `body > input` path can be unique and
+    # still be another element. The match must be the element itself.
+    assert "m.length === 1 && m[0] === el" in js
     assert "CSS.escape" in js
