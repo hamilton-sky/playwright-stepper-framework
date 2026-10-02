@@ -55,3 +55,12 @@ globs:
 | Glue overrides `execute()` instead of `_execute()` | Skips pre/post hooks and context defaulting |
 | POM contains `for book in books:` multi-page loop | Flow logic in wrong layer |
 | Credentials hardcoded in POM or Glue | Should come from config/env |
+
+### Enforced by the build
+
+`stepper/tests/unit/test_layer_contract.py` fails CI on three of the anti-patterns
+above, read straight off the source: a POM importing from `stepper`, a glue file
+calling `.locator()` / `.get_by_*()` / `.query_selector*()` itself, and a workflow
+passing `css` / `xpath` / `selector(s)` to a **site** action. Engine-level actions
+(`click`, `assert_visible`, …) may still take an element cfg from the flow — the
+heal-test workflows depend on it. `/verify-layers` remains the wider audit.
