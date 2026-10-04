@@ -354,10 +354,18 @@ class DOMSnapshotCascade:
         """
         css = cfg.get("css")
         semantic = [k for k in ("role", "label", "placeholder", "text") if k in cfg]
-        if not css or not semantic:
+        if not css or not (semantic or cfg.get("id")):
             return cfg
+        same = "(e, s) => e === document.querySelector(s)"
         try:
-            if "role" in cfg:
+            if not semantic:
+                # IdResolver builds a raw `#<id>`, unescaped: an id such as
+                # `foo.bar` reads as id=foo plus class=bar and can uniquely
+                # match a decoy before the pinned css is ever tried.
+                loc = page.locator(f"#{cfg['id']}")
+                if await loc.count() == 1 and await loc.evaluate(same, css):
+                    return cfg
+            elif "role" in cfg:
                 loc = (page.get_by_role(cfg["role"], name=cfg["name"], exact=True)
                        if cfg.get("name") else page.get_by_role(cfg["role"]))
             elif "label" in cfg:
@@ -366,9 +374,7 @@ class DOMSnapshotCascade:
                 loc = page.get_by_placeholder(cfg["placeholder"])
             else:
                 loc = page.get_by_text(cfg["text"], exact=True)
-            if await loc.count() == 1 and await loc.evaluate(
-                "(e, s) => e === document.querySelector(s)", css
-            ):
+            if semantic and await loc.count() == 1 and await loc.evaluate(same, css):
                 return cfg
         except Exception as exc:
             logger.debug(f"[DOMSnapshotCascade] semantic check failed ({exc}) — pinning css")

@@ -831,3 +831,22 @@ async def test_the_lead_is_over_the_next_candidate_of_any_kind(fixed_scores):
     )
 
     assert payload.strategy_used != "embed_direct"
+
+
+@pytest.mark.parametrize("count, same, keeps_id", [
+    (1, True, True),      # `#<id>` finds the chosen element
+    (1, False, False),    # id="foo.bar" read as #foo.bar — a decoy id=foo class=bar
+    (0, False, False),
+])
+async def test_an_id_is_kept_only_if_the_resolver_s_raw_selector_finds_the_target(
+    count, same, keeps_id
+):
+    """IdResolver runs before css and does not escape the id."""
+    page = MagicMock()
+    page.locator = MagicMock(return_value=_locator(count, same))
+    cfg = {"priority": 0, "id": "foo.bar", "css": "#foo\\.bar"}
+
+    out = await DOMSnapshotCascade._pinned_cfg(page, cfg)
+
+    assert out == (cfg if keeps_id else {"priority": 0, "css": "#foo\\.bar"})
+    page.locator.assert_called_once_with("#foo.bar")
