@@ -38,9 +38,15 @@ def _allow_building_a_resolver(monkeypatch):
     )
 
 
-def _candidate(fits: bool) -> MagicMock:
-    """A live-element double whose action-fit check answers `fits`."""
+def _candidate(fits: bool, *, visible=True, enabled=True, editable=True) -> MagicMock:
+    """
+    A live-element double. Playwright's own state checks answer as given; the
+    shape script (evaluate) answers `fits`.
+    """
     loc = MagicMock()
+    loc.is_visible = AsyncMock(return_value=visible)
+    loc.is_enabled = AsyncMock(return_value=enabled)
+    loc.is_editable = AsyncMock(return_value=editable)
     loc.evaluate = AsyncMock(return_value=fits)
     return loc
 
@@ -159,15 +165,6 @@ async def test_an_unmodelled_action_never_reads_the_page():
 
     assert await action_fit.fits(loc, "scroll_to") is True
     loc.evaluate.assert_not_awaited()
-
-
-def test_the_rules_follow_playwright_s_own_retargeting_and_readonly():
-    js = action_fit._FIT_JS
-    assert "el.control" in js, "fill()/select_option() retarget a <label> to its control"
-    assert "aria-readonly" in js and "'textbox'" in js, (
-        "aria-readonly counts only on a role that supports it, as Playwright reads it"
-    )
-    assert "checkVisibility" in js
 
 
 # ── every acting caller says what it is about to do ───────────────────────────
@@ -304,30 +301,9 @@ async def test_the_visual_fallback_pick_is_kept_when_it_fits():
     assert result.locator is button
 
 
-def test_visibility_is_read_before_the_label_retarget_as_playwright_does():
-    """
-    Checked against Playwright's own fill() in a real browser: a visible
-    <label> for a hidden input fills, and a hidden <label> for a visible input
-    does not — visibility is read on the element handed in, enabledness and
-    editability on the control it is retargeted to.
-    """
-    js = action_fit._FIT_JS
-    assert js.index("checkVisibility") < js.index("el = label.control")
-
-
 def test_anything_inside_a_label_is_retargeted():
     """<label><span>Username</span><input></label>: the span fills the input."""
     assert "el.closest('label')" in action_fit._FIT_JS
-
-
-def test_a_disabled_control_above_the_match_refuses_it():
-    """
-    <button disabled style="cursor:pointer"><span>Login</span></button> — the
-    inherited pointer cursor must not get the span past the disabled button.
-    """
-    js = action_fit._FIT_JS
-    assert "button:disabled" in js
-    assert js.index("button:disabled") < js.index("cursor === 'pointer'")
 
 
 def test_fill_accepts_the_input_types_playwright_sets():
@@ -365,9 +341,8 @@ async def test_the_fit_check_runs_before_same_text_deduplication():
     from stepper.engine.resolvers.strategies import KeywordFuzzyResolver
 
     def _match(text, fits_click):
-        m = MagicMock()
+        m = _candidate(fits_click)
         m.inner_text = AsyncMock(return_value=text)
-        m.evaluate = AsyncMock(return_value=fits_click)
         return m
 
     heading, div = _match("Login", False), _match("Login", True)
@@ -386,16 +361,6 @@ async def test_the_fit_check_runs_before_same_text_deduplication():
 
 
 # ── review round 5 ────────────────────────────────────────────────────────────
-
-def test_a_forced_click_still_needs_something_clickable():
-    """Visibility and disabled state are skipped; the click-shape walk is not."""
-    js = action_fit._FIT_JS
-    assert {"click_js", "click_force"} <= action_fit.MODELLED_ACTIONS
-    assert "action === 'click' || forced" in js
-    assert "action !== 'click_js' && (!box.width || !box.height" in js, (
-        "only js_click may skip visibility; a force click still needs a box"
-    )
-
 
 def test_a_property_assigned_onclick_counts_as_clickable():
     """el.onclick = handler sets no [onclick] attribute."""
@@ -454,17 +419,6 @@ async def test_a_fit_check_walks_past_the_node_cap():
 
 
 
-def test_visible_means_a_non_empty_box_as_playwright_reads_it():
-    """
-    Checked in a real browser: a zero-size button passes checkVisibility() but
-    Playwright's is_visible() is False and its click times out.
-    """
-    js = action_fit._FIT_JS
-    assert "!box.width || !box.height" in js
-    assert js.index("!box.width") < js.index("el = label.control")
-
-
-
 async def test_a_page_object_js_click_does_not_scroll_first():
     """
     A display:none target has no box: scroll_into_view_if_needed() times out
@@ -491,33 +445,6 @@ async def test_a_page_object_js_click_does_not_scroll_first():
 
 
 
-def test_a_forced_click_never_accepts_a_native_disabled_control():
-    """
-    Checked in a real browser: el.click() and click(force=True) both return
-    normally on <button disabled> and fire nothing — a step that reports
-    passed. On aria-disabled the page's handler does run, so only an ordinary
-    click turns that away.
-    """
-    js = action_fit._FIT_JS
-    assert "if (nativeDisabled) return false;" in js
-    assert "if (!forced && ariaDisabled(el)) return false;" in js
-
-
-
-def test_role_is_read_as_a_fallback_list():
-    """
-    Checked against Playwright's get_by_role on a real page: role="unknown
-    button" is a button, role="switch checkbox" a switch, role="presentation
-    button" presentation, and role="BUTTON" nothing.
-    """
-    js = action_fit._FIT_JS
-    assert ".split(/\\s+/)" in js and ".find(t => ARIA.has(t))" in js
-    assert "widgetRoles.includes(roleOf(n))" in js
-    assert "roRoles.includes(roleOf(el))" in js
-    assert "toLowerCase().split" not in js
-
-
-
 def test_an_orphan_label_is_not_clickable():
     """<label for="missing">: activates nothing, so a click on it would pass vacuously."""
     js = action_fit._FIT_JS
@@ -525,14 +452,66 @@ def test_an_orphan_label_is_not_clickable():
     assert "summary, label," not in js
 
 
+# ── actionability is Playwright's answer, not a copy of it ───────────────────
+#
+# Fourteen review rounds each found another corner of Playwright's visible /
+# enabled / editable rules that a re-implementation missed (label retargeting,
+# role-gated aria-disabled, shadow hosts, presentation conflicts, zero-size
+# boxes). fits() now asks the locator, and these hold which question each mode
+# asks. Every case those rounds raised was re-checked on a real page against
+# the delegated version.
 
-def test_aria_disabled_counts_only_on_a_role_that_supports_it():
+@pytest.mark.parametrize("action, visible, enabled, editable", [
+    ("click",       True,  True,  False),
+    ("fill",        True,  True,  True),
+    ("select",      True,  True,  False),
+    ("hover",       True,  False, False),
+    ("click_force", True,  False, False),   # force skips enabled, still needs a box
+    ("click_js",    False, False, False),   # el.click() needs neither
+])
+async def test_each_mode_asks_playwright_the_questions_its_action_will_meet(
+    action, visible, enabled, editable
+):
+    loc = _candidate(fits=True)
+
+    assert await action_fit.fits(loc, action) is True
+
+    assert loc.is_visible.await_count == int(visible)
+    assert loc.is_enabled.await_count == int(enabled)
+    assert loc.is_editable.await_count == int(editable)
+
+
+@pytest.mark.parametrize("state", ["visible", "enabled", "editable"])
+async def test_a_no_from_playwright_refuses_the_candidate(state):
+    loc = _candidate(fits=True, **{state: False})
+
+    assert await action_fit.fits(loc, "fill") is False
+    loc.evaluate.assert_not_awaited()
+
+
+async def test_an_element_playwright_cannot_edit_at_all_is_refused():
+    """is_editable() raises for a non-input; fill() would raise the same way."""
+    loc = _candidate(fits=True)
+    loc.is_editable = AsyncMock(side_effect=RuntimeError(
+        "Element is not an <input>, <textarea>, <select> or [contenteditable]"))
+
+    assert await action_fit.fits(loc, "fill") is False
+
+
+def test_a_forced_click_never_accepts_a_native_disabled_control():
     """
-    Mirrors Playwright's getAriaDisabled, checked on a real page:
-    <div aria-disabled onclick> (no role) clicks and fires; a <button> inside
-    <div aria-disabled> and a role=button aria-disabled div are refused.
+    Checked in a real browser: el.click() and click(force=True) both return
+    normally on <button disabled> and fire nothing. Forced modes skip
+    is_enabled(), so the script refuses native :disabled for them itself.
     """
     js = action_fit._FIT_JS
-    assert "ARIA_DISABLED_ROLES.has(roleOf(target) || implicitRole(target))" in js
-    assert "closest('button, [role=button], a, [role=link]')" in js
-    assert "if (v === 'false') return false;" in js
+    assert "if (forced && el.closest('button:disabled" in js
+
+
+def test_role_is_read_as_a_fallback_list_for_the_click_shape():
+    """role="unknown button" is a button; role="BUTTON" is none (case-sensitive)."""
+    js = action_fit._FIT_JS
+    assert ".find(t => ARIA.has(t))" in js
+    assert "widgetRoles.includes(roleOf(n))" in js
+    assert "toLowerCase().split" not in js
+

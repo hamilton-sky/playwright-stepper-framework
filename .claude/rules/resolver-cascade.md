@@ -122,12 +122,18 @@ the page rather than changing it wants `strict=True`; the tests in
 and the engine's acting actions and `BasePage._interact` always pass it. The
 deterministic strategies ignore it: the cfg named those elements. The
 description-driven fallbacks (keyword-fuzzy, accessibility-semantic) drop any
-candidate that cannot take the action, using the rules in
-`stepper/engine/resolvers/action_fit.py`, which follow what Playwright itself
-accepts: a fill needs an editable text field (a `<label>` counts as its
-control), a select a native `<select>`, a click something a click means — the
-element or an ancestor is a button, link, form control, ARIA widget, or has an
-onclick handler or pointer cursor. Hidden elements never qualify; disabled
+candidate that cannot take the action, using
+`stepper/engine/resolvers/action_fit.py`. Whether a candidate is visible,
+enabled and (for a fill) editable is asked of Playwright itself —
+`locator.is_visible()`, `is_enabled()`, `is_editable()` — so it is exactly
+the answer the action will meet; re-implementing those rules was tried for
+fourteen review rounds and each found another corner (label retargeting,
+role-gated `aria-disabled`, shadow hosts, presentation-role conflicts,
+zero-size boxes). What Playwright has no API for is a short script: a fill
+needs an input type `fill()` can set, a textarea or a contenteditable (a
+`<label>` counts as its control), a select a native `<select>`, a click
+something a click means — the element or an ancestor is a button, link, form
+control, ARIA widget, or has an onclick handler or pointer cursor. Hidden elements never qualify; disabled
 ones only for a hover.
 
 A click with `js_click` passes `"click_js"` and one with `force` passes

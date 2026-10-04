@@ -12,37 +12,36 @@ a text node reading "username", and the fill then died on
 A click was worse: keyword-matching "Click the Login button" against a heading
 reading "Login" clicked the heading, and the step reported passed.
 
-So the fallbacks now drop a candidate the action cannot take. The rules follow
-what Playwright itself will accept — they reject the impossible, not the merely
-unusual:
+So the fallbacks now drop a candidate the action cannot take, in two parts.
 
-    fill    a field fill() accepts: a native <input> of a type it can set
-            (not checkbox, radio, file, hidden or a button type) or a
-            <textarea>, not readOnly; or a contenteditable element not
-            aria-readonly (on a role that supports it, as Playwright reads it).
-    select  a native <select>.
+Whether the element is visible, enabled and (for a fill) editable is asked of
+Playwright itself — locator.is_visible() / is_enabled() / is_editable() — so
+the answer is exactly the one the action will meet: its label retargeting, its
+role-gated and shadow-crossing aria-disabled, its presentation-role conflicts,
+its zero-size boxes. Re-implementing those rules here was tried for fourteen
+review rounds and each found another corner; delegating ends that.
+
+What Playwright has no API for stays in one script below:
+
+    fill    the control (a <label> retargets to it) is a native <input> of a
+            type fill() can set — not checkbox, radio, file, hidden or a
+            button type — a <textarea>, or contenteditable.
+    select  the control is a native <select>.
     click   the element or an ancestor is something a click means: a button,
             link, form control, summary, a label with a control, any
             interactive ARIA role the accessibility fallback offers, or an
             element with an onclick handler or a pointer cursor. A text match
             inside a <button> is that button.
-
-    fill, select and click also need the element visible and not disabled —
-    by a disabled control anywhere above it, or aria-disabled as Playwright
-    reads it (only on a role that supports it). For fill and
-    select, anything inside a <label> is first retargeted to the control that
-    label names, as Playwright does, and that control is what is checked.
-    hover   not hidden. Anything can be hovered; a tooltip trigger can be
-            disabled.
+    hover   visible; anything can be hovered, a disabled tooltip trigger too.
     click_js
-            a click with js_click: el.click() reaches a hidden element, a
-            hidden dropdown button included, so visibility is not read.
+            a click with js_click: el.click() reaches a hidden element, so
+            visibility is not asked, nor enabledness — aria-disabled is
+            application state whose handler still runs.
     click_force
-            a click with force: Playwright skips its enabled/stable checks but
-            still needs a box to click, so visibility is read.
-            Both forced modes ignore aria-disabled, whose handler still runs,
-            but never accept a native :disabled control — the click returns
-            normally and fires nothing. Both need something a click means.
+            a click with force: Playwright skips its enabled checks but still
+            needs a box, so visibility is asked and enabledness is not.
+            Neither forced mode accepts a native :disabled control: both
+            clicks return normally on <button disabled> and fire nothing.
 
 Any other action is not modelled and every candidate is kept.
 
@@ -73,13 +72,17 @@ MODELLED_ACTIONS = frozenset({"fill", "select", "click", "click_js", "click_forc
 # default cursor is still the widget the step named.
 _WIDGET_ROLES = sorted(DescriptionFallbackResolver.INTERACTIVE_ROLES)
 
-# One evaluate per candidate. The rule is in the browser, where the DOM is, and
-# returns the verdict so the Python side holds no copy of it to drift.
+# is_enabled()/is_editable() wait for the element to attach; a candidate the
+# fallback just found is attached, so this only bounds a detached one.
+_STATE_TIMEOUT_MS = 2_000
+
+# The shape rules Playwright has no API for. They run in the browser, where the
+# DOM is, and return the verdict so the Python side holds no copy to drift.
 _FIT_JS = """
 (el, [action, widgetRoles]) => {
   // role is a space-separated fallback list; the first token the browser
   // recognises is the element's role — role="unknown button" is a button,
-  // role="switch checkbox" a switch. Read it the same way everywhere below.
+  // role="switch checkbox" a switch. Case-sensitive, as get_by_role reads it.
   const ARIA = new Set(['alert', 'alertdialog', 'application', 'article', 'banner',
     'blockquote', 'button', 'caption', 'cell', 'checkbox', 'code', 'columnheader',
     'combobox', 'complementary', 'contentinfo', 'definition', 'deletion', 'dialog',
@@ -93,118 +96,41 @@ _FIT_JS = """
     'subscript', 'superscript', 'switch', 'tab', 'table', 'tablist', 'tabpanel',
     'term', 'textbox', 'time', 'timer', 'toolbar', 'tooltip', 'tree', 'treegrid',
     'treeitem']);
-  // Case-sensitive, as Playwright's get_by_role reads it: role="BUTTON" is none.
-  const roleOf = n => (n.getAttribute('role') || '').split(/\s+/)
+  const roleOf = n => (n.getAttribute('role') || '').split(/\\s+/)
     .find(t => ARIA.has(t)) || '';
-  // Playwright's enabled check, mirrored (roleUtils getAriaDisabled): a click
-  // is first retargeted to the nearest button or link, then aria-disabled
-  // counts only if that element's role supports it — and once it does, an
-  // ancestor's aria-disabled="true" applies too, until one says "false".
-  // <div aria-disabled="true" onclick> with no role is enabled; a <button>
-  // inside <div aria-disabled="true"> is not. (Checked on a real page.)
-  const ARIA_DISABLED_ROLES = new Set(['application', 'button', 'composite',
-    'gridcell', 'group', 'input', 'link', 'menuitem', 'scrollbar', 'separator',
-    'tab', 'checkbox', 'columnheader', 'combobox', 'grid', 'listbox', 'menu',
-    'menubar', 'menuitemcheckbox', 'menuitemradio', 'option', 'radio',
-    'radiogroup', 'row', 'rowheader', 'searchbox', 'select', 'slider',
-    'spinbutton', 'switch', 'tablist', 'textbox', 'toolbar', 'tree', 'treegrid',
-    'treeitem']);
-  const implicitRole = n => {
-    const t = n.tagName;
-    if (t === 'BUTTON') return 'button';
-    if (t === 'A' && n.hasAttribute('href')) return 'link';
-    if (t === 'TEXTAREA') return 'textbox';
-    if (t === 'OPTION') return 'option';
-    if (t === 'SELECT') return (n.multiple || n.size > 1) ? 'listbox' : 'combobox';
-    if (t === 'INPUT') {
-      const type = (n.getAttribute('type') || 'text').toLowerCase();
-      if (['button', 'submit', 'reset', 'image'].includes(type)) return 'button';
-      if (type === 'checkbox' || type === 'radio') return type;
-      if (type === 'range') return 'slider';
-      if (type === 'number') return 'spinbutton';
-      if (n.hasAttribute('list')) return 'combobox';
-      return type === 'search' ? 'searchbox' : 'textbox';
-    }
-    return '';
-  };
-  const ariaDisabled = target => {
-    if (action === 'click' || action === 'click_force') {
-      target = target.closest('button, [role=button], a, [role=link]') || target;
-    }
-    if (!ARIA_DISABLED_ROLES.has(roleOf(target) || implicitRole(target))) return false;
-    for (let n = target; n && n.nodeType === 1; n = n.parentElement) {
-      const v = (n.getAttribute('aria-disabled') || '').toLowerCase();
-      if (v === 'true') return true;
-      if (v === 'false') return false;
-    }
-    return false;
-  };
-  // Playwright's own order: visibility is read on the element it was handed,
-  // then fill() and select_option() retarget anything that is not itself a
-  // control through its nearest <label> — a <span> inside
-  // <label><span>Username</span><input></label> fills the input — and the
-  // enabled and editable checks read that control. (Checked in a real browser:
-  // a visible label for a hidden input fills; a hidden label never does.)
-  // A js_click (el.click()) reaches anything, a hidden dropdown button included;
-  // a force click skips Playwright's enabled checks but still needs a box to
-  // click. Both must still land on something a click means, or a heading
-  // reading "Login" would be force-clicked and pass.
   const forced = action === 'click_js' || action === 'click_force';
-  // Playwright's "visible" is a non-empty bounding box and not
-  // visibility:hidden; checkVisibility() alone passes a zero-size box.
-  const box = el.getBoundingClientRect();
-  if (action !== 'click_js' && (!box.width || !box.height
-        || (typeof el.checkVisibility === 'function'
-            && !el.checkVisibility({visibilityProperty: true})))) {
-    return false;
-  }
+  // fill() and select_option() retarget anything that is not itself a control
+  // through its nearest <label> — <label><span>Username</span><input></label>.
   if ((action === 'fill' || action === 'select')
       && !['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName) && !el.isContentEditable) {
     const label = el.closest('label');
     if (label && label.control) el = label.control;
   }
   if (action === 'hover') return true;
-  // A disabled control anywhere above the match disables it too: a text match
-  // inside <button disabled> is that button, and the browser swallows the click.
-  // (Not fieldset: its descendant controls match :disabled themselves, and a
-  // link inside one stays live.)
-  //
-  // Native :disabled refuses every click, forced ones included: el.click() and
-  // a forced pointer click both return normally on <button disabled> and fire
-  // nothing (checked in a real browser), so the step would report it acted.
-  // aria-disabled is application state the page's own handler still receives,
-  // so only an ordinary click — which Playwright refuses — is turned away.
-  const nativeDisabled = el.closest(
-    'button:disabled, input:disabled, select:disabled, textarea:disabled, '
-    + 'option:disabled, optgroup:disabled') !== null;
-  if (nativeDisabled) return false;
-  if (!forced && ariaDisabled(el)) return false;
+  // Forced clicks skip Playwright's enabled check, but a native :disabled
+  // control fires nothing under either — the step would report it acted.
+  if (forced && el.closest('button:disabled, input:disabled, select:disabled, '
+                           + 'textarea:disabled, option:disabled, optgroup:disabled')) {
+    return false;
+  }
   // A <label> — or text inside one — whose control is disabled activates
-  // nothing: <fieldset disabled><label><span>Login</span><input></label>. The
-  // click lands, and the step would report it did something.
+  // nothing: <fieldset disabled><label><span>Login</span><input></label>.
   const label = el.closest('label');
-  if ((action === 'click' || forced) && label && label.control && label.control.matches(':disabled')) {
+  if ((action === 'click' || forced) && label && label.control
+      && label.control.matches(':disabled')) {
     return false;
   }
   const tag = el.tagName;
   if (action === 'select') return tag === 'SELECT';
   if (action === 'fill') {
-    if (tag === 'TEXTAREA') return !el.readOnly;
+    if (tag === 'TEXTAREA') return true;
     if (tag === 'INPUT') {
-      const type = (el.getAttribute('type') || 'text').toLowerCase();
       // The types fill() itself refuses; color, range and the date family it sets.
       const notText = ['submit', 'button', 'reset', 'image', 'checkbox', 'radio',
                        'hidden', 'file'];
-      return !notText.includes(type) && !el.readOnly;
+      return !notText.includes((el.getAttribute('type') || 'text').toLowerCase());
     }
-    // Playwright honours aria-readonly only on a role that supports it.
-    const roRoles = ['textbox', 'searchbox', 'combobox', 'spinbutton', 'slider',
-                     'gridcell', 'grid', 'listbox', 'radiogroup', 'checkbox',
-                     'switch', 'menuitemcheckbox', 'menuitemradio', 'columnheader',
-                     'rowheader', 'treegrid'];
-    const ro = el.getAttribute('aria-readonly') === 'true'
-               && roRoles.includes(roleOf(el));
-    return el.isContentEditable && !ro;
+    return el.isContentEditable;
   }
   if (action === 'click' || forced) {
     // widgetRoles is DescriptionFallbackResolver.INTERACTIVE_ROLES, passed in
@@ -231,6 +157,21 @@ async def fits(locator, action: str | None) -> bool:
     if action not in MODELLED_ACTIONS:
         return True
     try:
+        # Playwright's own answers: the ones the action itself will meet.
+        if action != "click_js" and not await locator.is_visible():
+            return False
+        if action in ("click", "fill", "select") and not await locator.is_enabled(
+            timeout=_STATE_TIMEOUT_MS
+        ):
+            return False
+        if action == "fill":
+            try:
+                if not await locator.is_editable(timeout=_STATE_TIMEOUT_MS):
+                    return False
+            except Exception:
+                # Playwright raises for an element that is not an input,
+                # textarea, select or contenteditable — fill() would too.
+                return False
         return bool(await locator.evaluate(_FIT_JS, [action, _WIDGET_ROLES]))
     except Exception as exc:
         logger.debug(f"[action-fit] could not read the candidate ({exc}) — keeping it")
