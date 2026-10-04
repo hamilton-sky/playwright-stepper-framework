@@ -22,9 +22,9 @@ unusual:
             aria-readonly (on a role that supports it, as Playwright reads it).
     select  a native <select>.
     click   the element or an ancestor is something a click means: a button,
-            link, form control, summary, label, any interactive ARIA role the
-            accessibility fallback offers, or an element with an onclick
-            handler or a pointer cursor. A text match
+            link, form control, summary, a label with a control, any
+            interactive ARIA role the accessibility fallback offers, or an
+            element with an onclick handler or a pointer cursor. A text match
             inside a <button> is that button.
 
     fill, select and click also need the element visible and not disabled —
@@ -165,9 +165,12 @@ _FIT_JS = """
   if (action === 'click' || forced) {
     // widgetRoles is DescriptionFallbackResolver.INTERACTIVE_ROLES, passed in
     // so the roles the fallback offers and the roles a click accepts are one list.
-    const clickable = 'button, a[href], input, select, textarea, summary, label, [onclick]';
+    const clickable = 'button, a[href], input, select, textarea, summary, [onclick]';
     for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
       if (n.matches(clickable) || widgetRoles.includes(roleOf(n))) return true;
+      // A label is clickable for the control it activates; an orphan one (for=
+      // naming nothing) activates nothing and the click would report it acted.
+      if (n.tagName === 'LABEL' && n.control) return true;
       // el.onclick = handler sets the property, not the attribute [onclick].
       if (typeof n.onclick === 'function') return true;
       if (getComputedStyle(n).cursor === 'pointer') return true;

@@ -514,3 +514,11 @@ def test_role_is_read_as_a_fallback_list():
     assert "widgetRoles.includes(roleOf(n))" in js
     assert "roRoles.includes(roleOf(el))" in js
     assert "toLowerCase().split" not in js
+
+
+
+def test_an_orphan_label_is_not_clickable():
+    """<label for="missing">: activates nothing, so a click on it would pass vacuously."""
+    js = action_fit._FIT_JS
+    assert "n.tagName === 'LABEL' && n.control" in js
+    assert "summary, label," not in js
