@@ -136,7 +136,10 @@ _FIT_JS = """
     // widgetRoles is DescriptionFallbackResolver.INTERACTIVE_ROLES, passed in
     // so the roles the fallback offers and the roles a click accepts are one list.
     const clickable = 'button, a[href], input, select, textarea, summary, [onclick]';
-    for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
+    // Up through shadow roots too: <x-login onclick> hosting a shadow <span>Login.
+    const up = n => n.parentElement
+      || (n.getRootNode() instanceof ShadowRoot ? n.getRootNode().host : null);
+    for (let n = el; n && n.nodeType === 1; n = up(n)) {
       if (n.matches(clickable) || widgetRoles.includes(roleOf(n))) return true;
       // A contenteditable editor is an implicit textbox; a click focuses it.
       if (n.isContentEditable) return true;

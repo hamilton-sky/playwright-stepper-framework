@@ -520,3 +520,10 @@ def test_role_is_read_as_a_fallback_list_for_the_click_shape():
 def test_a_contenteditable_editor_is_a_click_target():
     """<div contenteditable aria-label="Notes"> is an implicit textbox a click focuses."""
     assert "if (n.isContentEditable) return true;" in action_fit._FIT_JS
+
+
+def test_the_click_walk_crosses_shadow_hosts():
+    """<x-login onclick> hosting a shadow <span>Login</span>: the host is the click target."""
+    js = action_fit._FIT_JS
+    assert "n.getRootNode() instanceof ShadowRoot ? n.getRootNode().host" in js
+    assert "n = up(n)" in js
