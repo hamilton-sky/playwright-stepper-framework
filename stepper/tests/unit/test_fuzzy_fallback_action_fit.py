@@ -332,10 +332,11 @@ def test_a_disabled_control_above_the_match_refuses_it():
 
 def test_fill_accepts_the_input_types_playwright_sets():
     """color, range and the date family are filled by value; only these are refused."""
-    js = action_fit._FIT_JS
-    assert "'color'" not in js and "'range'" not in js
-    for refused in ("'checkbox'", "'radio'", "'file'", "'hidden'", "'submit'"):
-        assert refused in js
+    import re
+    refused = re.search(r"const notText = \[([^\]]*)\]", action_fit._FIT_JS).group(1)
+    assert "'color'" not in refused and "'range'" not in refused
+    for t in ("'checkbox'", "'radio'", "'file'", "'hidden'", "'submit'"):
+        assert t in refused
 
 
 async def test_a_click_accepts_every_role_the_accessibility_fallback_offers():
@@ -499,7 +500,7 @@ def test_a_forced_click_never_accepts_a_native_disabled_control():
     """
     js = action_fit._FIT_JS
     assert "if (nativeDisabled) return false;" in js
-    assert "if (!forced && el.closest('[aria-disabled=\"true\"]')" in js
+    assert "if (!forced && ariaDisabled(el)) return false;" in js
 
 
 
@@ -522,3 +523,16 @@ def test_an_orphan_label_is_not_clickable():
     js = action_fit._FIT_JS
     assert "n.tagName === 'LABEL' && n.control" in js
     assert "summary, label," not in js
+
+
+
+def test_aria_disabled_counts_only_on_a_role_that_supports_it():
+    """
+    Mirrors Playwright's getAriaDisabled, checked on a real page:
+    <div aria-disabled onclick> (no role) clicks and fires; a <button> inside
+    <div aria-disabled> and a role=button aria-disabled div are refused.
+    """
+    js = action_fit._FIT_JS
+    assert "ARIA_DISABLED_ROLES.has(roleOf(target) || implicitRole(target))" in js
+    assert "closest('button, [role=button], a, [role=link]')" in js
+    assert "if (v === 'false') return false;" in js

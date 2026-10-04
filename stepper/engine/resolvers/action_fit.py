@@ -28,7 +28,8 @@ unusual:
             inside a <button> is that button.
 
     fill, select and click also need the element visible and not disabled —
-    by a disabled control anywhere above it, or aria-disabled. For fill and
+    by a disabled control anywhere above it, or aria-disabled as Playwright
+    reads it (only on a role that supports it). For fill and
     select, anything inside a <label> is first retargeted to the control that
     label names, as Playwright does, and that control is what is checked.
     hover   not hidden. Anything can be hovered; a tooltip trigger can be
@@ -95,6 +96,49 @@ _FIT_JS = """
   // Case-sensitive, as Playwright's get_by_role reads it: role="BUTTON" is none.
   const roleOf = n => (n.getAttribute('role') || '').split(/\s+/)
     .find(t => ARIA.has(t)) || '';
+  // Playwright's enabled check, mirrored (roleUtils getAriaDisabled): a click
+  // is first retargeted to the nearest button or link, then aria-disabled
+  // counts only if that element's role supports it — and once it does, an
+  // ancestor's aria-disabled="true" applies too, until one says "false".
+  // <div aria-disabled="true" onclick> with no role is enabled; a <button>
+  // inside <div aria-disabled="true"> is not. (Checked on a real page.)
+  const ARIA_DISABLED_ROLES = new Set(['application', 'button', 'composite',
+    'gridcell', 'group', 'input', 'link', 'menuitem', 'scrollbar', 'separator',
+    'tab', 'checkbox', 'columnheader', 'combobox', 'grid', 'listbox', 'menu',
+    'menubar', 'menuitemcheckbox', 'menuitemradio', 'option', 'radio',
+    'radiogroup', 'row', 'rowheader', 'searchbox', 'select', 'slider',
+    'spinbutton', 'switch', 'tablist', 'textbox', 'toolbar', 'tree', 'treegrid',
+    'treeitem']);
+  const implicitRole = n => {
+    const t = n.tagName;
+    if (t === 'BUTTON') return 'button';
+    if (t === 'A' && n.hasAttribute('href')) return 'link';
+    if (t === 'TEXTAREA') return 'textbox';
+    if (t === 'OPTION') return 'option';
+    if (t === 'SELECT') return (n.multiple || n.size > 1) ? 'listbox' : 'combobox';
+    if (t === 'INPUT') {
+      const type = (n.getAttribute('type') || 'text').toLowerCase();
+      if (['button', 'submit', 'reset', 'image'].includes(type)) return 'button';
+      if (type === 'checkbox' || type === 'radio') return type;
+      if (type === 'range') return 'slider';
+      if (type === 'number') return 'spinbutton';
+      if (n.hasAttribute('list')) return 'combobox';
+      return type === 'search' ? 'searchbox' : 'textbox';
+    }
+    return '';
+  };
+  const ariaDisabled = target => {
+    if (action === 'click' || action === 'click_force') {
+      target = target.closest('button, [role=button], a, [role=link]') || target;
+    }
+    if (!ARIA_DISABLED_ROLES.has(roleOf(target) || implicitRole(target))) return false;
+    for (let n = target; n && n.nodeType === 1; n = n.parentElement) {
+      const v = (n.getAttribute('aria-disabled') || '').toLowerCase();
+      if (v === 'true') return true;
+      if (v === 'false') return false;
+    }
+    return false;
+  };
   // Playwright's own order: visibility is read on the element it was handed,
   // then fill() and select_option() retarget anything that is not itself a
   // control through its nearest <label> — a <span> inside
@@ -134,7 +178,7 @@ _FIT_JS = """
     'button:disabled, input:disabled, select:disabled, textarea:disabled, '
     + 'option:disabled, optgroup:disabled') !== null;
   if (nativeDisabled) return false;
-  if (!forced && el.closest('[aria-disabled="true"]') !== null) return false;
+  if (!forced && ariaDisabled(el)) return false;
   // A <label> — or text inside one — whose control is disabled activates
   // nothing: <fieldset disabled><label><span>Login</span><input></label>. The
   // click lands, and the step would report it did something.
