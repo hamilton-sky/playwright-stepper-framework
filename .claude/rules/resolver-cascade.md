@@ -114,3 +114,41 @@ under the right key and every later `when:` clause reasons about it.
 **When adding a new action, decide which column it is in.** Anything that reports on
 the page rather than changing it wants `strict=True`; the tests in
 `stepper/tests/unit/test_strict_resolution.py` assert both halves.
+
+
+## The fallbacks know what the caller is about to do
+
+`resolve()` also takes `action` — `"fill"`, `"click"`, `"hover"`, `"select"` —
+and the engine's acting actions and `BasePage._interact` always pass it. The
+deterministic strategies ignore it: the cfg named those elements. The
+description-driven fallbacks (keyword-fuzzy, accessibility-semantic) drop any
+candidate that cannot take the action, using the rules in
+`stepper/engine/resolvers/action_fit.py`, which follow what Playwright itself
+accepts: a fill needs an editable text field (a `<label>` counts as its
+control), a select a native `<select>`, a click something a click means — the
+element or an ancestor is a button, link, form control, ARIA widget, or has an
+onclick handler or pointer cursor. Hidden elements never qualify; disabled
+ones only for a hover.
+
+A click with `js_click` or `force` passes no action: both skip Playwright's
+actionability checks on purpose (a hidden dropdown button), so the filter
+would only get in their way.
+
+Before this, the CI log on the SauceDemo fixture showed
+
+```
+Deterministic cascade failed — falling through to zero-selector path: 'Type username into the username field'
+Locator.fill: Error: Element is not an <input>, <textarea>, <select> or [contenteditable]
+```
+
+— keyword-fuzzy had settled on a text node. A click has no such error to give
+it away: "Click the Login button" against a heading reading "Login" clicks the
+heading and passes.
+
+An acting step can also opt out of the fallbacks entirely with
+`"extra": {"strict": true}`. The heal workflows set it on their broken steps:
+with the fallbacks now finding the real fields themselves, nothing would
+otherwise reach the healer, and CI checks that each reports three heals.
+
+`stepper/tests/unit/test_fuzzy_fallback_action_fit.py` holds the wiring.
+

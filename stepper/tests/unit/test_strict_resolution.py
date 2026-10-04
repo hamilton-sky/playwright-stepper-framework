@@ -156,7 +156,7 @@ async def test_the_cascade_still_falls_through_by_default():
     r = ElementResolver([_strategy("css", 60, [])])
     sentinel = object()
 
-    async def fallback(page, description):
+    async def fallback(page, description, action=None):
         return sentinel
 
     r._zero_selector_path = fallback   # type: ignore[assignment]

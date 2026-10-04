@@ -1,6 +1,6 @@
 {
   "name": "SauceDemo \u2014 self-heal test",
-  "description": "Deliberately broken selectors on fill/click steps. With --heal, the healer should recover each one through the embed cascade (no AI call needed if MiniLM scores >= 0.85). The final assert is what makes this a test rather than a demo: without it the run passes even when the login never happened.",
+  "description": "Deliberately broken selectors on fill/click steps, marked strict so the resolver's description fallbacks cannot recover them first — only the healer may. With --heal, the healer should recover each one through the embed cascade (no AI call needed if MiniLM scores >= 0.85). The final assert is what makes this a test rather than a demo: without it the run passes even when the login never happened.",
   "variables": {
     "base_url": "https://www.saucedemo.com"
   },
@@ -17,7 +17,7 @@
         "css": ".broken-username-selector"
       },
       "input_value": "standard_user",
-      "extra": {"press_enter": false},
+      "extra": {"press_enter": false, "strict": true},
       "heal": true
     },
     {
@@ -27,7 +27,7 @@
         "css": ".broken-password-selector"
       },
       "input_value": "secret_sauce",
-      "extra": {"press_enter": false},
+      "extra": {"press_enter": false, "strict": true},
       "heal": true
     },
     {
@@ -36,6 +36,7 @@
       "element": {
         "css": ".broken-login-btn"
       },
+      "extra": {"strict": true},
       "heal": true,
       "heal_assert": {
         "url_contains": "/inventory"

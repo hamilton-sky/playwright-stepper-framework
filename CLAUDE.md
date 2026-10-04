@@ -113,7 +113,7 @@ python stepper/main.py run db_smoke
 # Watch the healer work on deliberately broken selectors. No API key needed:
 # each broken element is a clear winner (the best match on the page, suits the
 # action, leads every other candidate by >= 0.25), which heals with no provider call. CI runs this
-# keyless against the fixtures. --no-heal-cache is what makes it a measurement
+# keyless against the fixtures and requires all 3 to heal. --no-heal-cache is what makes it a measurement
 # rather than a replay of the committed heal_cache.json.
 python stepper/main.py run sd_heal_test --heal 2 --no-heal-cache --show
 

@@ -45,7 +45,7 @@ class NullResolver:
         return None
 
     async def resolve(self, page, cfg: dict, step_description: str = "",
-                      *, strict: bool = False):
+                      *, strict: bool = False, action: str | None = None):
         """
         Always raises. The message names what was being looked for, because by
         the time this fires the useful question is which step wired an
