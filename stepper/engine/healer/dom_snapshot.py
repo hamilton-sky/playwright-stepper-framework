@@ -154,13 +154,15 @@ _ELEMENT_QUERY_JS = """() => {
     multirow:    el.tagName === 'SELECT' && (el.multiple || el.size > 1),
     // Whether something else sits on top of the element's centre — a fixed
     // overlay, a cookie banner. Playwright's click waits for the target to
-    // receive events and would time out. Off-screen is not covered: Playwright
-    // scrolls into view first.
+    // receive events and would time out. Off-screen counts as covered: the hit
+    // test can only be read where the element is now, and Playwright scrolls it
+    // into view first — possibly under a fixed overlay. Unknown is not safe for
+    // the no-AI path; the step escalates instead.
     covered:     (() => {
       const r = el.getBoundingClientRect();
       if (!r.width || !r.height) return false;
       const x = r.left + r.width / 2, y = r.top + r.height / 2;
-      if (x < 0 || y < 0 || x > innerWidth || y > innerHeight) return false;
+      if (x < 0 || y < 0 || x > innerWidth || y > innerHeight) return true;
       const hit = document.elementFromPoint(x, y);
       // A hit on a descendant is the element; a hit on an ancestor means the
       // element itself takes no pointer events (pointer-events: none).

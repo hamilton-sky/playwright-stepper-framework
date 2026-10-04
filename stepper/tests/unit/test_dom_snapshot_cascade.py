@@ -864,3 +864,14 @@ def test_readonly_follows_playwright_s_editability_rule():
 
     assert "el.readOnly" in js
     assert "aria-readonly" in js
+
+
+def test_an_off_screen_element_counts_as_covered():
+    """
+    Its hit test can only be read where it is now; Playwright scrolls it into
+    view first, possibly under a fixed overlay. Checked in a real browser: a
+    button below the fold under a full-viewport overlay is reported covered.
+    """
+    from stepper.engine.healer.dom_snapshot import _ELEMENT_QUERY_JS as js
+
+    assert "x > innerWidth || y > innerHeight) return true" in js
