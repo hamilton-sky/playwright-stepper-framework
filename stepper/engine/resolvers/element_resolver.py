@@ -242,8 +242,11 @@ class ElementResolver:
             0 candidates → visual AI last resort
         """
         # ── B: Keyword fuzzy — fast gate ──────────────────────────────────────
-        b_candidates = await self._keyword_fuzzy.find(page, step_description)
-        b_candidates = await keep_fitting(b_candidates, action, source="keyword-fuzzy")
+        # The fit check runs inside find(), ahead of its same-text de-duplication.
+        b_candidates = await self._keyword_fuzzy.find(
+            page, step_description,
+            keep=(lambda loc: fits(loc, action)) if action else None,
+        )
         if len(b_candidates) == 1:
             logger.info("✓ [keyword-fuzzy] single match → confidence 85%")
             return ResolveResult(

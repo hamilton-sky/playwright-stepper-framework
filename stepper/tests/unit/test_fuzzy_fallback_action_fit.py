@@ -45,9 +45,18 @@ def _candidate(fits: bool) -> MagicMock:
     return loc
 
 
+def _keyword_find(candidates: list):
+    """A find() double that honours `keep`, as the real one does."""
+    async def find(page, description, keep=None):
+        if keep is None:
+            return list(candidates)
+        return [c for c in candidates if await keep(c)]
+    return find
+
+
 def _resolver(keyword: list, shortlist: list | None = None) -> ElementResolver:
     r = ElementResolver([])
-    r._keyword_fuzzy = MagicMock(find=AsyncMock(return_value=keyword))
+    r._keyword_fuzzy = MagicMock(find=_keyword_find(keyword))
     r._desc_fallback = MagicMock(find_candidates=AsyncMock(return_value=shortlist or []))
     return r
 
@@ -330,3 +339,32 @@ async def test_a_click_accepts_every_role_the_accessibility_fallback_offers():
     _, (action, roles) = loc.evaluate.await_args.args
     assert action == "click"
     assert set(roles) == set(DescriptionFallbackResolver.INTERACTIVE_ROLES)
+
+
+
+async def test_the_fit_check_runs_before_same_text_deduplication():
+    """
+    <h1>Login</h1> ahead of <div onclick>Login</div>: find() keeps one element
+    per distinct text, so filtering afterwards kept the heading, rejected it,
+    and had nothing left. Filtering first keeps the div.
+    """
+    from stepper.engine.resolvers.strategies import KeywordFuzzyResolver
+
+    def _match(text, fits_click):
+        m = MagicMock()
+        m.inner_text = AsyncMock(return_value=text)
+        m.evaluate = AsyncMock(return_value=fits_click)
+        return m
+
+    heading, div = _match("Login", False), _match("Login", True)
+    matches = MagicMock()
+    matches.count = AsyncMock(return_value=2)
+    matches.nth = lambda i: [heading, div][i]
+    page = MagicMock()
+    page.get_by_text = MagicMock(return_value=matches)
+
+    found = await KeywordFuzzyResolver().find(
+        page, "Login", keep=lambda loc: action_fit.fits(loc, "click")
+    )
+
+    assert found == [div]

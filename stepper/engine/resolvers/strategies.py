@@ -208,7 +208,13 @@ class KeywordFuzzyResolver:
 
     MIN_WORD_LEN = 4
 
-    async def find(self, page, description: str) -> list:
+    async def find(self, page, description: str, keep=None) -> list:
+        """
+        keep, when given, is an async predicate applied to each match *before*
+        the same-text de-duplication: with an <h1>Login</h1> ahead of a
+        clickable <div>Login</div>, de-duplicating first would keep the
+        heading, and a click that rejects it would then have nothing left.
+        """
         keywords = self._extract_keywords(description)
         if not keywords:
             return []
@@ -222,6 +228,8 @@ class KeywordFuzzyResolver:
                 count = await loc.count()
                 for i in range(count):
                     item = loc.nth(i)
+                    if keep is not None and not await keep(item):
+                        continue
                     try:
                         inner = (await item.inner_text()).strip()[:120]
                         if inner and inner not in seen_inner:
