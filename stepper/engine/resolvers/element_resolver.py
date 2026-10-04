@@ -24,7 +24,7 @@ from stepper.engine.resolvers.strategies import (
     SemanticResolver, VisualAIResolver, DescriptionFallbackResolver, KeywordFuzzyResolver,
 )
 from stepper.engine.resolvers.ai_pick_resolver import AIPickResolver
-from stepper.engine.resolvers.action_fit import keep_fitting
+from stepper.engine.resolvers.action_fit import fits, keep_fitting
 
 logger = logging.getLogger(__name__)
 
@@ -218,7 +218,7 @@ class ElementResolver:
             return await self._zero_selector_path(page, step_description, action)
 
         logger.warning("Deterministic cascade failed and no description → visual AI")
-        return await self._visual_fallback(page, cfg, step_description)
+        return await self._visual_fallback(page, cfg, step_description, action)
 
     # ── Zero-selector path (B → A → AI pick) ─────────────────────────────────
 
@@ -267,7 +267,7 @@ class ElementResolver:
             logger.warning(
                 "[DescriptionFallback] no candidates above threshold → visual AI"
             )
-            return await self._visual_fallback(page, {}, step_description)
+            return await self._visual_fallback(page, {}, step_description, action)
 
         if len(shortlist) == 1:
             loc, desc, score = shortlist[0]
@@ -363,13 +363,18 @@ class ElementResolver:
 
     # ── Visual Fallback ───────────────────────────────────────────────────────
 
-    async def _visual_fallback(self, page, cfg, step_description) -> ResolveResult:
+    async def _visual_fallback(self, page, cfg, step_description,
+                               action: str | None = None) -> ResolveResult:
         if not self._use_visual_ai:
             logger.warning("Visual AI disabled — returning not-found")
             return ResolveResult(found=False, confidence=0.0, method="not-found")
         candidates = await self._visual.collect(page, cfg)
         if candidates:
             loc, conf = candidates[0]
+            # The last description-driven guess gets the same check as the others.
+            if not await fits(loc, action):
+                logger.info(f"[visual-ai] its pick cannot take a {action} → not-found")
+                return ResolveResult(found=False, confidence=0.0, method="not-found")
             return ResolveResult(found=True, locator=loc, confidence=conf, method="visual-ai")
         return ResolveResult(found=False, confidence=0.0, method="not-found")
 

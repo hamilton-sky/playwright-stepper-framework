@@ -253,3 +253,44 @@ def test_both_heal_workflows_keep_their_broken_steps_strict():
         broken = [s for s in steps if s.get("heal") and s.get("element")]
         assert len(broken) == 3, name
         assert all((s.get("extra") or {}).get("strict") is True for s in broken), name
+
+
+# ── review round 1 ────────────────────────────────────────────────────────────
+
+async def test_the_visual_fallback_pick_is_checked_too():
+    """The last description-driven guess gets the same check as the others."""
+    heading = _candidate(fits=False)
+    r = ElementResolver([], use_visual_ai=True)
+    r._keyword_fuzzy = MagicMock(find=AsyncMock(return_value=[]))
+    r._desc_fallback = MagicMock(find_candidates=AsyncMock(return_value=[]))
+    r._visual = MagicMock(collect=AsyncMock(return_value=[(heading, 0.9)]))
+
+    result = await r.resolve(MagicMock(), {}, "Click the Login button", action="click")
+
+    assert result.found is False
+
+
+async def test_the_visual_fallback_pick_is_kept_when_it_fits():
+    button = _candidate(fits=True)
+    r = ElementResolver([], use_visual_ai=True)
+    r._keyword_fuzzy = MagicMock(find=AsyncMock(return_value=[]))
+    r._desc_fallback = MagicMock(find_candidates=AsyncMock(return_value=[]))
+    r._visual = MagicMock(collect=AsyncMock(return_value=[(button, 0.9)]))
+
+    result = await r.resolve(MagicMock(), {}, "Click the Login button", action="click")
+
+    assert result.locator is button
+
+
+def test_a_label_is_retargeted_before_its_visibility_is_read():
+    """
+    Checked in a real browser: a visible <label> for a hidden input is refused
+    for a fill, and a hidden <label> for a visible input is accepted.
+    """
+    js = action_fit._FIT_JS
+    assert js.index("el = el.control") < js.index("checkVisibility")
+
+
+def test_a_disabled_clickable_ancestor_is_refused():
+    """A text match inside <button disabled> is that disabled button."""
+    assert "return !n.matches(':disabled')" in action_fit._FIT_JS

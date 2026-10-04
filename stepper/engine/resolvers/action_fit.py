@@ -46,16 +46,17 @@ MODELLED_ACTIONS = frozenset({"fill", "select", "click", "hover"})
 # returns the verdict so the Python side holds no copy of it to drift.
 _FIT_JS = """
 (el, action) => {
+  // fill() and select_option() retarget a <label> to the control it labels —
+  // so it is the control whose visibility and state matter, not the label's.
+  if ((action === 'fill' || action === 'select') && el.tagName === 'LABEL' && el.control) {
+    el = el.control;
+  }
   if (typeof el.checkVisibility === 'function'
         ? !el.checkVisibility({visibilityProperty: true})
         : !(el.offsetWidth || el.offsetHeight || el.getClientRects().length)) {
     return false;
   }
   if (action === 'hover') return true;
-  // fill() and select_option() retarget a <label> to the control it labels.
-  if ((action === 'fill' || action === 'select') && el.tagName === 'LABEL' && el.control) {
-    el = el.control;
-  }
   const disabled = el.matches(':disabled') || el.closest('[aria-disabled="true"]') !== null;
   if (disabled) return false;
   const tag = el.tagName;
@@ -84,7 +85,9 @@ _FIT_JS = """
       + '[role="checkbox"], [role="radio"], [role="switch"], [role="option"], '
       + '[role="treeitem"], [role="combobox"]';
     for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
-      if (n.matches(clickable)) return true;
+      // A text match inside <button disabled> is that disabled button: the
+      // browser swallows the click, and the step would report it landed.
+      if (n.matches(clickable)) return !n.matches(':disabled');
       if (getComputedStyle(n).cursor === 'pointer') return true;
     }
     return false;
