@@ -83,13 +83,14 @@ class ClickAction(ActionStrategy):
         _, err = _checked_input_value(step)
         if err:
             return err
-        # js_click and force skip Playwright's actionability checks on purpose
-        # (a hidden dropdown button); the fallbacks then still require
-        # something clickable, but not a visible, enabled one.
-        bypass = bool(step.extra and (step.extra.get("js_click") or step.extra.get("force")))
+        # js_click reaches anything (a hidden dropdown button); force skips
+        # Playwright's enabled checks but still needs a box to click. Each
+        # tells the fallbacks which checks the click itself will skip.
+        extra = step.extra or {}
+        fit = ("click_js" if extra.get("js_click")
+               else "click_force" if extra.get("force") else "click")
         result = await resolver.resolve(page, step.element, step.description,
-                                        action="click_forced" if bypass else "click",
-                                        strict=_strict(step))
+                                        action=fit, strict=_strict(step))
 
         if not result.found:
             return StepResult(step=step, status="failed",

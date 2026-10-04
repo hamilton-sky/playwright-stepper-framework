@@ -195,11 +195,12 @@ async def test_engine_actions_pass_their_action(action_name):
     assert resolver.resolve.await_args.kwargs.get("action") == action_name
 
 
-@pytest.mark.parametrize("extra", [{"js_click": True}, {"force": True}])
-async def test_a_forced_click_resolves_as_click_forced(extra):
+@pytest.mark.parametrize("extra, fit", [({"js_click": True}, "click_js"),
+                                        ({"force": True}, "click_force")])
+async def test_a_forced_click_says_which_checks_it_skips(extra, fit):
     """
-    js_click reaches a hidden dropdown button on purpose, so visibility and
-    disabled state are not read — but it still needs something clickable.
+    js_click reaches a hidden dropdown button; a force click skips the enabled
+    checks but still needs a box. Both still need something clickable.
     """
     from stepper.engine.actions.factory import build_default_registry
 
@@ -210,10 +211,10 @@ async def test_a_forced_click_resolves_as_click_forced(extra):
         MagicMock(), step, resolver, None, None
     )
 
-    assert resolver.resolve.await_args.kwargs.get("action") == "click_forced"
+    assert resolver.resolve.await_args.kwargs.get("action") == fit
 
 
-async def test_a_page_object_js_click_resolves_as_click_forced():
+async def test_a_page_object_js_click_resolves_as_click_js():
     from poms.shared.base_page import BasePage
     from poms.shared.locator import Locator
 
@@ -224,7 +225,7 @@ async def test_a_page_object_js_click_resolves_as_click_forced():
 
     await page._interact(Locator(css=".x", description="d"), "click", js_click=True)
 
-    assert resolver.resolve.await_args.kwargs.get("action") == "click_forced"
+    assert resolver.resolve.await_args.kwargs.get("action") == "click_js"
 
 
 @pytest.mark.parametrize("action_name", ["click", "fill", "hover", "select"])
@@ -388,9 +389,16 @@ async def test_the_fit_check_runs_before_same_text_deduplication():
 def test_a_forced_click_still_needs_something_clickable():
     """Visibility and disabled state are skipped; the click-shape walk is not."""
     js = action_fit._FIT_JS
-    assert "click_forced" in action_fit.MODELLED_ACTIONS
+    assert {"click_js", "click_force"} <= action_fit.MODELLED_ACTIONS
     assert "action === 'click' || forced" in js
-    assert "!forced && (typeof el.checkVisibility" in js
+    assert "action !== 'click_js' && (typeof el.checkVisibility" in js, (
+        "only js_click may skip visibility; a force click still needs a box"
+    )
+
+
+def test_a_property_assigned_onclick_counts_as_clickable():
+    """el.onclick = handler sets no [onclick] attribute."""
+    assert "typeof n.onclick === 'function'" in action_fit._FIT_JS
 
 
 def test_a_label_for_a_disabled_control_refuses_a_click():

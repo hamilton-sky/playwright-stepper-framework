@@ -33,11 +33,14 @@ unusual:
     label names, as Playwright does, and that control is what is checked.
     hover   not hidden. Anything can be hovered; a tooltip trigger can be
             disabled.
-    click_forced
-            a click with force or js_click: Playwright's actionability checks
-            are skipped on purpose (a hidden dropdown button), so visibility
-            and disabled state are not read — but the element must still be
-            something a click means.
+    click_js
+            a click with js_click: el.click() reaches anything, a hidden
+            dropdown button included, so visibility and disabled state are
+            not read — but the element must still be something a click means.
+    click_force
+            a click with force: Playwright skips its enabled/stable checks but
+            still needs a box to click, so visibility is read and disabled
+            state is not — and the element must be something a click means.
 
 Any other action is not modelled and every candidate is kept.
 
@@ -52,7 +55,7 @@ from stepper.engine.resolvers.strategies import DescriptionFallbackResolver
 
 logger = logging.getLogger(__name__)
 
-MODELLED_ACTIONS = frozenset({"fill", "select", "click", "click_forced", "hover"})
+MODELLED_ACTIONS = frozenset({"fill", "select", "click", "click_js", "click_force", "hover"})
 
 # Every role the accessibility fallback offers as a candidate is one a click may
 # land on — a custom slider or listbox with an addEventListener handler and the
@@ -69,11 +72,12 @@ _FIT_JS = """
   // <label><span>Username</span><input></label> fills the input — and the
   // enabled and editable checks read that control. (Checked in a real browser:
   // a visible label for a hidden input fills; a hidden label never does.)
-  // A forced click (force / js_click) skips Playwright's actionability checks on
-  // purpose — a hidden dropdown button — but must still land on something a
-  // click means, or a heading reading "Login" would be force-clicked and pass.
-  const forced = action === 'click_forced';
-  if (!forced && (typeof el.checkVisibility === 'function'
+  // A js_click (el.click()) reaches anything, a hidden dropdown button included;
+  // a force click skips Playwright's enabled checks but still needs a box to
+  // click. Both must still land on something a click means, or a heading
+  // reading "Login" would be force-clicked and pass.
+  const forced = action === 'click_js' || action === 'click_force';
+  if (action !== 'click_js' && (typeof el.checkVisibility === 'function'
         ? !el.checkVisibility({visibilityProperty: true})
         : !(el.offsetWidth || el.offsetHeight || el.getClientRects().length))) {
     return false;
@@ -127,6 +131,8 @@ _FIT_JS = """
       .concat(widgetRoles.map(r => `[role="${r}"]`)).join(', ');
     for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
       if (n.matches(clickable)) return true;
+      // el.onclick = handler sets the property, not the attribute [onclick].
+      if (typeof n.onclick === 'function') return true;
       if (getComputedStyle(n).cursor === 'pointer') return true;
     }
     return false;
