@@ -391,7 +391,7 @@ def test_a_forced_click_still_needs_something_clickable():
     js = action_fit._FIT_JS
     assert {"click_js", "click_force"} <= action_fit.MODELLED_ACTIONS
     assert "action === 'click' || forced" in js
-    assert "action !== 'click_js' && (typeof el.checkVisibility" in js, (
+    assert "action !== 'click_js' && (!box.width || !box.height" in js, (
         "only js_click may skip visibility; a force click still needs a box"
     )
 
@@ -450,3 +450,14 @@ async def test_a_fit_check_walks_past_the_node_cap():
     )
 
     assert [c[0] for c in shortlist] == [locs["Username"]]
+
+
+
+def test_visible_means_a_non_empty_box_as_playwright_reads_it():
+    """
+    Checked in a real browser: a zero-size button passes checkVisibility() but
+    Playwright's is_visible() is False and its click times out.
+    """
+    js = action_fit._FIT_JS
+    assert "!box.width || !box.height" in js
+    assert js.index("!box.width") < js.index("el = label.control")

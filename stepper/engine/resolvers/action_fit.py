@@ -86,9 +86,12 @@ _FIT_JS = """
   // click. Both must still land on something a click means, or a heading
   // reading "Login" would be force-clicked and pass.
   const forced = action === 'click_js' || action === 'click_force';
-  if (action !== 'click_js' && (typeof el.checkVisibility === 'function'
-        ? !el.checkVisibility({visibilityProperty: true})
-        : !(el.offsetWidth || el.offsetHeight || el.getClientRects().length))) {
+  // Playwright's "visible" is a non-empty bounding box and not
+  // visibility:hidden; checkVisibility() alone passes a zero-size box.
+  const box = el.getBoundingClientRect();
+  if (action !== 'click_js' && (!box.width || !box.height
+        || (typeof el.checkVisibility === 'function'
+            && !el.checkVisibility({visibilityProperty: true})))) {
     return false;
   }
   if ((action === 'fill' || action === 'select')
