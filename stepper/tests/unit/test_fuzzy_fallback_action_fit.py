@@ -314,3 +314,19 @@ def test_fill_accepts_the_input_types_playwright_sets():
     assert "'color'" not in js and "'range'" not in js
     for refused in ("'checkbox'", "'radio'", "'file'", "'hidden'", "'submit'"):
         assert refused in js
+
+
+async def test_a_click_accepts_every_role_the_accessibility_fallback_offers():
+    """
+    The fallback can return a custom slider or listbox; a click must not then
+    reject it for having the default cursor. One list, passed in, so the two
+    cannot drift.
+    """
+    from stepper.engine.resolvers.strategies import DescriptionFallbackResolver
+
+    loc = _candidate(fits=True)
+    await action_fit.fits(loc, "click")
+
+    _, (action, roles) = loc.evaluate.await_args.args
+    assert action == "click"
+    assert set(roles) == set(DescriptionFallbackResolver.INTERACTIVE_ROLES)

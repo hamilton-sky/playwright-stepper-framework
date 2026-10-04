@@ -22,8 +22,9 @@ unusual:
             aria-readonly (on a role that supports it, as Playwright reads it).
     select  a native <select>.
     click   the element or an ancestor is something a click means: a button,
-            link, form control, summary, label, an ARIA widget role, or an
-            element with an onclick handler or a pointer cursor. A text match
+            link, form control, summary, label, any interactive ARIA role the
+            accessibility fallback offers, or an element with an onclick
+            handler or a pointer cursor. A text match
             inside a <button> is that button.
 
     fill, select and click also need the element visible and not disabled —
@@ -42,14 +43,21 @@ from __future__ import annotations
 
 import logging
 
+from stepper.engine.resolvers.strategies import DescriptionFallbackResolver
+
 logger = logging.getLogger(__name__)
 
 MODELLED_ACTIONS = frozenset({"fill", "select", "click", "hover"})
 
+# Every role the accessibility fallback offers as a candidate is one a click may
+# land on — a custom slider or listbox with an addEventListener handler and the
+# default cursor is still the widget the step named.
+_WIDGET_ROLES = sorted(DescriptionFallbackResolver.INTERACTIVE_ROLES)
+
 # One evaluate per candidate. The rule is in the browser, where the DOM is, and
 # returns the verdict so the Python side holds no copy of it to drift.
 _FIT_JS = """
-(el, action) => {
+(el, [action, widgetRoles]) => {
   // Playwright's own order: visibility is read on the element it was handed,
   // then fill() and select_option() retarget anything that is not itself a
   // control through its nearest <label> — a <span> inside
@@ -96,11 +104,11 @@ _FIT_JS = """
     return el.isContentEditable && !ro;
   }
   if (action === 'click') {
-    const clickable = 'button, a[href], input, select, textarea, summary, label, '
-      + '[onclick], [role="button"], [role="link"], [role="menuitem"], '
-      + '[role="menuitemcheckbox"], [role="menuitemradio"], [role="tab"], '
-      + '[role="checkbox"], [role="radio"], [role="switch"], [role="option"], '
-      + '[role="treeitem"], [role="combobox"]';
+    // widgetRoles is DescriptionFallbackResolver.INTERACTIVE_ROLES, passed in
+    // so the roles the fallback offers and the roles a click accepts are one list.
+    const clickable = ['button', 'a[href]', 'input', 'select', 'textarea', 'summary',
+                       'label', '[onclick]']
+      .concat(widgetRoles.map(r => `[role="${r}"]`)).join(', ');
     for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
       if (n.matches(clickable)) return true;
       if (getComputedStyle(n).cursor === 'pointer') return true;
@@ -117,7 +125,7 @@ async def fits(locator, action: str | None) -> bool:
     if action not in MODELLED_ACTIONS:
         return True
     try:
-        return bool(await locator.evaluate(_FIT_JS, action))
+        return bool(await locator.evaluate(_FIT_JS, [action, _WIDGET_ROLES]))
     except Exception as exc:
         logger.debug(f"[action-fit] could not read the candidate ({exc}) — keeping it")
         return True
