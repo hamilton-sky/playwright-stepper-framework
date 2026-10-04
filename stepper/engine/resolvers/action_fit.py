@@ -115,10 +115,16 @@ _FIT_JS = """
   }
   // A <label> — or text inside one — whose control is disabled activates
   // nothing: <fieldset disabled><label><span>Login</span><input></label>.
+  // Unless something from the match up to the label has its own handler,
+  // which still runs: <label for="off" onclick="openHelp()">.
   const label = el.closest('label');
   if ((action === 'click' || forced) && label && label.control
       && label.control.matches(':disabled')) {
-    return false;
+    let handled = false;
+    for (let n = el; n && !handled; n = n === label ? null : n.parentElement) {
+      handled = n.matches('[onclick]') || typeof n.onclick === 'function';
+    }
+    if (!handled) return false;
   }
   const tag = el.tagName;
   if (action === 'select') return tag === 'SELECT';

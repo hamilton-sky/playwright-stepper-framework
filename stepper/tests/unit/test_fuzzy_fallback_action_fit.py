@@ -527,3 +527,9 @@ def test_the_click_walk_crosses_shadow_hosts():
     js = action_fit._FIT_JS
     assert "n.getRootNode() instanceof ShadowRoot ? n.getRootNode().host" in js
     assert "n = up(n)" in js
+
+
+def test_a_label_of_a_disabled_control_with_its_own_handler_is_kept():
+    """<label for="off" onclick="openHelp()">: the handler still runs."""
+    js = action_fit._FIT_JS
+    assert "handled = n.matches('[onclick]') || typeof n.onclick === 'function';" in js
