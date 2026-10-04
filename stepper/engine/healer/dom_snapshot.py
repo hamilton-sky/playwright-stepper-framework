@@ -132,7 +132,12 @@ _ELEMENT_QUERY_JS = """() => {
     // What fill() and select_option() actually need — an ARIA role is a claim
     // about semantics, not about whether the element takes input.
     editable:    el.isContentEditable === true,
-    readonly:    el.readOnly === true,
+    // Playwright's own editability rule: a native input or textarea goes by
+    // its readOnly property (aria-readonly does not stop fill() there); any
+    // other element, a contenteditable textbox say, goes by aria-readonly.
+    readonly:    (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')
+                   ? el.readOnly === true
+                   : el.getAttribute('aria-readonly') === 'true',
     // Whether a click or fill could land at all. The clear-winner rule must
     // not heal straight to an element Playwright's actionability checks will
     // refuse — a closed menu's links are in the DOM but not on screen.

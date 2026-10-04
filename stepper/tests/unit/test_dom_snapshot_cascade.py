@@ -532,6 +532,8 @@ async def test_an_action_the_rule_does_not_model_is_unaffected(fixed_scores):
     ("fill",  _element(tag="DIV", role="textbox", editable=True), True),
     ("fill",  _element(tag="BUTTON", role="combobox"), False),
     ("fill",  _element(tag="INPUT", type="text", readonly=True), False),
+    # aria-readonly on a contenteditable textbox — the collector sets readonly
+    ("fill",  _element(tag="DIV", role="textbox", editable=True, readonly=True), False),
     ("fill",  _element(tag="BUTTON", role="button"), False),
     ("click", _element(tag="BUTTON", role="button"), True),
     ("click", _element(tag="A", role="a"), True),
@@ -850,3 +852,15 @@ async def test_an_id_is_kept_only_if_the_resolver_s_raw_selector_finds_the_targe
 
     assert out == (cfg if keeps_id else {"priority": 0, "css": "#foo\\.bar"})
     page.locator.assert_called_once_with("#foo.bar")
+
+
+def test_readonly_follows_playwright_s_editability_rule():
+    """
+    Checked in a real browser: fill() succeeds on <input aria-readonly="true">
+    and is refused on a contenteditable textbox with aria-readonly="true". The
+    collector must read the property each kind of element is judged by.
+    """
+    from stepper.engine.healer.dom_snapshot import _ELEMENT_QUERY_JS as js
+
+    assert "el.readOnly" in js
+    assert "aria-readonly" in js
