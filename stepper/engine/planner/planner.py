@@ -40,7 +40,9 @@ Each step:
   },
   "input_value": "text to type (fill actions)",
   "wait_for":    "selector or url fragment to wait for",
-  "extra":       {}   // action-specific keys (selectors, filter, limit, expected, threshold_ms)
+  "extra":       {}   // action-specific keys (selectors, filter, limit, expected, threshold_ms;
+                      //  press_enter: true on a fill that should submit with Enter —
+                      //  fill only types by default)
 }
 
 Return ONLY valid JSON array. No markdown. No explanation.

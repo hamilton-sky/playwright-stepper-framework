@@ -134,8 +134,14 @@ class ClickAction(ActionStrategy):
 
 class FillAction(ActionStrategy):
     """
-    Find an input element and type a value into it.
-    Presses Enter after filling to submit if no wait_for is specified.
+    Find an input element and type a value into it — nothing else.
+
+    Pressing Enter is opt-in: `extra.press_enter: true`. It used to be the
+    default, which made every fill a possible form submit: in the SauceDemo
+    heal workflows, filling the password submitted the login before the
+    "Click the Login button" step ran, so that click had never been tested.
+    A multi-field form wants no Enter until its last field; a search box that
+    submits on Enter says so.
     """
     action_name = "fill"
     domain      = "web"
@@ -155,7 +161,7 @@ class FillAction(ActionStrategy):
 
         await result.locator.scroll_into_view_if_needed()
         await result.locator.fill(value, timeout=5_000)
-        if step.extra.get("press_enter", True):
+        if step.extra.get("press_enter", False):
             await result.locator.press("Enter")
         logger.info(f"✓ fill '{value}' via {result.method}")
 

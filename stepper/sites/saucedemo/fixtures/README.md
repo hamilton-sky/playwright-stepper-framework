@@ -62,7 +62,8 @@ that element.
 
 Running it also found the workflows wrong: the engine's `fill` presses Enter
 by default, so filling the password submitted the form before the "Click the
-Login button" step ran. Both heal workflows now set `press_enter: false`.
+Login button" step ran. The engine's `fill` no longer presses Enter unless a
+step asks for it with `press_enter: true`.
 
 Then the resolver's own fallbacks learned what action they were resolving for
 (`resolvers/action_fit.py`), and stopped settling on a text node for a fill.
