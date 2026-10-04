@@ -120,7 +120,13 @@ the page rather than changing it wants `strict=True`; the tests in
 
 `resolve()` also takes `action` — `"fill"`, `"click"`, `"hover"`, `"select"` —
 and the engine's acting actions and `BasePage._interact` always pass it. The
-deterministic strategies ignore it: the cfg named those elements. The
+deterministic strategies ignore it for a unique match — the cfg named that
+element — and use it only as a *preference* when one selector matches several:
+`{"text": "Login"}` on `<h1>Login</h1><button>Login</button>` used to resolve to
+whichever came first in the document, a heading to click, a hidden duplicate, a
+disabled or read-only twin. Now the matches that can take the action come first.
+It is never a veto: when none can (see the `addEventListener` limit below) the
+list is left as it was, so this cannot turn a pick into a not-found. The
 description-driven fallbacks (keyword-fuzzy, accessibility-semantic) drop any
 candidate that cannot take the action, using
 `stepper/engine/resolvers/action_fit.py`. Whether a candidate is visible,

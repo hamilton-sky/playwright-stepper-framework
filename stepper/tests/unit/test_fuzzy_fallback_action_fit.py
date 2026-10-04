@@ -533,3 +533,91 @@ def test_a_label_of_a_disabled_control_with_its_own_handler_is_kept():
     """<label for="off" onclick="openHelp()">: the handler still runs."""
     js = action_fit._FIT_JS
     assert "handled = n.matches('[onclick]') || typeof n.onclick === 'function';" in js
+
+
+# ── several matches of one selector ───────────────────────────────────────────
+#
+# {"text": "Login"} on <h1>Login</h1><button>Login</button> matches both. Narrowing
+# by similarity to the description cannot tell them apart, so the pick was the
+# first in the document: a heading to click, a hidden duplicate, a disabled or
+# read-only twin. The action now narrows first — as a preference, never a veto:
+# the cfg named every one of these, so when none can take the action the list is
+# left as it was.
+
+def _multi_match_resolver(*candidates):
+    strategy = MagicMock(priority=60)
+    strategy.name = "text"
+    strategy.collect = AsyncMock(return_value=list(candidates))
+    r = ElementResolver([strategy])
+    # Every candidate scores the same, as it does when they share their text.
+    r._semantic = MagicMock(score=lambda q, d: 0.95)
+    r._describe_locator = AsyncMock(return_value="Login")
+    return r
+
+
+async def test_several_matches_prefer_the_one_that_can_take_the_action():
+    heading, button = _candidate(fits=False), _candidate(fits=True)
+    r = _multi_match_resolver(heading, button)
+
+    result = await r.resolve(MagicMock(), {"text": "Login"}, "Login", action="click")
+
+    assert result.found is True
+    assert result.locator is button
+
+
+async def test_without_an_action_the_first_match_is_still_chosen():
+    """Callers that do not say what they will do keep the old behaviour."""
+    heading, button = _candidate(fits=False), _candidate(fits=True)
+    r = _multi_match_resolver(heading, button)
+
+    result = await r.resolve(MagicMock(), {"text": "Login"}, "Login")
+
+    assert result.locator is heading
+    heading.evaluate.assert_not_awaited()
+
+
+async def test_when_no_match_can_take_the_action_the_list_is_left_alone():
+    """
+    Never a new not-found: the cfg named these, and the fit check cannot see an
+    addEventListener handler. The old choice stands.
+    """
+    first, second = _candidate(fits=False), _candidate(fits=False)
+    r = _multi_match_resolver(first, second)
+
+    result = await r.resolve(MagicMock(), {"text": "Open"}, "Open", action="click")
+
+    assert result.found is True
+    assert result.locator is first
+
+
+async def test_when_every_match_fits_nothing_changes():
+    first, second = _candidate(fits=True), _candidate(fits=True)
+    r = _multi_match_resolver(first, second)
+
+    result = await r.resolve(MagicMock(), {"text": "Save"}, "Save", action="click")
+
+    assert result.locator is first
+
+
+async def test_a_single_match_is_never_filtered():
+    """The cfg named exactly one element; whether it suits the action is the cfg's problem."""
+    only = _candidate(fits=False)
+    strategy = MagicMock(priority=60)
+    strategy.name = "text"
+    strategy.collect = AsyncMock(return_value=[only])
+    r = ElementResolver([strategy])
+
+    result = await r.resolve(MagicMock(), {"text": "Login"}, "Login", action="click")
+
+    assert result.locator is only
+    only.evaluate.assert_not_awaited()
+
+
+async def test_strict_resolution_still_takes_the_first_of_several():
+    """Assertions pass no action and stay strict; this change does not touch them."""
+    first, second = _candidate(fits=False), _candidate(fits=True)
+    r = _multi_match_resolver(first, second)
+
+    result = await r.resolve(MagicMock(), {"text": "Login"}, "Login", strict=True)
+
+    assert result.locator is first

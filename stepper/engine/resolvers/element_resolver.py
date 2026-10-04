@@ -110,6 +110,8 @@ class ElementResolver:
         that cannot take the action (see resolvers/action_fit.py), so a fill
         that misses its selector cannot settle on a text node and a click
         cannot settle on a heading that happens to share the button's word.
+        When one selector matches several elements the same check orders them:
+        the ones that can take the action are preferred, never required.
 
         Assertions pass strict=True, and the distinction is the whole reason the
         argument exists. Under the cascade, `{"css": ".app_logo"}` on a page with
@@ -186,7 +188,7 @@ class ElementResolver:
 
             logger.debug(f"[{strategy.name}] {len(candidates)} candidates → semantic filter")
             result = await self._semantic_filter(
-                candidates, step_description, strategy.name
+                candidates, step_description, strategy.name, action
             )
             if result.found:
                 return result
@@ -299,7 +301,31 @@ class ElementResolver:
         candidates: list,
         step_description: str,
         method: str,
+        action: str | None = None,
     ) -> ResolveResult:
+        """
+        Narrow several matches of one selector by what the step describes.
+
+        When the caller says what it is about to do, the candidates that can
+        take that action come first: `{"text": "Login"}` on a page with
+        <h1>Login</h1> and <button>Login</button> matches both, and similarity
+        to the description cannot tell them apart — the top match was whichever
+        came first in the document, a heading to click, a hidden duplicate, a
+        disabled or read-only twin.
+
+        It is a preference, not a veto. The cfg named every one of these, so
+        when none can take the action (a <div> whose handler was added with
+        addEventListener looks like a heading) the list is left as it was and
+        the old choice stands — this never turns a pick into a not-found.
+        """
+        if action:
+            fitting = [c for c in candidates if await fits(c, action)]
+            if fitting and len(fitting) < len(candidates):
+                logger.info(
+                    f"[{method}] {len(candidates) - len(fitting)} of {len(candidates)} "
+                    f"matches cannot take a {action} — narrowing to the rest"
+                )
+                candidates = fitting
 
         if not step_description:
             # No description — just take first candidate
