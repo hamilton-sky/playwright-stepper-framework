@@ -44,6 +44,15 @@ unusual:
 
 Any other action is not modelled and every candidate is kept.
 
+One known limit, kept on purpose: a click handler added with addEventListener
+cannot be seen from the page — and with React-style delegation it lives on
+the root, so not even the DevTools protocol could pin it to the element. A
+<div> with such a handler, no role, no onclick and the default cursor is
+therefore indistinguishable from a heading, and is refused. That turns a
+possible wrong click that reports passed into a visible not-found, which the
+healer and the AI pick still get to try; a cfg that names the element directly
+is never filtered at all.
+
 An element the check cannot read (detached, a cross-frame handle) is kept: the
 filter narrows a guess, it does not get to veto one on missing evidence.
 """

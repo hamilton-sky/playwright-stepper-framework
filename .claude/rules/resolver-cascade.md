@@ -137,6 +137,13 @@ click skips the enabled checks but still needs a box to click, so visibility
 is. Both still require something a click means, or a heading reading "Login"
 would be force-clicked and pass.
 
+One limit is deliberate: a click handler added with `addEventListener`
+cannot be seen from the page (and React-style delegation puts it on the root),
+so a `<div>` with such a handler, no role, no `onclick` and the default cursor
+looks exactly like a heading and is refused. A visible not-found the healer can
+still recover beats a wrong click that passes; a cfg naming the element directly
+is never filtered.
+
 The checks run inside each fallback, ahead of its own narrowing: before
 keyword-fuzzy's same-text de-duplication, and before the accessibility
 fallback's top-3 cut.
