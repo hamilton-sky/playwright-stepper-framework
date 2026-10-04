@@ -249,10 +249,11 @@ jobs:
       # drifted from the real site. These three cover what it never did — cart,
       # checkout and the collection clicks — and the first run of them found a
       # sort step that reported passed without the list ever being sorted.
-      # The two heal workflows are not here. Run keyless with --no-heal-cache,
-      # sd_heal_test fails: the healer scores the username input in the
-      # 0.50-0.85 band, which needs an AI pick, so embed-direct alone cannot
-      # recover it. Tuning the healer is follow-up work; see the fixtures README.
+      # The two heal workflows run keyless with --no-heal-cache, so every
+      # broken selector must be recovered by the healer's no-AI path (the
+      # clear-winner rule in dom_snapshot.py) from the page itself, not
+      # replayed from heal_cache.json. Their final strict assertions make a
+      # green result mean the login and checkout really happened.
       - name: Run the SauceDemo workflows against local fixtures
         env:
           SAUCEDEMO_BASE_URL: http://127.0.0.1:8097
@@ -284,6 +285,18 @@ jobs:
           for wf in sd_happy_path sd_multi_product sd_smoke_test; do
             echo "── $wf ──"
             if ! python stepper/main.py run "$wf" --vars "$vars" --ci --ci-output "reports/ci-sd-fixture-$wf.json"; then
+              failed="$failed $wf"
+            fi
+          done
+
+          # The job's env carries the AI keys from secrets. Unset them here so a
+          # provider can never rescue a heal the no-AI path missed — otherwise
+          # this would stay green with that path broken once a key is added.
+          for wf in sd_heal_test sd_full_heal_flow; do
+            echo "── $wf (healer: no AI key, no cache) ──"
+            if ! env -u GROQ_API_KEY -u GEMINI_API_KEY -u ANTHROPIC_API_KEY \
+                   python stepper/main.py run "$wf" --heal 2 --no-heal-cache \
+                   --vars "$vars" --ci --ci-output "reports/ci-sd-fixture-$wf.json"; then
               failed="$failed $wf"
             fi
           done

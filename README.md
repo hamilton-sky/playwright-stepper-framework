@@ -323,16 +323,17 @@ It finds the most recent `heal_suggestions.json` under `reports/`, shows a per-s
 before/after diff, and patches the JSON in place (`--yes` to skip confirmation).
 
 `sd_heal_test.json` and `sd_full_heal_flow.json` ship with deliberately broken selectors.
-Run them with `--heal 2 --no-heal-cache` and an LLM key to watch the cascade recover
-each one.
+Run them with `--heal 2 --no-heal-cache` to watch the cascade recover each one — no
+API key needed. CI does exactly that against the SauceDemo fixtures, with every AI key
+unset.
 
-They are **not** part of CI, and the reason is a measured one. Run keyless against the
-SauceDemo fixtures, `sd_heal_test` fails at its first heal: the healer scores the
-username input between 0.50 and 0.85, which is the band that needs an AI pick, so the
-embed-direct rung cannot recover it alone. This had been documented as working without
-a key; it was never measured, because `--no-heal-cache` was silently ignored and every
-"measurement" replayed `heal_cache.json`. Making the keyless rung recover a login form
-is open work.
+It did not always work. With the cache genuinely off, the healer scored the right
+login-form element first for every step but never at the 0.85 that triggered a no-AI
+heal (0.73–0.79), so each heal needed an AI pick. A heal now also skips the AI when the
+candidate is a *clear winner*: it is the best match on the page and suits the action (a
+fill needs a field that takes text; a click a visible, enabled, uncovered control),
+scores at least 0.50, and leads the next candidate of any kind by at least 0.25. If the
+best match does not suit the action, the AI decides — the runner-up is never promoted.
 
 ---
 

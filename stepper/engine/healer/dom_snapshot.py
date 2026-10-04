@@ -9,8 +9,25 @@ candidate scores above 0.50.
 
   ≥ 0.85, unique     → embed_direct      (no AI call, healed_cfg ready)
   ≥ 0.85, ambiguous  → embed_candidates  (~20-40 tokens)
+  clear winner       → embed_direct      (no AI call — see below)
   0.50-0.85          → scoped DOM area   (~40-150 tokens)
   < 0.50             → aria snapshot     (~200-500 tokens)
+
+Clear winner:
+  The 0.85 bar alone never fired on a real login form. Measured on the SauceDemo
+  fixture, MiniLM ranks the right element first for all three heal steps — by
+  0.31 to 0.45 over the runner-up — at 0.73-0.79, so every heal fell to the
+  scoped band and needed an AI pick. An absolute score says how alike two
+  strings are; how far the best candidate leads the rest is what says the
+  choice is unambiguous. So a candidate is also healed directly when all hold:
+
+    - it is the best candidate on the page, and it suits the action: a fill
+      needs a field that takes text, a click a clickable, visible, enabled,
+      uncovered element (actions not modelled here never qualify)
+    - its MiniLM score is ≥ _LOW_THRESHOLD
+    - it leads the next candidate of any kind by ≥ _MARGIN — or, when it is
+      the only candidate, scores ≥ _LONE_MIN
+    - the cross-encoder, when loaded, also ranks it first
 
 Cross-encoder re-ranking:
   After MiniLM shortlists the top _TOP_N candidates, a cross-encoder
@@ -36,14 +53,71 @@ logger = logging.getLogger(__name__)
 _HIGH_THRESHOLD = 0.85
 _LOW_THRESHOLD = 0.50
 _TOP_N = 5
+_MARGIN = 0.25
+# With no other candidate there is no runner-up to lead, and the margin
+# degenerates to the score itself. That is exactly the case where the
+# intended element is gone and something unrelated is left, so a lone candidate
+# must clear a higher bar than the floor a contested one does.
+_LONE_MIN = 0.65
+
+# What each action can act on. The tag comes from el.tagName, `type` from the
+# attribute; `role` is the explicit role attribute or, failing that, the
+# lower-cased tag (see _ELEMENT_QUERY_JS), so tag-named roles are harmless here.
+_TEXT_INPUT_TYPES_EXCLUDED = {
+    "submit", "button", "reset", "image", "checkbox", "radio", "hidden", "file",
+    "range", "color",
+}
+_CLICKABLE_INPUT_TYPES = {"submit", "button", "reset", "image", "checkbox", "radio"}
+_INPUT_ROLES = {
+    "text": "textbox", "email": "textbox", "tel": "textbox", "url": "textbox",
+    "search": "searchbox", "number": "spinbutton", "range": "slider",
+    "checkbox": "checkbox", "radio": "radio",
+    "submit": "button", "button": "button", "reset": "button", "image": "button",
+}
+_CLICKABLE_ROLES = {
+    "button", "link", "menuitem", "tab", "checkbox", "radio", "switch", "option",
+}
 
 _CROSS_ENCODER_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 _CROSS_ENCODER_LOCAL = (
     pathlib.Path(__file__).parents[2] / "models" / "cross-encoder-ms-marco-MiniLM-L-6-v2"
 )
 
-_ELEMENT_QUERY_JS = """() =>
-  [...document.querySelectorAll('button,a,input,select,textarea,[role],[aria-label]')].map(el => ({
+_ELEMENT_QUERY_JS = """() => {
+  // A CSS selector that matches this element and nothing else on the page,
+  // computed by the browser at capture time. Every healed cfg carries it, so a
+  // heal never depends on the role/name synthesis alone: get_by_role is tried
+  // first, and if the synthesised role is ever wrong it matches nothing and the
+  // resolver falls through to this — rather than to a description guess.
+  // Unique AND the target: an intermediate path such as `body > input` can be
+  // unique on the page and still be some other element.
+  const pins = (s, el) => {
+    try { const m = document.querySelectorAll(s); return m.length === 1 && m[0] === el; }
+    catch (e) { return false; }
+  };
+  const selectorFor = el => {
+    if (el.id && pins('#' + CSS.escape(el.id), el)) return '#' + CSS.escape(el.id);
+    const tag = el.tagName.toLowerCase();
+    const nm = el.getAttribute('name');
+    if (nm) {
+      const s = tag + '[name="' + CSS.escape(nm) + '"]';
+      if (pins(s, el)) return s;
+    }
+    const parts = [];
+    for (let n = el; n && n.nodeType === 1 && n !== document.body; n = n.parentElement) {
+      let i = 1;
+      for (let sib = n.previousElementSibling; sib; sib = sib.previousElementSibling)
+        if (sib.tagName === n.tagName) i++;
+      parts.unshift(n.tagName.toLowerCase() + ':nth-of-type(' + i + ')');
+      const s = 'body > ' + parts.join(' > ');
+      if (pins(s, el)) return s;
+    }
+    return '';
+  };
+  return [...document.querySelectorAll('button,a,input,select,textarea,[role],[aria-label]')].map(el => ({
+    selector:    selectorFor(el),
+    // A text-like input with a list attribute (a datalist) is a combobox.
+    list:        el.tagName === 'INPUT' && el.hasAttribute('list'),
     tag:         el.tagName,
     text:        el.textContent?.trim().slice(0,80),
     role:        el.getAttribute('role') || el.tagName?.toLowerCase(),
@@ -53,6 +127,47 @@ _ELEMENT_QUERY_JS = """() =>
     name:        el.getAttribute('name'),
     type:        el.getAttribute('type'),
     title:       el.getAttribute('title'),
+    // An <a> is a link only with an href; without one it has no implicit role.
+    href:        el.hasAttribute('href'),
+    // What fill() and select_option() actually need — an ARIA role is a claim
+    // about semantics, not about whether the element takes input.
+    editable:    el.isContentEditable === true,
+    // Playwright's own editability rule: a native input or textarea goes by
+    // its readOnly property (aria-readonly does not stop fill() there); any
+    // other element, a contenteditable textbox say, goes by aria-readonly.
+    readonly:    (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')
+                   ? el.readOnly === true
+                   : el.getAttribute('aria-readonly') === 'true',
+    // Whether a click or fill could land at all. The clear-winner rule must
+    // not heal straight to an element Playwright's actionability checks will
+    // refuse — a closed menu's links are in the DOM but not on screen.
+    // checkVisibility() is the browser's own answer — display:none on any
+    // ancestor, visibility:hidden, content-visibility — where a layout-box test
+    // misses visibility:hidden. The box test is the fallback for old engines.
+    hidden:      el.checkVisibility
+                   ? !el.checkVisibility({visibilityProperty: true})
+                   : !(el.offsetWidth || el.offsetHeight || el.getClientRects().length),
+    // :disabled includes a control disabled by an ancestor <fieldset>, and
+    // aria-disabled applies to descendants, so the ancestor chain is checked.
+    disabled:    el.matches(':disabled') || el.closest('[aria-disabled="true"]') !== null,
+    // A <select> with multiple or size > 1 is a listbox, not a combobox.
+    multirow:    el.tagName === 'SELECT' && (el.multiple || el.size > 1),
+    // Whether something else sits on top of the element's centre — a fixed
+    // overlay, a cookie banner. Playwright's click waits for the target to
+    // receive events and would time out. Off-screen counts as covered: the hit
+    // test can only be read where the element is now, and Playwright scrolls it
+    // into view first — possibly under a fixed overlay. Unknown is not safe for
+    // the no-AI path; the step escalates instead.
+    covered:     (() => {
+      const r = el.getBoundingClientRect();
+      if (!r.width || !r.height) return false;
+      const x = r.left + r.width / 2, y = r.top + r.height / 2;
+      if (x < 0 || y < 0 || x > innerWidth || y > innerHeight) return true;
+      const hit = document.elementFromPoint(x, y);
+      // A hit on a descendant is the element; a hit on an ancestor means the
+      // element itself takes no pointer events (pointer-events: none).
+      return !!hit && hit !== el && !el.contains(hit);
+    })(),
     // A button-shaped <input> carries its whole visible label in `value`, and
     // an <input> has no textContent, so without this the healer sees
     // "input login-button submit" for a button that plainly reads "Login".
@@ -66,8 +181,8 @@ _ELEMENT_QUERY_JS = """() =>
                       ['submit', 'button', 'reset'].includes((el.type || '').toLowerCase())
                         ? el.value
                         : undefined)
-  }))
-"""
+  }));
+}"""
 
 
 def _estimate_tokens(text: str) -> int:
@@ -173,6 +288,7 @@ class DOMSnapshotCascade:
         # Phase 1 — MiniLM bi-encoder: score all elements cheaply
         scored = cls._score_elements(query, elements)
         scored.sort(key=lambda x: x[1], reverse=True)
+        minilm_ranked = list(scored)
 
         # Phase 2 — Cross-encoder: re-rank the top _TOP_N candidates with
         # higher accuracy (reads query + element together in one pass)
@@ -192,10 +308,19 @@ class DOMSnapshotCascade:
                 return DomPayload(
                     strategy_used="embed_direct",
                     content="",
-                    healed_cfg=cls._element_to_cfg(element),
+                    healed_cfg=await cls._pinned_cfg(page, cls._element_to_cfg(element)),
                     token_estimate=0,
                 )
             return cls._candidates_payload(high, "embed_candidates")
+
+        winner = cls._clear_winner(step.action, minilm_ranked, reranked)
+        if winner is not None:
+            return DomPayload(
+                strategy_used="embed_direct",
+                content="",
+                healed_cfg=await cls._pinned_cfg(page, cls._element_to_cfg(winner)),
+                token_estimate=0,
+            )
 
         if top_score >= _LOW_THRESHOLD:
             best_element, best_score = scored[0]
@@ -217,6 +342,136 @@ class DOMSnapshotCascade:
             )
 
         return await cls._aria_fallback(page, reason=f"top score {top_score:.2f} < {_LOW_THRESHOLD}")
+
+    # ── A direct heal must point at the element that was chosen ──────────────
+
+    @staticmethod
+    async def _pinned_cfg(page, cfg: dict) -> dict:
+        """
+        Keep the semantic identifier only if it resolves to the chosen element.
+
+        The resolver tries role/label/placeholder/text before css and stops at
+        the first unique match. A role+name built from raw textContent can
+        uniquely match a *different* element — a button named by
+        aria-labelledby whose icon text is another button's name — and the
+        browser-computed selector that pins the real target is never reached.
+        So check it on the live page, the way the resolver will call it, and
+        if it is ambiguous, missing or another element, heal to the pinned
+        selector alone.
+        """
+        css = cfg.get("css")
+        semantic = [k for k in ("role", "label", "placeholder", "text") if k in cfg]
+        if not css or not (semantic or cfg.get("id")):
+            return cfg
+        same = "(e, s) => e === document.querySelector(s)"
+        try:
+            if not semantic:
+                # IdResolver builds a raw `#<id>`, unescaped: an id such as
+                # `foo.bar` reads as id=foo plus class=bar and can uniquely
+                # match a decoy before the pinned css is ever tried.
+                loc = page.locator(f"#{cfg['id']}")
+                if await loc.count() == 1 and await loc.evaluate(same, css):
+                    return cfg
+            elif "role" in cfg:
+                loc = (page.get_by_role(cfg["role"], name=cfg["name"], exact=True)
+                       if cfg.get("name") else page.get_by_role(cfg["role"]))
+            elif "label" in cfg:
+                loc = page.get_by_label(cfg["label"])
+            elif "placeholder" in cfg:
+                loc = page.get_by_placeholder(cfg["placeholder"])
+            else:
+                loc = page.get_by_text(cfg["text"], exact=True)
+            if semantic and await loc.count() == 1 and await loc.evaluate(same, css):
+                return cfg
+        except Exception as exc:
+            logger.debug(f"[DOMSnapshotCascade] semantic check failed ({exc}) — pinning css")
+        logger.info(
+            "[DOMSnapshotCascade] semantic identifier does not pin the chosen "
+            "element — healing to %s", css,
+        )
+        return {"priority": cfg.get("priority", 0), "css": css}
+
+    # ── Clear-winner rule ─────────────────────────────────────────────────────
+
+    @staticmethod
+    def _fits_action(action: str, el: dict) -> bool | None:
+        """
+        Whether `el` is something `action` can act on. None for an action this
+        does not model — the clear-winner rule then never applies to it.
+        """
+        tag  = (el.get("tag") or "").upper()
+        typ  = (el.get("type") or "").lower()
+        role = (el.get("role") or "").lower()
+        if action in ("fill", "click", "hover", "select") and (
+            el.get("hidden") or el.get("disabled")
+        ):
+            return False
+        if action == "fill":
+            # locator.fill() needs a native text input or textarea, or a
+            # contenteditable — a <button role="combobox"> has the role and
+            # refuses the fill, and the healer would pick it again every attempt.
+            if el.get("readonly"):
+                return False
+            if tag == "INPUT":
+                return typ not in _TEXT_INPUT_TYPES_EXCLUDED
+            return tag == "TEXTAREA" or bool(el.get("editable"))
+        if action in ("click", "hover"):
+            if el.get("covered"):
+                return False
+            if tag == "INPUT":
+                return typ in _CLICKABLE_INPUT_TYPES
+            return tag in ("BUTTON", "A") or role in _CLICKABLE_ROLES
+        if action == "select":
+            # select_option() works on a native <select> only.
+            return tag == "SELECT"
+        return None
+
+    @classmethod
+    def _clear_winner(
+        cls,
+        action: str,
+        minilm_ranked: list[tuple[dict, float]],
+        reranked: list[tuple[dict, float]],
+    ) -> dict | None:
+        """
+        The element to heal to without an AI call, or None.
+
+        The winner is the best candidate on the whole page, never merely the
+        best *suitable* one. Ranking only the suitable candidates let a
+        higher-scoring unsuitable element — the real target, when it is a
+        disabled tooltip trigger for a hover, a text input for a click — drop
+        out, and the runner-up became the "clear winner": the wrong element. So
+        every candidate competes; if the top one does not suit the action, or
+        does not clearly lead the next candidate of any kind, the AI decides.
+
+        Margins are taken on the MiniLM scores, which are comparable across
+        every candidate; the cross-encoder only re-scores the top few, on its
+        own scale. It gets a veto instead: if it ranks a different element
+        first, the choice is not clear.
+        """
+        if not minilm_ranked:
+            return None
+        best, best_score = minilm_ranked[0]
+        if not cls._fits_action(action, best):
+            return None
+        if len(minilm_ranked) == 1:
+            runner_up = 0.0
+            if best_score < _LONE_MIN:
+                return None
+        else:
+            runner_up = minilm_ranked[1][1]
+            # 1e-9: the margin is inclusive, and 0.70 - 0.45 is 0.2499999… in floats.
+            if best_score < _LOW_THRESHOLD or best_score - runner_up < _MARGIN - 1e-9:
+                return None
+        # `reranked` is capture()'s cross-encoder pass over this same MiniLM
+        # top-N — reused, not run a second time.
+        if not reranked or reranked[0][0] is not best:
+            return None
+        logger.info(
+            "[DOMSnapshotCascade] clear winner for %s: '%s' (%.3f, lead %.3f) — embed_direct",
+            action, cls._describe_element(best)[:60], best_score, best_score - runner_up,
+        )
+        return best
 
     # ── Query construction ────────────────────────────────────────────────────
 
@@ -284,10 +539,43 @@ class DOMSnapshotCascade:
     # ── Cfg synthesis ─────────────────────────────────────────────────────────
 
     @staticmethod
-    def _element_to_cfg(el: dict) -> dict:
-        cfg: dict[str, Any] = {"priority": 0}
+    def _aria_role(el: dict) -> str:
+        """
+        A role get_by_role() can resolve. _ELEMENT_QUERY_JS falls back to the
+        lower-cased tag when there is no role attribute, and "a", "select" or
+        "input" are not ARIA roles — a healed {"role": "select"} resolves to
+        nothing. Map those to the element's implicit role; drop the rest.
+        """
         role = (el.get("role") or "").strip()
+        tag = (el.get("tag") or "").lower()
+        if not role or role.lower() != tag:
+            return role                      # explicit role attribute, or none
+        if tag == "input":
+            # The implicit role per type, from HTML-AAM. A type with none — a
+            # password, a date — gets none, so the cfg falls to its placeholder
+            # or id rather than a role get_by_role() would not find.
+            typ = (el.get("type") or "text").lower()
+            if el.get("list") and typ in ("text", "search", "email", "tel", "url"):
+                return "combobox"            # backed by a <datalist>
+            return _INPUT_ROLES.get(typ, "")
+        if tag == "a":
+            return "link" if el.get("href") else ""
+        if tag == "select":
+            return "listbox" if el.get("multirow") else "combobox"
+        return {"button": "button", "textarea": "textbox"}.get(tag, "")
+
+    @classmethod
+    def _element_to_cfg(cls, el: dict) -> dict:
+        cfg: dict[str, Any] = {"priority": 0}
+        role = cls._aria_role(el)
         text = (el.get("text") or "").strip()
+        if (el.get("tag") or "").upper() == "SELECT":
+            text = ""   # a select's textContent is every option, not its name
+        if not text and role == "button":
+            # A button-shaped <input> has no textContent; its value is its
+            # accessible name. _ELEMENT_QUERY_JS only collects value for
+            # submit/button/reset inputs, so this is never user-typed text.
+            text = (el.get("value") or "").strip()
         aria = (el.get("aria") or "").strip()
         placeholder = (el.get("placeholder") or "").strip()
         elem_id = (el.get("id") or "").strip()
@@ -304,8 +592,14 @@ class DOMSnapshotCascade:
             cfg["text"] = text
         elif elem_id:
             cfg["id"] = elem_id
-        elif tag:
+        elif not el.get("selector") and tag:
             cfg["css"] = tag
+        # The browser-computed unique selector rides along with whatever
+        # semantic identifier was chosen. The resolver tries the semantic one
+        # first (role 10 … css 60), so it changes nothing when that resolves,
+        # and it is the deterministic fallback when it does not.
+        if el.get("selector"):
+            cfg["css"] = el["selector"]
         return cfg
 
     @classmethod
@@ -371,7 +665,7 @@ class DOMSnapshotCascade:
             logger.warning(f"[DOMSnapshotCascade] DOM walk failed: {e}")
 
         content = json.dumps(snapshot, ensure_ascii=False) if snapshot else ""
-        logger.debug(f"[DOMSnapshotCascade] aria fallback ({reason})")
+        logger.info(f"[DOMSnapshotCascade] aria fallback ({reason})")
         return DomPayload(
             strategy_used="aria",
             content=content,
