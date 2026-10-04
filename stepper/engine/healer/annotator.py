@@ -12,6 +12,13 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+# The picture is diagnostic and best-effort. bounding_box() waits for its
+# element, and by the time this runs a heal whose action navigated (a healed
+# Login click lands on the next page) has no such element any more — the
+# default 30s wait was the whole cost of every such heal, for a screenshot that
+# was then skipped. A couple of seconds is plenty for an element that is there.
+_BBOX_TIMEOUT_MS = 2_000
+
 
 def _locator_from_cfg(page, cfg: dict):
     """Map a healed cfg dict to a Playwright locator (best effort)."""
@@ -61,7 +68,7 @@ class HealAnnotator:
             if locator is None:
                 return None
 
-            bbox = await locator.bounding_box()
+            bbox = await locator.bounding_box(timeout=_BBOX_TIMEOUT_MS)
             if not bbox:
                 logger.debug("[HealAnnotator] bounding_box() returned None")
                 return None
