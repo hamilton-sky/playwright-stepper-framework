@@ -487,3 +487,16 @@ async def test_a_page_object_js_click_does_not_scroll_first():
     assert acted is True
     el.scroll_into_view_if_needed.assert_not_awaited()
     el.evaluate.assert_awaited_once()
+
+
+
+def test_a_forced_click_never_accepts_a_native_disabled_control():
+    """
+    Checked in a real browser: el.click() and click(force=True) both return
+    normally on <button disabled> and fire nothing — a step that reports
+    passed. On aria-disabled the page's handler does run, so only an ordinary
+    click turns that away.
+    """
+    js = action_fit._FIT_JS
+    assert "if (nativeDisabled) return false;" in js
+    assert "if (!forced && el.closest('[aria-disabled=\"true\"]')" in js

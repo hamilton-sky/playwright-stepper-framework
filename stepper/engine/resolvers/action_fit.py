@@ -34,13 +34,14 @@ unusual:
     hover   not hidden. Anything can be hovered; a tooltip trigger can be
             disabled.
     click_js
-            a click with js_click: el.click() reaches anything, a hidden
-            dropdown button included, so visibility and disabled state are
-            not read — but the element must still be something a click means.
+            a click with js_click: el.click() reaches a hidden element, a
+            hidden dropdown button included, so visibility is not read.
     click_force
             a click with force: Playwright skips its enabled/stable checks but
-            still needs a box to click, so visibility is read and disabled
-            state is not — and the element must be something a click means.
+            still needs a box to click, so visibility is read.
+            Both forced modes ignore aria-disabled, whose handler still runs,
+            but never accept a native :disabled control — the click returns
+            normally and fires nothing. Both need something a click means.
 
 Any other action is not modelled and every candidate is kept.
 
@@ -104,10 +105,17 @@ _FIT_JS = """
   // inside <button disabled> is that button, and the browser swallows the click.
   // (Not fieldset: its descendant controls match :disabled themselves, and a
   // link inside one stays live.)
-  const disabled = el.closest(
+  //
+  // Native :disabled refuses every click, forced ones included: el.click() and
+  // a forced pointer click both return normally on <button disabled> and fire
+  // nothing (checked in a real browser), so the step would report it acted.
+  // aria-disabled is application state the page's own handler still receives,
+  // so only an ordinary click — which Playwright refuses — is turned away.
+  const nativeDisabled = el.closest(
     'button:disabled, input:disabled, select:disabled, textarea:disabled, '
-    + 'option:disabled, optgroup:disabled, [aria-disabled="true"]') !== null;
-  if (disabled && !forced) return false;
+    + 'option:disabled, optgroup:disabled') !== null;
+  if (nativeDisabled) return false;
+  if (!forced && el.closest('[aria-disabled="true"]') !== null) return false;
   // A <label> — or text inside one — whose control is disabled activates
   // nothing: <fieldset disabled><label><span>Login</span><input></label>. The
   // click lands, and the step would report it did something.

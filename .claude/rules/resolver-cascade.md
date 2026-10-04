@@ -132,10 +132,12 @@ ones only for a hover.
 
 A click with `js_click` passes `"click_js"` and one with `force` passes
 `"click_force"`. Each relaxes exactly what that click skips: `el.click()`
-reaches a hidden, disabled element, so neither is read; a forced Playwright
-click skips the enabled checks but still needs a box to click, so visibility
-is. Both still require something a click means, or a heading reading "Login"
-would be force-clicked and pass.
+reaches a hidden element, so visibility is not read; a forced Playwright
+click still needs a box to click, so it is. Both ignore `aria-disabled`, whose
+handler still runs — but neither accepts a native `:disabled` control: both
+clicks return normally on `<button disabled>` and fire nothing, so the step
+would report it acted. Both still require something a click means, or a
+heading reading "Login" would be force-clicked and pass.
 
 One limit is deliberate: a click handler added with `addEventListener`
 cannot be seen from the page (and React-style delegation puts it on the root),
