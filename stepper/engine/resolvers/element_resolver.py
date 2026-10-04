@@ -31,6 +31,9 @@ logger = logging.getLogger(__name__)
 # Aliases for readability within this module (values come from interfaces.py)
 SEMANTIC_THRESHOLD = CONFIDENCE_SEMANTIC
 AI_PICK_THRESHOLD  = CONFIDENCE_AI_PICK
+# Matches whose similarity to the description is this close are a tie, and only
+# a tie is broken by whether the action can be taken.
+_TIE_BREAK_WINDOW = 0.01
 CONFIDENCE_MAP = {
     # Mirrors Playwright's official locator priority (highest = tried first, most resilient)
     "role":        0.95,   # Playwright #1 — role + accessible name, survives redesigns
@@ -306,29 +309,27 @@ class ElementResolver:
         """
         Narrow several matches of one selector by what the step describes.
 
-        When the caller says what it is about to do, the candidates that can
-        take that action come first: `{"text": "Login"}` on a page with
-        <h1>Login</h1> and <button>Login</button> matches both, and similarity
-        to the description cannot tell them apart — the top match was whichever
-        came first in the document, a heading to click, a hidden duplicate, a
-        disabled or read-only twin.
+        When the caller says what it is about to do, a match that can take that
+        action is preferred over one that cannot — but only as a tie-break.
+        `{"text": "Login"}` on a page with <h1>Login</h1> and
+        <button>Login</button> matches both, and similarity to the description
+        cannot tell them apart: the top match was whichever came first in the
+        document, a heading to click, a hidden duplicate, a disabled or
+        read-only twin. That tie is the only place the action is consulted.
 
-        It is a preference, not a veto. The cfg named every one of these, so
-        when none can take the action (a <div> whose handler was added with
-        addEventListener looks like a heading) the list is left as it was and
-        the old choice stands — this never turns a pick into a not-found.
+        It is applied after ranking, never before. If the description separates
+        the matches, that evidence wins: a snapshot that says "hidden right now"
+        is not proof the element cannot take the action by the time the action's
+        own wait runs, so it must not outvote a better description match. And it
+        is never a veto — when none can take the action (a <div> whose handler
+        was added with addEventListener looks like a heading) the order is left
+        as it was, so this cannot turn a pick into a not-found.
         """
-        if action:
-            fitting = [c for c in candidates if await fits(c, action)]
-            if fitting and len(fitting) < len(candidates):
-                logger.info(
-                    f"[{method}] {len(candidates) - len(fitting)} of {len(candidates)} "
-                    f"matches cannot take a {action} — narrowing to the rest"
-                )
-                candidates = fitting
-
         if not step_description:
-            # No description — just take first candidate
+            # No description to rank by, so nothing to outvote: prefer a match
+            # that can take the action, else the first.
+            if action:
+                candidates = await self._fitting_first(candidates, action)
             return ResolveResult(
                 found=True, locator=candidates[0],
                 confidence=0.70, method=f"{method}+first"
@@ -346,6 +347,14 @@ class ElementResolver:
         if not shortlist:
             return ResolveResult(found=False, method=f"{method}+semantic-miss")
 
+        if action and len(shortlist) > 1:
+            # Only the matches the description cannot tell apart are reordered.
+            top = shortlist[0][2]
+            tied = [x for x in shortlist if top - x[2] <= _TIE_BREAK_WINDOW]
+            if len(tied) > 1:
+                ordered = await self._fitting_first(tied, action, key=lambda x: x[0])
+                shortlist = ordered + shortlist[len(tied):]
+
         if len(shortlist) == 1:
             loc, _, score = shortlist[0]
             return ResolveResult(
@@ -355,6 +364,19 @@ class ElementResolver:
 
         # Still ambiguous — AI pick
         return await self._ai_pick(shortlist, step_description, method)
+
+    @staticmethod
+    async def _fitting_first(items: list, action: str, key=lambda x: x) -> list:
+        """`items` with the ones that can take `action` first; order otherwise kept."""
+        flags = [await fits(key(i), action) for i in items]
+        fitting = [i for i, f in zip(items, flags) if f]
+        if not fitting or len(fitting) == len(items):
+            return list(items)
+        logger.info(
+            f"[semantic] {len(items) - len(fitting)} of {len(items)} tied matches "
+            f"cannot take a {action} — preferring the rest"
+        )
+        return fitting + [i for i, f in zip(items, flags) if not f]
 
     # ── AI Pick ───────────────────────────────────────────────────────────────
 

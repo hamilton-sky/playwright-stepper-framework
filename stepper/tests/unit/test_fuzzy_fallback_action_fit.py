@@ -540,9 +540,9 @@ def test_a_label_of_a_disabled_control_with_its_own_handler_is_kept():
 # {"text": "Login"} on <h1>Login</h1><button>Login</button> matches both. Narrowing
 # by similarity to the description cannot tell them apart, so the pick was the
 # first in the document: a heading to click, a hidden duplicate, a disabled or
-# read-only twin. The action now narrows first — as a preference, never a veto:
-# the cfg named every one of these, so when none can take the action the list is
-# left as it was.
+# read-only twin. The action now breaks ties — after the description has ranked
+# the matches, never before and never as a veto: the cfg named every one of
+# these, and an element that is hidden *now* may be the one the step means.
 
 def _multi_match_resolver(*candidates):
     strategy = MagicMock(priority=60)
@@ -621,3 +621,40 @@ async def test_strict_resolution_still_takes_the_first_of_several():
     result = await r.resolve(MagicMock(), {"text": "Login"}, "Login", strict=True)
 
     assert result.locator is first
+
+
+async def test_the_description_outranks_fit():
+    """
+    The step names the confirm button, which is hidden right now. A lower-scored
+    visible element must not displace it: fit only breaks ties.
+    """
+    named, other = _candidate(fits=False), _candidate(fits=True)
+    r = _multi_match_resolver(named, other)
+    scores = {id(named): 0.95, id(other): 0.60}
+    texts = {id(named): "Confirm order", id(other): "Cancel"}
+    r._describe_locator = AsyncMock(side_effect=lambda loc: texts[id(loc)])
+    r._semantic = MagicMock(score=lambda q, d: 0.95 if d == "Confirm order" else 0.60)
+
+    result = await r.resolve(MagicMock(), {"text": "x"}, "Confirm order", action="click")
+
+    assert result.locator is named
+    assert scores  # documents the intended ranking
+
+
+async def test_tied_matches_put_the_one_that_fits_first():
+    first, second, third = (_candidate(fits=False), _candidate(fits=True),
+                            _candidate(fits=True))
+    r = _multi_match_resolver(first, second, third)
+
+    result = await r.resolve(MagicMock(), {"text": "Login"}, "Login", action="click")
+
+    assert result.locator is second
+
+
+async def test_without_a_description_a_fitting_match_is_preferred():
+    heading, button = _candidate(fits=False), _candidate(fits=True)
+    r = _multi_match_resolver(heading, button)
+
+    result = await r.resolve(MagicMock(), {"text": "Login"}, "", action="click")
+
+    assert result.locator is button
