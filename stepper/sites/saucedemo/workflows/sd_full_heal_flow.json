@@ -15,7 +15,7 @@
       "description": "Type username into the username field",
       "element": {"css": ".broken-username-selector"},
       "input_value": "standard_user",
-      "extra": {"press_enter": false},
+      "extra": {"press_enter": false, "strict": true},
       "heal": true
     },
     {
@@ -23,13 +23,14 @@
       "description": "Type password into the password field",
       "element": {"css": ".broken-password-selector"},
       "input_value": "secret_sauce",
-      "extra": {"press_enter": false},
+      "extra": {"press_enter": false, "strict": true},
       "heal": true
     },
     {
       "action": "click",
       "description": "Click the Login button to submit credentials",
       "element": {"css": ".broken-login-btn"},
+      "extra": {"strict": true},
       "heal": true,
       "heal_assert": {"url_contains": "/inventory"}
     },

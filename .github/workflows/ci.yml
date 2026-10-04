@@ -292,11 +292,20 @@ jobs:
           # The job's env carries the AI keys from secrets. Unset them here so a
           # provider can never rescue a heal the no-AI path missed — otherwise
           # this would stay green with that path broken once a key is added.
+          #
+          # Green is not enough on its own: a step the resolver rescues never
+          # reaches the healer, and the run stays green while exercising
+          # nothing. Each workflow breaks three selectors (marked strict, so
+          # only the healer can recover them) and must report three heals.
           for wf in sd_heal_test sd_full_heal_flow; do
             echo "── $wf (healer: no AI key, no cache) ──"
             if ! env -u GROQ_API_KEY -u GEMINI_API_KEY -u ANTHROPIC_API_KEY \
                    python stepper/main.py run "$wf" --heal 2 --no-heal-cache \
                    --vars "$vars" --ci --ci-output "reports/ci-sd-fixture-$wf.json"; then
+              failed="$failed $wf"
+            elif ! python -c "import json, sys; h = json.load(open(sys.argv[1]))['healed']; print(f'healed: {h}'); sys.exit(h != 3)" \
+                   "reports/ci-sd-fixture-$wf.json"; then
+              echo "::error title=$wf::expected 3 healed steps — the healer did not do the recovering"
               failed="$failed $wf"
             fi
           done

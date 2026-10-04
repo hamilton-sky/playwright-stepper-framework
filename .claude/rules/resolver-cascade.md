@@ -114,3 +114,63 @@ under the right key and every later `when:` clause reasons about it.
 **When adding a new action, decide which column it is in.** Anything that reports on
 the page rather than changing it wants `strict=True`; the tests in
 `stepper/tests/unit/test_strict_resolution.py` assert both halves.
+
+
+## The fallbacks know what the caller is about to do
+
+`resolve()` also takes `action` — `"fill"`, `"click"`, `"hover"`, `"select"` —
+and the engine's acting actions and `BasePage._interact` always pass it. The
+deterministic strategies ignore it: the cfg named those elements. The
+description-driven fallbacks (keyword-fuzzy, accessibility-semantic) drop any
+candidate that cannot take the action, using
+`stepper/engine/resolvers/action_fit.py`. Whether a candidate is visible,
+enabled and (for a fill) editable is asked of Playwright itself —
+`locator.is_visible()`, `is_enabled()`, `is_editable()` — so it is exactly
+the answer the action will meet; re-implementing those rules was tried for
+fourteen review rounds and each found another corner (label retargeting,
+role-gated `aria-disabled`, shadow hosts, presentation-role conflicts,
+zero-size boxes). What Playwright has no API for is a short script: a fill
+needs an input type `fill()` can set, a textarea or a contenteditable (a
+`<label>` counts as its control), a select a native `<select>`, a click
+something a click means — the element or an ancestor is a button, link, form
+control, ARIA widget, or has an onclick handler or pointer cursor. Hidden elements never qualify; disabled
+ones only for a hover.
+
+A click with `js_click` passes `"click_js"` and one with `force` passes
+`"click_force"`. Each relaxes exactly what that click skips: `el.click()`
+reaches a hidden element, so visibility is not read; a forced Playwright
+click still needs a box to click, so it is. Both ignore `aria-disabled`, whose
+handler still runs — but neither accepts a native `:disabled` control: both
+clicks return normally on `<button disabled>` and fire nothing, so the step
+would report it acted. Both still require something a click means, or a
+heading reading "Login" would be force-clicked and pass.
+
+One limit is deliberate: a click handler added with `addEventListener`
+cannot be seen from the page (and React-style delegation puts it on the root),
+so a `<div>` with such a handler, no role, no `onclick` and the default cursor
+looks exactly like a heading and is refused. A visible not-found the healer can
+still recover beats a wrong click that passes; a cfg naming the element directly
+is never filtered.
+
+The checks run inside each fallback, ahead of its own narrowing: before
+keyword-fuzzy's same-text de-duplication, and before the accessibility
+fallback's top-3 cut.
+
+Before this, the CI log on the SauceDemo fixture showed
+
+```
+Deterministic cascade failed — falling through to zero-selector path: 'Type username into the username field'
+Locator.fill: Error: Element is not an <input>, <textarea>, <select> or [contenteditable]
+```
+
+— keyword-fuzzy had settled on a text node. A click has no such error to give
+it away: "Click the Login button" against a heading reading "Login" clicks the
+heading and passes.
+
+An acting step can also opt out of the fallbacks entirely with
+`"extra": {"strict": true}`. The heal workflows set it on their broken steps:
+with the fallbacks now finding the real fields themselves, nothing would
+otherwise reach the healer, and CI checks that each reports three heals.
+
+`stepper/tests/unit/test_fuzzy_fallback_action_fit.py` holds the wiring.
+

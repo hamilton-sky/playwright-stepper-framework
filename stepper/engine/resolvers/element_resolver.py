@@ -24,6 +24,7 @@ from stepper.engine.resolvers.strategies import (
     SemanticResolver, VisualAIResolver, DescriptionFallbackResolver, KeywordFuzzyResolver,
 )
 from stepper.engine.resolvers.ai_pick_resolver import AIPickResolver
+from stepper.engine.resolvers.action_fit import fits
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +89,7 @@ class ElementResolver:
         step_description: str = "",
         *,
         strict: bool = False,
+        action: str | None = None,
     ) -> ResolveResult:
         """
         Find the element a cfg describes.
@@ -101,6 +103,13 @@ class ElementResolver:
         no keyword-fuzzy match on the description, no AI pick, no visual
         fallback: either the cfg names something on the page or the answer is
         not-found.
+
+        action is what the caller is about to do — "fill", "click", "hover",
+        "select". The deterministic strategies ignore it: the cfg named those
+        elements. The description-driven fallbacks use it to drop a candidate
+        that cannot take the action (see resolvers/action_fit.py), so a fill
+        that misses its selector cannot settle on a text node and a click
+        cannot settle on a heading that happens to share the button's word.
 
         Assertions pass strict=True, and the distinction is the whole reason the
         argument exists. Under the cascade, `{"css": ".app_logo"}` on a page with
@@ -127,7 +136,7 @@ class ElementResolver:
                     f"[ElementResolver] no element keys in cfg — "
                     f"zero-selector path: '{step_description[:60]}'"
                 )
-                return await self._zero_selector_path(page, step_description)
+                return await self._zero_selector_path(page, step_description, action)
             logger.warning("[ElementResolver] no cfg and no description → not-found")
             return ResolveResult(found=False, confidence=0.0, method="not-found")
 
@@ -206,14 +215,16 @@ class ElementResolver:
                 "Deterministic cascade failed — falling through to "
                 f"zero-selector path: '{step_description[:60]}'"
             )
-            return await self._zero_selector_path(page, step_description)
+            return await self._zero_selector_path(page, step_description, action)
 
         logger.warning("Deterministic cascade failed and no description → visual AI")
-        return await self._visual_fallback(page, cfg, step_description)
+        return await self._visual_fallback(page, cfg, step_description, action)
 
     # ── Zero-selector path (B → A → AI pick) ─────────────────────────────────
 
-    async def _zero_selector_path(self, page, step_description: str) -> "ResolveResult":
+    async def _zero_selector_path(
+        self, page, step_description: str, action: str | None = None,
+    ) -> "ResolveResult":
         """
         Two-stage pipeline for steps with no element cfg keys:
 
@@ -231,7 +242,11 @@ class ElementResolver:
             0 candidates → visual AI last resort
         """
         # ── B: Keyword fuzzy — fast gate ──────────────────────────────────────
-        b_candidates = await self._keyword_fuzzy.find(page, step_description)
+        # The fit check runs inside find(), ahead of its same-text de-duplication.
+        b_candidates = await self._keyword_fuzzy.find(
+            page, step_description,
+            keep=(lambda loc: fits(loc, action)) if action else None,
+        )
         if len(b_candidates) == 1:
             logger.info("✓ [keyword-fuzzy] single match → confidence 85%")
             return ResolveResult(
@@ -246,13 +261,17 @@ class ElementResolver:
             )
 
         # ── A: Accessibility snapshot + semantic scoring ───────────────────────
-        shortlist = await self._desc_fallback.find_candidates(page, step_description)
+        # The fit check runs inside find_candidates(), ahead of its top-k cut.
+        shortlist = await self._desc_fallback.find_candidates(
+            page, step_description,
+            keep=(lambda loc: fits(loc, action)) if action else None,
+        )
 
         if not shortlist:
             logger.warning(
                 "[DescriptionFallback] no candidates above threshold → visual AI"
             )
-            return await self._visual_fallback(page, {}, step_description)
+            return await self._visual_fallback(page, {}, step_description, action)
 
         if len(shortlist) == 1:
             loc, desc, score = shortlist[0]
@@ -348,13 +367,18 @@ class ElementResolver:
 
     # ── Visual Fallback ───────────────────────────────────────────────────────
 
-    async def _visual_fallback(self, page, cfg, step_description) -> ResolveResult:
+    async def _visual_fallback(self, page, cfg, step_description,
+                               action: str | None = None) -> ResolveResult:
         if not self._use_visual_ai:
             logger.warning("Visual AI disabled — returning not-found")
             return ResolveResult(found=False, confidence=0.0, method="not-found")
         candidates = await self._visual.collect(page, cfg)
         if candidates:
             loc, conf = candidates[0]
+            # The last description-driven guess gets the same check as the others.
+            if not await fits(loc, action):
+                logger.info(f"[visual-ai] its pick cannot take a {action} → not-found")
+                return ResolveResult(found=False, confidence=0.0, method="not-found")
             return ResolveResult(found=True, locator=loc, confidence=conf, method="visual-ai")
         return ResolveResult(found=False, confidence=0.0, method="not-found")
 

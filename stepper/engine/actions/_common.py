@@ -54,3 +54,16 @@ def _checked_input_value(step: StepConfig) -> tuple[str, StepResult | None]:
             error=f"Missing environment variable for value '{step.input_value}'",
         )
     return value, None
+
+
+def _strict(step: StepConfig) -> bool:
+    """
+    Whether an acting step opted out of the description-driven fallbacks.
+
+    `extra.strict: true` resolves the element the way an assertion does —
+    deterministic strategies only — so a missed selector fails the step
+    instead of being rescued by a keyword or accessibility match. The heal
+    workflows use it: a broken selector there must reach the healer, which is
+    what they exist to exercise.
+    """
+    return bool((step.extra or {}).get("strict", False))

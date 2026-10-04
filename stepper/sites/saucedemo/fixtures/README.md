@@ -37,7 +37,7 @@ on one host and finishes on the other.
 | `sd_happy_path` | 6/6 — runs in CI |
 | `sd_multi_product` | 9/9 — runs in CI; order total $36.69 = 33.97 + 8% tax |
 | `sd_smoke_test` | 5/5 — runs in CI; the live-host run stays as the drift check |
-| `sd_heal_test`, `sd_full_heal_flow` | run in CI with `--heal 2 --no-heal-cache` and every AI key unset, so each broken selector must heal through the no-AI path. |
+| `sd_heal_test`, `sd_full_heal_flow` | run in CI with `--heal 2 --no-heal-cache` and every AI key unset, so each broken selector must heal through the no-AI path. CI also requires 3 healed steps from each. |
 
 ## Making the keyless heal real
 
@@ -63,6 +63,15 @@ that element.
 Running it also found the workflows wrong: the engine's `fill` presses Enter
 by default, so filling the password submitted the form before the "Click the
 Login button" step ran. Both heal workflows now set `press_enter: false`.
+
+Then the resolver's own fallbacks learned what action they were resolving for
+(`resolvers/action_fit.py`), and stopped settling on a text node for a fill.
+With that fixed they find the username, password and Login button themselves —
+and the heal workflows passed with nothing healed. Their three broken steps now
+set `"strict": true`, which keeps them off the description fallbacks so only the
+healer can recover them, and CI fails a heal workflow that reports fewer than
+three heals. That also put the Login click through the healer for the first
+time: before, a keyword match had always clicked it first.
 
 ## What it is and is not
 

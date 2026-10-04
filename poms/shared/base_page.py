@@ -89,7 +89,12 @@ class BasePage:
         """
         if self._resolver and self._page:
             cfg = locator.to_cfg()
-            result = await self._resolver.resolve(self._page, cfg, locator.description)
+            # A js_click (el.click()) reaches anything; the fallbacks then still
+            # require something clickable, but not a visible, enabled one.
+            result = await self._resolver.resolve(
+                self._page, cfg, locator.description,
+                action="click_js" if kwargs.get("js_click") else action,
+            )
             if result.found and result.confidence >= CONFIDENCE_WARN:
                 if result.confidence < CONFIDENCE_AUTO:
                     logger.warning(
@@ -98,7 +103,10 @@ class BasePage:
                     )
                 try:
                     el = result.locator.first
-                    await el.scroll_into_view_if_needed(timeout=5_000)
+                    # A js_click may target a display:none element on purpose; it
+                    # has no box to scroll to, and el.click() needs none.
+                    if not (action == "click" and kwargs.get("js_click")):
+                        await el.scroll_into_view_if_needed(timeout=5_000)
                     if action == "fill":
                         if self._behaviour:
                             await asyncio.sleep(self._behaviour.jitter(50))
@@ -158,7 +166,7 @@ class BasePage:
         self, cfg: dict, value: str, description: str = ""
     ) -> bool:
         if self._resolver and self._page:
-            result = await self._resolver.resolve(self._page, cfg, description)
+            result = await self._resolver.resolve(self._page, cfg, description, action="fill")
             if result.found and result.confidence >= CONFIDENCE_WARN:
                 if result.confidence < CONFIDENCE_AUTO:
                     logger.warning(
@@ -192,7 +200,9 @@ class BasePage:
         self, cfg: dict, description: str = "", js_click: bool = False
     ) -> bool:
         if self._resolver and self._page:
-            result = await self._resolver.resolve(self._page, cfg, description)
+            result = await self._resolver.resolve(
+                self._page, cfg, description, action="click_js" if js_click else "click",
+            )
             if result.found and result.confidence >= CONFIDENCE_WARN:
                 if result.confidence < CONFIDENCE_AUTO:
                     logger.warning(

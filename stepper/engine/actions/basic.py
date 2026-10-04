@@ -32,7 +32,7 @@ from stepper.engine.interfaces import (
     ActionStrategy, StepConfig, StepResult, ExecutionContext,
     CONFIDENCE_AUTO, CONFIDENCE_WARN,
 )
-from stepper.engine.actions._common import _wait_for, _checked_input_value
+from stepper.engine.actions._common import _wait_for, _checked_input_value, _strict
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +83,14 @@ class ClickAction(ActionStrategy):
         _, err = _checked_input_value(step)
         if err:
             return err
-        result = await resolver.resolve(page, step.element, step.description)
+        # js_click reaches anything (a hidden dropdown button); force skips
+        # Playwright's enabled checks but still needs a box to click. Each
+        # tells the fallbacks which checks the click itself will skip.
+        extra = step.extra or {}
+        fit = ("click_js" if extra.get("js_click")
+               else "click_force" if extra.get("force") else "click")
+        result = await resolver.resolve(page, step.element, step.description,
+                                        action=fit, strict=_strict(step))
 
         if not result.found:
             return StepResult(step=step, status="failed",
@@ -139,7 +146,8 @@ class FillAction(ActionStrategy):
         if err:
             return err
 
-        result = await resolver.resolve(page, step.element, step.description)
+        result = await resolver.resolve(page, step.element, step.description,
+                                        action="fill", strict=_strict(step))
 
         if not result.found:
             return StepResult(step=step, status="failed",
@@ -168,7 +176,8 @@ class HoverAction(ActionStrategy):
 
     async def _execute(self, page, step: StepConfig, resolver,
                        context: ExecutionContext, behaviour=None) -> StepResult:
-        result = await resolver.resolve(page, step.element, step.description)
+        result = await resolver.resolve(page, step.element, step.description,
+                                        action="hover", strict=_strict(step))
 
         if not result.found:
             return StepResult(step=step, status="failed",
@@ -206,7 +215,8 @@ class SelectAction(ActionStrategy):
 
     async def _execute(self, page, step: StepConfig, resolver,
                        context: ExecutionContext, behaviour=None) -> StepResult:
-        result = await resolver.resolve(page, step.element, step.description)
+        result = await resolver.resolve(page, step.element, step.description,
+                                        action="select", strict=_strict(step))
 
         if not result.found:
             return StepResult(step=step, status="failed",

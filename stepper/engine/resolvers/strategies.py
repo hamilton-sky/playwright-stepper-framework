@@ -208,7 +208,13 @@ class KeywordFuzzyResolver:
 
     MIN_WORD_LEN = 4
 
-    async def find(self, page, description: str) -> list:
+    async def find(self, page, description: str, keep=None) -> list:
+        """
+        keep, when given, is an async predicate applied to each match *before*
+        the same-text de-duplication: with an <h1>Login</h1> ahead of a
+        clickable <div>Login</div>, de-duplicating first would keep the
+        heading, and a click that rejects it would then have nothing left.
+        """
         keywords = self._extract_keywords(description)
         if not keywords:
             return []
@@ -222,6 +228,8 @@ class KeywordFuzzyResolver:
                 count = await loc.count()
                 for i in range(count):
                     item = loc.nth(i)
+                    if keep is not None and not await keep(item):
+                        continue
                     try:
                         inner = (await item.inner_text()).strip()[:120]
                         if inner and inner not in seen_inner:
@@ -366,11 +374,16 @@ class DescriptionFallbackResolver:
         self._semantic = semantic or SemanticResolver()
 
     async def find_candidates(
-        self, page, description: str
+        self, page, description: str, keep=None
     ) -> list[tuple]:
         """
         Returns list of (locator, desc, score) sorted by score descending.
         Empty list if nothing meets the similarity threshold.
+
+        keep, when given, is an async predicate on each candidate's locator,
+        applied before the top-k cut: three links scoring just above the
+        textbox a fill wants would otherwise fill the shortlist, be rejected,
+        and leave nothing.
         """
         if not description:
             return []
@@ -384,7 +397,12 @@ class DescriptionFallbackResolver:
         if not snapshot:
             return []
 
-        nodes = self._flatten_snapshot(snapshot, target=self.TOP_K * 10)
+        # The node cap bounds the scoring on a large page, but a cap taken before
+        # the fit check could fill up with nodes the action rejects — 30 links
+        # ahead of the one textbox a fill wants. With a check, walk it all.
+        nodes = self._flatten_snapshot(
+            snapshot, target=None if keep is not None else self.TOP_K * 10
+        )
         if not nodes:
             return []
 
@@ -396,7 +414,7 @@ class DescriptionFallbackResolver:
             score = self._semantic.score(description, node_desc)
             if score >= self.MIN_SIMILARITY:
                 loc = await self._node_to_locator(page, node)
-                if loc is not None:
+                if loc is not None and (keep is None or await keep(loc)):
                     scored.append((loc, node_desc, score))
 
         scored.sort(key=lambda x: x[2], reverse=True)
