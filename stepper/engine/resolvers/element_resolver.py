@@ -24,7 +24,7 @@ from stepper.engine.resolvers.strategies import (
     SemanticResolver, VisualAIResolver, DescriptionFallbackResolver, KeywordFuzzyResolver,
 )
 from stepper.engine.resolvers.ai_pick_resolver import AIPickResolver
-from stepper.engine.resolvers.action_fit import fits, keep_fitting
+from stepper.engine.resolvers.action_fit import fits
 
 logger = logging.getLogger(__name__)
 
@@ -261,9 +261,10 @@ class ElementResolver:
             )
 
         # ── A: Accessibility snapshot + semantic scoring ───────────────────────
-        shortlist = await self._desc_fallback.find_candidates(page, step_description)
-        shortlist = await keep_fitting(
-            shortlist, action, source="accessibility-semantic", locator_of=lambda c: c[0],
+        # The fit check runs inside find_candidates(), ahead of its top-k cut.
+        shortlist = await self._desc_fallback.find_candidates(
+            page, step_description,
+            keep=(lambda loc: fits(loc, action)) if action else None,
         )
 
         if not shortlist:

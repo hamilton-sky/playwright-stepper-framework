@@ -57,8 +57,17 @@ def _keyword_find(candidates: list):
 def _resolver(keyword: list, shortlist: list | None = None) -> ElementResolver:
     r = ElementResolver([])
     r._keyword_fuzzy = MagicMock(find=_keyword_find(keyword))
-    r._desc_fallback = MagicMock(find_candidates=AsyncMock(return_value=shortlist or []))
+    r._desc_fallback = MagicMock(find_candidates=_shortlist_find(shortlist or []))
     return r
+
+
+def _shortlist_find(shortlist: list):
+    """A find_candidates() double that honours `keep`, as the real one does."""
+    async def find_candidates(page, description, keep=None):
+        if keep is None:
+            return list(shortlist)
+        return [c for c in shortlist if await keep(c[0])]
+    return find_candidates
 
 
 # ── keyword-fuzzy ─────────────────────────────────────────────────────────────
@@ -187,8 +196,11 @@ async def test_engine_actions_pass_their_action(action_name):
 
 
 @pytest.mark.parametrize("extra", [{"js_click": True}, {"force": True}])
-async def test_a_click_that_bypasses_actionability_is_not_filtered(extra):
-    """js_click reaches a hidden dropdown button on purpose; the filter would drop it."""
+async def test_a_forced_click_resolves_as_click_forced(extra):
+    """
+    js_click reaches a hidden dropdown button on purpose, so visibility and
+    disabled state are not read — but it still needs something clickable.
+    """
     from stepper.engine.actions.factory import build_default_registry
 
     resolver = _not_found_resolver()
@@ -198,10 +210,10 @@ async def test_a_click_that_bypasses_actionability_is_not_filtered(extra):
         MagicMock(), step, resolver, None, None
     )
 
-    assert resolver.resolve.await_args.kwargs.get("action") is None
+    assert resolver.resolve.await_args.kwargs.get("action") == "click_forced"
 
 
-async def test_a_page_object_js_click_is_not_filtered():
+async def test_a_page_object_js_click_resolves_as_click_forced():
     from poms.shared.base_page import BasePage
     from poms.shared.locator import Locator
 
@@ -212,7 +224,7 @@ async def test_a_page_object_js_click_is_not_filtered():
 
     await page._interact(Locator(css=".x", description="d"), "click", js_click=True)
 
-    assert resolver.resolve.await_args.kwargs.get("action") is None
+    assert resolver.resolve.await_args.kwargs.get("action") == "click_forced"
 
 
 @pytest.mark.parametrize("action_name", ["click", "fill", "hover", "select"])
@@ -368,3 +380,43 @@ async def test_the_fit_check_runs_before_same_text_deduplication():
     )
 
     assert found == [div]
+
+
+
+# ── review round 5 ────────────────────────────────────────────────────────────
+
+def test_a_forced_click_still_needs_something_clickable():
+    """Visibility and disabled state are skipped; the click-shape walk is not."""
+    js = action_fit._FIT_JS
+    assert "click_forced" in action_fit.MODELLED_ACTIONS
+    assert "action === 'click' || forced" in js
+    assert "!forced && (typeof el.checkVisibility" in js
+
+
+def test_a_label_for_a_disabled_control_refuses_a_click():
+    """<fieldset disabled><label><span>Login</span><input></label>: activates nothing."""
+    assert "label.control.matches(':disabled')" in action_fit._FIT_JS
+
+
+async def test_the_accessibility_fit_check_runs_before_the_top_k_cut():
+    """
+    Three links scoring just above the textbox a fill wants filled the top-3,
+    were all rejected, and left nothing. Filtering first keeps the textbox.
+    """
+    from stepper.engine.resolvers.strategies import DescriptionFallbackResolver
+
+    nodes = [{"role": "link", "name": f"Username help {i}"} for i in range(3)]
+    nodes.append({"role": "textbox", "name": "Username"})
+    locs = {n["name"]: _candidate(fits=n["role"] == "textbox") for n in nodes}
+
+    fb = DescriptionFallbackResolver.__new__(DescriptionFallbackResolver)
+    fb._semantic = MagicMock(score=lambda q, d: 0.9 if "link" in d else 0.8)
+    fb._node_to_locator = AsyncMock(side_effect=lambda page, n: locs[n["name"]])
+    page = MagicMock()
+    page.accessibility.snapshot = AsyncMock(return_value={"role": "root", "children": nodes})
+
+    shortlist = await fb.find_candidates(
+        page, "Type the username", keep=lambda loc: action_fit.fits(loc, "fill")
+    )
+
+    assert [c[0] for c in shortlist] == [locs["Username"]]

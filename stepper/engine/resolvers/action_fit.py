@@ -33,6 +33,11 @@ unusual:
     label names, as Playwright does, and that control is what is checked.
     hover   not hidden. Anything can be hovered; a tooltip trigger can be
             disabled.
+    click_forced
+            a click with force or js_click: Playwright's actionability checks
+            are skipped on purpose (a hidden dropdown button), so visibility
+            and disabled state are not read — but the element must still be
+            something a click means.
 
 Any other action is not modelled and every candidate is kept.
 
@@ -47,7 +52,7 @@ from stepper.engine.resolvers.strategies import DescriptionFallbackResolver
 
 logger = logging.getLogger(__name__)
 
-MODELLED_ACTIONS = frozenset({"fill", "select", "click", "hover"})
+MODELLED_ACTIONS = frozenset({"fill", "select", "click", "click_forced", "hover"})
 
 # Every role the accessibility fallback offers as a candidate is one a click may
 # land on — a custom slider or listbox with an addEventListener handler and the
@@ -64,9 +69,13 @@ _FIT_JS = """
   // <label><span>Username</span><input></label> fills the input — and the
   // enabled and editable checks read that control. (Checked in a real browser:
   // a visible label for a hidden input fills; a hidden label never does.)
-  if (typeof el.checkVisibility === 'function'
+  // A forced click (force / js_click) skips Playwright's actionability checks on
+  // purpose — a hidden dropdown button — but must still land on something a
+  // click means, or a heading reading "Login" would be force-clicked and pass.
+  const forced = action === 'click_forced';
+  if (!forced && (typeof el.checkVisibility === 'function'
         ? !el.checkVisibility({visibilityProperty: true})
-        : !(el.offsetWidth || el.offsetHeight || el.getClientRects().length)) {
+        : !(el.offsetWidth || el.offsetHeight || el.getClientRects().length))) {
     return false;
   }
   if ((action === 'fill' || action === 'select')
@@ -82,7 +91,14 @@ _FIT_JS = """
   const disabled = el.closest(
     'button:disabled, input:disabled, select:disabled, textarea:disabled, '
     + 'option:disabled, optgroup:disabled, [aria-disabled="true"]') !== null;
-  if (disabled) return false;
+  if (disabled && !forced) return false;
+  // A <label> — or text inside one — whose control is disabled activates
+  // nothing: <fieldset disabled><label><span>Login</span><input></label>. The
+  // click lands, and the step would report it did something.
+  const label = el.closest('label');
+  if ((action === 'click' || forced) && label && label.control && label.control.matches(':disabled')) {
+    return false;
+  }
   const tag = el.tagName;
   if (action === 'select') return tag === 'SELECT';
   if (action === 'fill') {
@@ -103,7 +119,7 @@ _FIT_JS = """
                && roRoles.includes((el.getAttribute('role') || '').toLowerCase());
     return el.isContentEditable && !ro;
   }
-  if (action === 'click') {
+  if (action === 'click' || forced) {
     // widgetRoles is DescriptionFallbackResolver.INTERACTIVE_ROLES, passed in
     // so the roles the fallback offers and the roles a click accepts are one list.
     const clickable = ['button', 'a[href]', 'input', 'select', 'textarea', 'summary',
@@ -129,23 +145,3 @@ async def fits(locator, action: str | None) -> bool:
     except Exception as exc:
         logger.debug(f"[action-fit] could not read the candidate ({exc}) — keeping it")
         return True
-
-
-async def keep_fitting(candidates: list, action: str | None, *, source: str,
-                       locator_of=lambda c: c) -> list:
-    """
-    The candidates that can take `action`, in their original order.
-
-    `locator_of` pulls the locator out of a candidate that is not one itself —
-    the accessibility shortlist holds (locator, desc, score) tuples.
-    """
-    if action not in MODELLED_ACTIONS or not candidates:
-        return candidates
-    kept = [c for c in candidates if await fits(locator_of(c), action)]
-    dropped = len(candidates) - len(kept)
-    if dropped:
-        logger.info(
-            f"[{source}] dropped {dropped} of {len(candidates)} candidate(s) "
-            f"that cannot take a {action}"
-        )
-    return kept

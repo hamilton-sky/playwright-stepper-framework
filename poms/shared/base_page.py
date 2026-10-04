@@ -89,11 +89,12 @@ class BasePage:
         """
         if self._resolver and self._page:
             cfg = locator.to_cfg()
-            # A js_click skips Playwright's actionability checks on purpose, so
-            # the fallbacks must not filter for it.
+            # A js_click skips Playwright's actionability checks on purpose; the
+            # fallbacks then still require something clickable, but not a
+            # visible, enabled one.
             result = await self._resolver.resolve(
                 self._page, cfg, locator.description,
-                action=None if kwargs.get("js_click") else action,
+                action="click_forced" if kwargs.get("js_click") else action,
             )
             if result.found and result.confidence >= CONFIDENCE_WARN:
                 if result.confidence < CONFIDENCE_AUTO:
@@ -198,7 +199,7 @@ class BasePage:
     ) -> bool:
         if self._resolver and self._page:
             result = await self._resolver.resolve(
-                self._page, cfg, description, action=None if js_click else "click",
+                self._page, cfg, description, action="click_forced" if js_click else "click",
             )
             if result.found and result.confidence >= CONFIDENCE_WARN:
                 if result.confidence < CONFIDENCE_AUTO:

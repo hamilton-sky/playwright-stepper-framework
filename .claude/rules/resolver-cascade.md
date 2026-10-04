@@ -130,9 +130,15 @@ element or an ancestor is a button, link, form control, ARIA widget, or has an
 onclick handler or pointer cursor. Hidden elements never qualify; disabled
 ones only for a hover.
 
-A click with `js_click` or `force` passes no action: both skip Playwright's
-actionability checks on purpose (a hidden dropdown button), so the filter
-would only get in their way.
+A click with `js_click` or `force` passes `"click_forced"`: both skip
+Playwright's actionability checks on purpose (a hidden dropdown button), so
+visibility and disabled state are not read — but the candidate must still be
+something a click means, or a heading reading "Login" would be force-clicked
+and pass.
+
+The checks run inside each fallback, ahead of its own narrowing: before
+keyword-fuzzy's same-text de-duplication, and before the accessibility
+fallback's top-3 cut.
 
 Before this, the CI log on the SauceDemo fixture showed
 
