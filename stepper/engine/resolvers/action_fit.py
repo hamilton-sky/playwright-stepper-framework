@@ -28,10 +28,10 @@ What Playwright has no API for stays in one script below:
             button type — a <textarea>, or contenteditable.
     select  the control is a native <select>.
     click   the element or an ancestor is something a click means: a button,
-            link, form control, summary, a label with a control, any
-            interactive ARIA role the accessibility fallback offers, or an
-            element with an onclick handler or a pointer cursor. A text match
-            inside a <button> is that button.
+            link, form control, contenteditable editor, summary, a label with
+            a control, any interactive ARIA role the accessibility fallback
+            offers, or an element with an onclick handler or a pointer cursor.
+            A text match inside a <button> is that button.
     hover   visible; anything can be hovered, a disabled tooltip trigger too.
     click_js
             a click with js_click: el.click() reaches a hidden element, so
@@ -138,6 +138,8 @@ _FIT_JS = """
     const clickable = 'button, a[href], input, select, textarea, summary, [onclick]';
     for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
       if (n.matches(clickable) || widgetRoles.includes(roleOf(n))) return true;
+      // A contenteditable editor is an implicit textbox; a click focuses it.
+      if (n.isContentEditable) return true;
       // A label is clickable for the control it activates; an orphan one (for=
       // naming nothing) activates nothing and the click would report it acted.
       if (n.tagName === 'LABEL' && n.control) return true;

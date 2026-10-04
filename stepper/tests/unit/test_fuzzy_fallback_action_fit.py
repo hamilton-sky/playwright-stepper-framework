@@ -515,3 +515,8 @@ def test_role_is_read_as_a_fallback_list_for_the_click_shape():
     assert "widgetRoles.includes(roleOf(n))" in js
     assert "toLowerCase().split" not in js
 
+
+
+def test_a_contenteditable_editor_is_a_click_target():
+    """<div contenteditable aria-label="Notes"> is an implicit textbox a click focuses."""
+    assert "if (n.isContentEditable) return true;" in action_fit._FIT_JS
