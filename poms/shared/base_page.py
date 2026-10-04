@@ -103,7 +103,10 @@ class BasePage:
                     )
                 try:
                     el = result.locator.first
-                    await el.scroll_into_view_if_needed(timeout=5_000)
+                    # A js_click may target a display:none element on purpose; it
+                    # has no box to scroll to, and el.click() needs none.
+                    if not (action == "click" and kwargs.get("js_click")):
+                        await el.scroll_into_view_if_needed(timeout=5_000)
                     if action == "fill":
                         if self._behaviour:
                             await asyncio.sleep(self._behaviour.jitter(50))

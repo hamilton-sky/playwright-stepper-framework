@@ -461,3 +461,29 @@ def test_visible_means_a_non_empty_box_as_playwright_reads_it():
     js = action_fit._FIT_JS
     assert "!box.width || !box.height" in js
     assert js.index("!box.width") < js.index("el = label.control")
+
+
+
+async def test_a_page_object_js_click_does_not_scroll_first():
+    """
+    A display:none target has no box: scroll_into_view_if_needed() times out
+    and the JS click never runs. _resolve_and_click already skipped it.
+    """
+    from poms.shared.base_page import BasePage
+    from poms.shared.locator import Locator
+
+    el = MagicMock()
+    el.scroll_into_view_if_needed = AsyncMock(side_effect=TimeoutError("no box"))
+    el.evaluate = AsyncMock()
+    resolver = MagicMock()
+    resolver.resolve = AsyncMock(return_value=MagicMock(
+        found=True, confidence=0.95, method="css", locator=MagicMock(first=el)))
+    page = BasePage.__new__(BasePage)
+    page._resolver, page._page, page._behaviour = resolver, MagicMock(), None
+    page._driver = MagicMock()
+
+    acted = await page._interact(Locator(css=".menu", description="d"), "click", js_click=True)
+
+    assert acted is True
+    el.scroll_into_view_if_needed.assert_not_awaited()
+    el.evaluate.assert_awaited_once()
