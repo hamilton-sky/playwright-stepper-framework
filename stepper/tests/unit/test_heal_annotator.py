@@ -222,3 +222,33 @@ async def test_without_pillow_it_no_ops_instead_of_raising(tmp_path, monkeypatch
 
     assert await HealAnnotator.capture(page, {"css": ".x"}, 1, "healed", tmp_path) is None
     assert page.screenshot.await_count == 0, "it should bail before taking a screenshot"
+
+
+# ── It must not stall a step ──────────────────────────────────────────────────
+
+async def test_the_wait_for_the_element_is_bounded(tmp_path):
+    """
+    A healed Login click navigates away, so the element it clicked is gone by
+    the time the picture is taken. bounding_box() then waited out Playwright's
+    30s default — the entire cost of the heal, for a screenshot that was
+    skipped anyway. Found timing the SauceDemo heal workflow in CI.
+    """
+    from stepper.engine.healer import annotator
+
+    page = _page(bbox={"x": 1, "y": 1, "width": 5, "height": 5})
+    locator = page.locator.return_value
+
+    await HealAnnotator.capture(page, {"css": ".x"}, 1, "healed", tmp_path)
+
+    locator.bounding_box.assert_awaited_once_with(timeout=annotator._BBOX_TIMEOUT_MS)
+    assert annotator._BBOX_TIMEOUT_MS <= 5_000, "a diagnostic picture must not cost seconds"
+
+
+async def test_an_element_that_is_gone_means_no_annotation_not_a_stall(tmp_path):
+    page = _page()
+    page.locator.return_value.bounding_box = AsyncMock(
+        side_effect=TimeoutError("Locator.bounding_box: Timeout exceeded"))
+
+    assert await HealAnnotator.capture(page, {"css": ".x"}, 1, "healed", tmp_path) is None
+    assert page.screenshot.await_count == 0
+
