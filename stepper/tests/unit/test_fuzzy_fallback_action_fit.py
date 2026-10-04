@@ -533,3 +533,156 @@ def test_a_label_of_a_disabled_control_with_its_own_handler_is_kept():
     """<label for="off" onclick="openHelp()">: the handler still runs."""
     js = action_fit._FIT_JS
     assert "handled = n.matches('[onclick]') || typeof n.onclick === 'function';" in js
+
+
+# ── several matches of one selector ───────────────────────────────────────────
+#
+# {"text": "Login"} on <h1>Login</h1><button>Login</button> matches both. Narrowing
+# by similarity to the description cannot tell them apart, so the pick was the
+# first in the document: a heading to click, a hidden duplicate, a disabled or
+# read-only twin. The action now breaks ties — after the description has ranked
+# the matches, never before and never as a veto: the cfg named every one of
+# these, and an element that is hidden *now* may be the one the step means.
+
+def _multi_match_resolver(*candidates):
+    strategy = MagicMock(priority=60)
+    strategy.name = "text"
+    strategy.collect = AsyncMock(return_value=list(candidates))
+    r = ElementResolver([strategy])
+    # Every candidate scores the same, as it does when they share their text.
+    r._semantic = MagicMock(score=lambda q, d: 0.95)
+    r._describe_locator = AsyncMock(return_value="Login")
+    return r
+
+
+async def test_several_matches_prefer_the_one_that_can_take_the_action():
+    heading, button = _candidate(fits=False), _candidate(fits=True)
+    r = _multi_match_resolver(heading, button)
+
+    result = await r.resolve(MagicMock(), {"text": "Login"}, "Login", action="click")
+
+    assert result.found is True
+    assert result.locator is button
+
+
+async def test_without_an_action_the_first_match_is_still_chosen():
+    """Callers that do not say what they will do keep the old behaviour."""
+    heading, button = _candidate(fits=False), _candidate(fits=True)
+    r = _multi_match_resolver(heading, button)
+
+    result = await r.resolve(MagicMock(), {"text": "Login"}, "Login")
+
+    assert result.locator is heading
+    heading.evaluate.assert_not_awaited()
+
+
+async def test_when_no_match_can_take_the_action_the_list_is_left_alone():
+    """
+    Never a new not-found: the cfg named these, and the fit check cannot see an
+    addEventListener handler. The old choice stands.
+    """
+    first, second = _candidate(fits=False), _candidate(fits=False)
+    r = _multi_match_resolver(first, second)
+
+    result = await r.resolve(MagicMock(), {"text": "Open"}, "Open", action="click")
+
+    assert result.found is True
+    assert result.locator is first
+
+
+async def test_when_every_match_fits_nothing_changes():
+    first, second = _candidate(fits=True), _candidate(fits=True)
+    r = _multi_match_resolver(first, second)
+
+    result = await r.resolve(MagicMock(), {"text": "Save"}, "Save", action="click")
+
+    assert result.locator is first
+
+
+async def test_a_single_match_is_never_filtered():
+    """The cfg named exactly one element; whether it suits the action is the cfg's problem."""
+    only = _candidate(fits=False)
+    strategy = MagicMock(priority=60)
+    strategy.name = "text"
+    strategy.collect = AsyncMock(return_value=[only])
+    r = ElementResolver([strategy])
+
+    result = await r.resolve(MagicMock(), {"text": "Login"}, "Login", action="click")
+
+    assert result.locator is only
+    only.evaluate.assert_not_awaited()
+
+
+async def test_strict_resolution_still_takes_the_first_of_several():
+    """Assertions pass no action and stay strict; this change does not touch them."""
+    first, second = _candidate(fits=False), _candidate(fits=True)
+    r = _multi_match_resolver(first, second)
+
+    result = await r.resolve(MagicMock(), {"text": "Login"}, "Login", strict=True)
+
+    assert result.locator is first
+
+
+async def test_the_description_outranks_fit():
+    """
+    The step names the confirm button, which is hidden right now. A lower-scored
+    visible element must not displace it: fit only breaks ties.
+    """
+    named, other = _candidate(fits=False), _candidate(fits=True)
+    r = _multi_match_resolver(named, other)
+    scores = {id(named): 0.95, id(other): 0.60}
+    texts = {id(named): "Confirm order", id(other): "Cancel"}
+    r._describe_locator = AsyncMock(side_effect=lambda loc: texts[id(loc)])
+    r._semantic = MagicMock(score=lambda q, d: 0.95 if d == "Confirm order" else 0.60)
+
+    result = await r.resolve(MagicMock(), {"text": "x"}, "Confirm order", action="click")
+
+    assert result.locator is named
+    assert scores  # documents the intended ranking
+
+
+async def test_tied_matches_put_the_one_that_fits_first():
+    first, second, third = (_candidate(fits=False), _candidate(fits=True),
+                            _candidate(fits=True))
+    r = _multi_match_resolver(first, second, third)
+
+    result = await r.resolve(MagicMock(), {"text": "Login"}, "Login", action="click")
+
+    assert result.locator is second
+
+
+async def test_without_a_description_a_fitting_match_is_preferred():
+    heading, button = _candidate(fits=False), _candidate(fits=True)
+    r = _multi_match_resolver(heading, button)
+
+    result = await r.resolve(MagicMock(), {"text": "Login"}, "", action="click")
+
+    assert result.locator is button
+
+
+async def test_the_ai_picker_is_not_offered_a_tied_match_that_cannot_take_the_action():
+    """
+    The picker accepts any index it is given and sees only the shared text, so a
+    provider answering "2" must not be able to land on the heading.
+    """
+    heading, button = _candidate(fits=False), _candidate(fits=True)
+    r = _multi_match_resolver(heading, button)
+    r._ai_pick_resolver = MagicMock(pick=AsyncMock(return_value=(1, 0.9)))
+
+    result = await r.resolve(MagicMock(), {"text": "Login"}, "Login", action="click")
+
+    assert result.locator is button
+    assert r._ai_pick_resolver.pick.await_count <= 1
+    if r._ai_pick_resolver.pick.await_count:
+        assert r._ai_pick_resolver.pick.await_args.kwargs["n_candidates"] == 1
+
+
+async def test_when_no_tied_match_fits_the_ai_picker_still_sees_them_all():
+    first, second = _candidate(fits=False), _candidate(fits=False)
+    r = _multi_match_resolver(first, second)
+    r._ai_pick_resolver = MagicMock(pick=AsyncMock(return_value=(1, 0.9)))
+
+    result = await r.resolve(MagicMock(), {"text": "Open"}, "Open", action="click")
+
+    assert r._ai_pick_resolver.pick.await_args.kwargs["n_candidates"] == 2
+    assert result.locator is second
