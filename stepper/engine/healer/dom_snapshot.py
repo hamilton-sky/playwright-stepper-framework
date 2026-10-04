@@ -313,7 +313,7 @@ class DOMSnapshotCascade:
                 )
             return cls._candidates_payload(high, "embed_candidates")
 
-        winner = cls._clear_winner(step.action, query, minilm_ranked)
+        winner = cls._clear_winner(step.action, minilm_ranked, reranked)
         if winner is not None:
             return DomPayload(
                 strategy_used="embed_direct",
@@ -430,8 +430,8 @@ class DOMSnapshotCascade:
     def _clear_winner(
         cls,
         action: str,
-        query: str,
         minilm_ranked: list[tuple[dict, float]],
+        reranked: list[tuple[dict, float]],
     ) -> dict | None:
         """
         The element to heal to without an AI call, or None.
@@ -463,7 +463,8 @@ class DOMSnapshotCascade:
             # 1e-9: the margin is inclusive, and 0.70 - 0.45 is 0.2499999… in floats.
             if best_score < _LOW_THRESHOLD or best_score - runner_up < _MARGIN - 1e-9:
                 return None
-        reranked = _CrossEncoderReranker.instance().rerank(query, minilm_ranked[:_TOP_N])
+        # `reranked` is capture()'s cross-encoder pass over this same MiniLM
+        # top-N — reused, not run a second time.
         if not reranked or reranked[0][0] is not best:
             return None
         logger.info(

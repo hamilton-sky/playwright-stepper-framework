@@ -510,6 +510,29 @@ async def test_the_cross_encoder_can_veto_the_winner(fixed_scores, monkeypatch):
     assert payload.strategy_used != "embed_direct"
 
 
+async def test_the_cross_encoder_runs_once_per_heal(fixed_scores, monkeypatch):
+    """The veto reuses capture()'s re-rank; the model is not run a second time."""
+    fixed_scores({"Username": 0.79, "Password": 0.30})
+    calls = []
+
+    def rerank(q, top):
+        calls.append(q)
+        return top
+
+    monkeypatch.setattr(
+        ds._CrossEncoderReranker, "instance",
+        classmethod(lambda cls: SimpleNamespace(rerank=rerank)),
+    )
+
+    payload = await DOMSnapshotCascade.capture(
+        _page(_login_form()[:2], scoped_html="<form></form>"),
+        _step(action="fill", description="type the username"),
+    )
+
+    assert payload.strategy_used == "embed_direct"
+    assert len(calls) == 1
+
+
 async def test_an_action_the_rule_does_not_model_is_unaffected(fixed_scores):
     fixed_scores({"Username": 0.79, "Password": 0.20})
 
