@@ -16,16 +16,20 @@ So the fallbacks now drop a candidate the action cannot take. The rules follow
 what Playwright itself will accept — they reject the impossible, not the merely
 unusual:
 
-    fill    an editable text field: a native text-like <input> or <textarea>
-            that is not readOnly, or a contenteditable element that is not
-            aria-readonly (on a role that supports it, as Playwright reads it). Not hidden, not disabled. A <label> counts as the
-            control it labels, as it does for Playwright.
-    select  a native <select> (or its <label>), not hidden, not disabled —
-            select_option() drives nothing else.
-    click   not hidden, not disabled, and the element or an ancestor is
-            something a click means: a button, link, form control, summary,
-            label, an ARIA widget role, or an element with an onclick handler
-            or a pointer cursor. A text match inside a <button> is that button.
+    fill    a field fill() accepts: a native <input> of a type it can set
+            (not checkbox, radio, file, hidden or a button type) or a
+            <textarea>, not readOnly; or a contenteditable element not
+            aria-readonly (on a role that supports it, as Playwright reads it).
+    select  a native <select>.
+    click   the element or an ancestor is something a click means: a button,
+            link, form control, summary, label, an ARIA widget role, or an
+            element with an onclick handler or a pointer cursor. A text match
+            inside a <button> is that button.
+
+    fill, select and click also need the element visible and not disabled —
+    by a disabled control anywhere above it, or aria-disabled. For fill and
+    select, anything inside a <label> is first retargeted to the control that
+    label names, as Playwright does, and that control is what is checked.
     hover   not hidden. Anything can be hovered; a tooltip trigger can be
             disabled.
 
@@ -46,18 +50,30 @@ MODELLED_ACTIONS = frozenset({"fill", "select", "click", "hover"})
 # returns the verdict so the Python side holds no copy of it to drift.
 _FIT_JS = """
 (el, action) => {
-  // fill() and select_option() retarget a <label> to the control it labels —
-  // so it is the control whose visibility and state matter, not the label's.
-  if ((action === 'fill' || action === 'select') && el.tagName === 'LABEL' && el.control) {
-    el = el.control;
-  }
+  // Playwright's own order: visibility is read on the element it was handed,
+  // then fill() and select_option() retarget anything that is not itself a
+  // control through its nearest <label> — a <span> inside
+  // <label><span>Username</span><input></label> fills the input — and the
+  // enabled and editable checks read that control. (Checked in a real browser:
+  // a visible label for a hidden input fills; a hidden label never does.)
   if (typeof el.checkVisibility === 'function'
         ? !el.checkVisibility({visibilityProperty: true})
         : !(el.offsetWidth || el.offsetHeight || el.getClientRects().length)) {
     return false;
   }
+  if ((action === 'fill' || action === 'select')
+      && !['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName) && !el.isContentEditable) {
+    const label = el.closest('label');
+    if (label && label.control) el = label.control;
+  }
   if (action === 'hover') return true;
-  const disabled = el.matches(':disabled') || el.closest('[aria-disabled="true"]') !== null;
+  // A disabled control anywhere above the match disables it too: a text match
+  // inside <button disabled> is that button, and the browser swallows the click.
+  // (Not fieldset: its descendant controls match :disabled themselves, and a
+  // link inside one stays live.)
+  const disabled = el.closest(
+    'button:disabled, input:disabled, select:disabled, textarea:disabled, '
+    + 'option:disabled, optgroup:disabled, [aria-disabled="true"]') !== null;
   if (disabled) return false;
   const tag = el.tagName;
   if (action === 'select') return tag === 'SELECT';
@@ -65,8 +81,9 @@ _FIT_JS = """
     if (tag === 'TEXTAREA') return !el.readOnly;
     if (tag === 'INPUT') {
       const type = (el.getAttribute('type') || 'text').toLowerCase();
+      // The types fill() itself refuses; color, range and the date family it sets.
       const notText = ['submit', 'button', 'reset', 'image', 'checkbox', 'radio',
-                       'hidden', 'file', 'range', 'color'];
+                       'hidden', 'file'];
       return !notText.includes(type) && !el.readOnly;
     }
     // Playwright honours aria-readonly only on a role that supports it.
@@ -85,9 +102,7 @@ _FIT_JS = """
       + '[role="checkbox"], [role="radio"], [role="switch"], [role="option"], '
       + '[role="treeitem"], [role="combobox"]';
     for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
-      // A text match inside <button disabled> is that disabled button: the
-      // browser swallows the click, and the step would report it landed.
-      if (n.matches(clickable)) return !n.matches(':disabled');
+      if (n.matches(clickable)) return true;
       if (getComputedStyle(n).cursor === 'pointer') return true;
     }
     return false;

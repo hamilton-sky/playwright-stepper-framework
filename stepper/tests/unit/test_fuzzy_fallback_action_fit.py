@@ -282,15 +282,35 @@ async def test_the_visual_fallback_pick_is_kept_when_it_fits():
     assert result.locator is button
 
 
-def test_a_label_is_retargeted_before_its_visibility_is_read():
+def test_visibility_is_read_before_the_label_retarget_as_playwright_does():
     """
-    Checked in a real browser: a visible <label> for a hidden input is refused
-    for a fill, and a hidden <label> for a visible input is accepted.
+    Checked against Playwright's own fill() in a real browser: a visible
+    <label> for a hidden input fills, and a hidden <label> for a visible input
+    does not — visibility is read on the element handed in, enabledness and
+    editability on the control it is retargeted to.
     """
     js = action_fit._FIT_JS
-    assert js.index("el = el.control") < js.index("checkVisibility")
+    assert js.index("checkVisibility") < js.index("el = label.control")
 
 
-def test_a_disabled_clickable_ancestor_is_refused():
-    """A text match inside <button disabled> is that disabled button."""
-    assert "return !n.matches(':disabled')" in action_fit._FIT_JS
+def test_anything_inside_a_label_is_retargeted():
+    """<label><span>Username</span><input></label>: the span fills the input."""
+    assert "el.closest('label')" in action_fit._FIT_JS
+
+
+def test_a_disabled_control_above_the_match_refuses_it():
+    """
+    <button disabled style="cursor:pointer"><span>Login</span></button> — the
+    inherited pointer cursor must not get the span past the disabled button.
+    """
+    js = action_fit._FIT_JS
+    assert "button:disabled" in js
+    assert js.index("button:disabled") < js.index("cursor === 'pointer'")
+
+
+def test_fill_accepts_the_input_types_playwright_sets():
+    """color, range and the date family are filled by value; only these are refused."""
+    js = action_fit._FIT_JS
+    assert "'color'" not in js and "'range'" not in js
+    for refused in ("'checkbox'", "'radio'", "'file'", "'hidden'", "'submit'"):
+        assert refused in js
