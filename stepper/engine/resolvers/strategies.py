@@ -397,7 +397,12 @@ class DescriptionFallbackResolver:
         if not snapshot:
             return []
 
-        nodes = self._flatten_snapshot(snapshot, target=self.TOP_K * 10)
+        # The node cap bounds the scoring on a large page, but a cap taken before
+        # the fit check could fill up with nodes the action rejects — 30 links
+        # ahead of the one textbox a fill wants. With a check, walk it all.
+        nodes = self._flatten_snapshot(
+            snapshot, target=None if keep is not None else self.TOP_K * 10
+        )
         if not nodes:
             return []
 

@@ -428,3 +428,25 @@ async def test_the_accessibility_fit_check_runs_before_the_top_k_cut():
     )
 
     assert [c[0] for c in shortlist] == [locs["Username"]]
+
+
+
+async def test_a_fit_check_walks_past_the_node_cap():
+    """30 links ahead of the textbox a fill wants: the cap must not cut it off."""
+    from stepper.engine.resolvers.strategies import DescriptionFallbackResolver
+
+    nodes = [{"role": "link", "name": f"Help {i}"} for i in range(40)]
+    nodes.append({"role": "textbox", "name": "Username"})
+    locs = {n["name"]: _candidate(fits=n["role"] == "textbox") for n in nodes}
+
+    fb = DescriptionFallbackResolver.__new__(DescriptionFallbackResolver)
+    fb._semantic = MagicMock(score=lambda q, d: 0.9)
+    fb._node_to_locator = AsyncMock(side_effect=lambda page, n: locs[n["name"]])
+    page = MagicMock()
+    page.accessibility.snapshot = AsyncMock(return_value={"role": "root", "children": nodes})
+
+    shortlist = await fb.find_candidates(
+        page, "Type the username", keep=lambda loc: action_fit.fits(loc, "fill")
+    )
+
+    assert [c[0] for c in shortlist] == [locs["Username"]]
