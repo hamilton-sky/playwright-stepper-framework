@@ -352,7 +352,11 @@ class ElementResolver:
             top = shortlist[0][2]
             tied = [x for x in shortlist if top - x[2] <= _TIE_BREAK_WINDOW]
             if len(tied) > 1:
-                ordered = await self._fitting_first(tied, action, key=lambda x: x[0])
+                # Exclusive: the AI picker accepts any index it is offered, and it
+                # sees only text the tied matches share, so a match that cannot
+                # take the action is not offered while one that can is.
+                ordered = await self._fitting_first(
+                    tied, action, key=lambda x: x[0], exclusive=True)
                 shortlist = ordered + shortlist[len(tied):]
 
         if len(shortlist) == 1:
@@ -366,8 +370,13 @@ class ElementResolver:
         return await self._ai_pick(shortlist, step_description, method)
 
     @staticmethod
-    async def _fitting_first(items: list, action: str, key=lambda x: x) -> list:
-        """`items` with the ones that can take `action` first; order otherwise kept."""
+    async def _fitting_first(items: list, action: str, key=lambda x: x,
+                             exclusive: bool = False) -> list:
+        """
+        `items` with the ones that can take `action` first; order otherwise kept.
+        With `exclusive`, the ones that cannot are dropped — but only when at
+        least one can, so the list is never emptied.
+        """
         flags = [await fits(key(i), action) for i in items]
         fitting = [i for i, f in zip(items, flags) if f]
         if not fitting or len(fitting) == len(items):
@@ -376,6 +385,8 @@ class ElementResolver:
             f"[semantic] {len(items) - len(fitting)} of {len(items)} tied matches "
             f"cannot take a {action} — preferring the rest"
         )
+        if exclusive:
+            return fitting
         return fitting + [i for i, f in zip(items, flags) if not f]
 
     # ── AI Pick ───────────────────────────────────────────────────────────────

@@ -128,7 +128,9 @@ disabled or read-only twin. Now the description ranks them as before, and only
 matches *tied* on that score are ordered by whether they can take the action.
 It is a tie-break, never a veto and never ahead of the description: an element
 hidden right now may be the one the step names, and when none can take the
-action (see the `addEventListener` limit below) the order is left as it was. The
+action (see the `addEventListener` limit below) the order is left as it was.
+When some tied matches fit and some do not, the AI picker is offered only the
+fitting ones: it accepts any index and sees only the text they share. The
 description-driven fallbacks (keyword-fuzzy, accessibility-semantic) drop any
 candidate that cannot take the action, using
 `stepper/engine/resolvers/action_fit.py`. Whether a candidate is visible,

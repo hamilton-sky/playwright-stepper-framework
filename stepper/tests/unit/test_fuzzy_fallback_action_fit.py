@@ -658,3 +658,31 @@ async def test_without_a_description_a_fitting_match_is_preferred():
     result = await r.resolve(MagicMock(), {"text": "Login"}, "", action="click")
 
     assert result.locator is button
+
+
+async def test_the_ai_picker_is_not_offered_a_tied_match_that_cannot_take_the_action():
+    """
+    The picker accepts any index it is given and sees only the shared text, so a
+    provider answering "2" must not be able to land on the heading.
+    """
+    heading, button = _candidate(fits=False), _candidate(fits=True)
+    r = _multi_match_resolver(heading, button)
+    r._ai_pick_resolver = MagicMock(pick=AsyncMock(return_value=(1, 0.9)))
+
+    result = await r.resolve(MagicMock(), {"text": "Login"}, "Login", action="click")
+
+    assert result.locator is button
+    assert r._ai_pick_resolver.pick.await_count <= 1
+    if r._ai_pick_resolver.pick.await_count:
+        assert r._ai_pick_resolver.pick.await_args.kwargs["n_candidates"] == 1
+
+
+async def test_when_no_tied_match_fits_the_ai_picker_still_sees_them_all():
+    first, second = _candidate(fits=False), _candidate(fits=False)
+    r = _multi_match_resolver(first, second)
+    r._ai_pick_resolver = MagicMock(pick=AsyncMock(return_value=(1, 0.9)))
+
+    result = await r.resolve(MagicMock(), {"text": "Open"}, "Open", action="click")
+
+    assert r._ai_pick_resolver.pick.await_args.kwargs["n_candidates"] == 2
+    assert result.locator is second
