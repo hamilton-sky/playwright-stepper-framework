@@ -420,7 +420,7 @@ domain and are handed no session at all.
 |---|---|
 | `navigate` | Go to a URL |
 | `click` | Click an element via the resolver cascade |
-| `fill` | Type into an input |
+| `fill` | Type into an input. Nothing else: `extra.press_enter: true` to submit with Enter |
 | `hover` | Hover (triggers CSS `:hover` menus) |
 | `select` | Choose from a `<select>` by label, index or value |
 | `keyboard_press` | Press a key or chord |
