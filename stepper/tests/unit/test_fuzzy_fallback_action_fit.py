@@ -500,3 +500,17 @@ def test_a_forced_click_never_accepts_a_native_disabled_control():
     js = action_fit._FIT_JS
     assert "if (nativeDisabled) return false;" in js
     assert "if (!forced && el.closest('[aria-disabled=\"true\"]')" in js
+
+
+
+def test_role_is_read_as_a_fallback_list():
+    """
+    Checked against Playwright's get_by_role on a real page: role="unknown
+    button" is a button, role="switch checkbox" a switch, role="presentation
+    button" presentation, and role="BUTTON" nothing.
+    """
+    js = action_fit._FIT_JS
+    assert ".split(/\\s+/)" in js and ".find(t => ARIA.has(t))" in js
+    assert "widgetRoles.includes(roleOf(n))" in js
+    assert "roRoles.includes(roleOf(el))" in js
+    assert "toLowerCase().split" not in js

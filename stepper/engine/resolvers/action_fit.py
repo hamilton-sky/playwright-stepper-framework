@@ -76,6 +76,25 @@ _WIDGET_ROLES = sorted(DescriptionFallbackResolver.INTERACTIVE_ROLES)
 # returns the verdict so the Python side holds no copy of it to drift.
 _FIT_JS = """
 (el, [action, widgetRoles]) => {
+  // role is a space-separated fallback list; the first token the browser
+  // recognises is the element's role — role="unknown button" is a button,
+  // role="switch checkbox" a switch. Read it the same way everywhere below.
+  const ARIA = new Set(['alert', 'alertdialog', 'application', 'article', 'banner',
+    'blockquote', 'button', 'caption', 'cell', 'checkbox', 'code', 'columnheader',
+    'combobox', 'complementary', 'contentinfo', 'definition', 'deletion', 'dialog',
+    'directory', 'document', 'emphasis', 'feed', 'figure', 'form', 'generic', 'grid',
+    'gridcell', 'group', 'heading', 'img', 'insertion', 'link', 'list', 'listbox',
+    'listitem', 'log', 'main', 'mark', 'marquee', 'math', 'menu', 'menubar',
+    'menuitem', 'menuitemcheckbox', 'menuitemradio', 'meter', 'navigation', 'none',
+    'note', 'option', 'paragraph', 'presentation', 'progressbar', 'radio',
+    'radiogroup', 'region', 'row', 'rowgroup', 'rowheader', 'scrollbar', 'search',
+    'searchbox', 'separator', 'slider', 'spinbutton', 'status', 'strong',
+    'subscript', 'superscript', 'switch', 'tab', 'table', 'tablist', 'tabpanel',
+    'term', 'textbox', 'time', 'timer', 'toolbar', 'tooltip', 'tree', 'treegrid',
+    'treeitem']);
+  // Case-sensitive, as Playwright's get_by_role reads it: role="BUTTON" is none.
+  const roleOf = n => (n.getAttribute('role') || '').split(/\s+/)
+    .find(t => ARIA.has(t)) || '';
   // Playwright's own order: visibility is read on the element it was handed,
   // then fill() and select_option() retarget anything that is not itself a
   // control through its nearest <label> — a <span> inside
@@ -140,17 +159,15 @@ _FIT_JS = """
                      'switch', 'menuitemcheckbox', 'menuitemradio', 'columnheader',
                      'rowheader', 'treegrid'];
     const ro = el.getAttribute('aria-readonly') === 'true'
-               && roRoles.includes((el.getAttribute('role') || '').toLowerCase());
+               && roRoles.includes(roleOf(el));
     return el.isContentEditable && !ro;
   }
   if (action === 'click' || forced) {
     // widgetRoles is DescriptionFallbackResolver.INTERACTIVE_ROLES, passed in
     // so the roles the fallback offers and the roles a click accepts are one list.
-    const clickable = ['button', 'a[href]', 'input', 'select', 'textarea', 'summary',
-                       'label', '[onclick]']
-      .concat(widgetRoles.map(r => `[role="${r}"]`)).join(', ');
+    const clickable = 'button, a[href], input, select, textarea, summary, label, [onclick]';
     for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
-      if (n.matches(clickable)) return true;
+      if (n.matches(clickable) || widgetRoles.includes(roleOf(n))) return true;
       // el.onclick = handler sets the property, not the attribute [onclick].
       if (typeof n.onclick === 'function') return true;
       if (getComputedStyle(n).cursor === 'pointer') return true;
