@@ -263,9 +263,22 @@ class SemanticResolver(ResolverStrategy):
     priority = 80
     name = "semantic"
 
+    # Class-level defaults so an instance whose __init__ was skipped (tests do
+    # that) still has a consistent "not loaded yet" state.
+    _loaded = False
+    _model = None
+    _use_embeddings = False
+
     def __init__(self):
-        self._model = None
-        self._use_embeddings = False
+        # Nothing is loaded here. Every run builds an ElementResolver up front,
+        # and importing sentence-transformers pulls in torch: ~3 s warm and
+        # ~25 s cold, paid even by runs that never resolve an element (every
+        # mac_* step, every db step). The model loads on the first score().
+        self._loaded = False
+
+    def _load(self) -> None:
+        """Import sentence-transformers and load the model, once."""
+        self._loaded = True
         try:
             from sentence_transformers import SentenceTransformer
             import numpy as np
@@ -300,6 +313,8 @@ class SemanticResolver(ResolverStrategy):
         if not query or not text:
             return 0.0
 
+        if not self._loaded:
+            self._load()
         if self._use_embeddings:
             return self._cosine_score(query, text)
         return self._jaccard_score(query, text)
