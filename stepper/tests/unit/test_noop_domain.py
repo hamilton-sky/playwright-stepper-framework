@@ -67,6 +67,30 @@ def test_a_noop_run_never_imports_playwright():
     assert leaked == "PLAYWRIGHT:", f"a browser-free run imported Playwright: {leaked}"
 
 
+def test_a_noop_run_never_loads_the_embedding_model():
+    """
+    Every run builds an ElementResolver, and that used to import
+    sentence-transformers (and torch with it) on the spot: ~3 s warm, ~25 s
+    cold, for runs that never resolve an element. It loads on first use now.
+    """
+    script = textwrap.dedent(f"""
+        import asyncio, sys
+        sys.path.insert(0, {str(_REPO_ROOT)!r})
+        from stepper.main import run
+
+        asyncio.run(run(workflow_path={str(_WORKFLOW)!r}))
+        leaked = sorted(m for m in ("sentence_transformers", "torch") if m in sys.modules)
+        print("MODEL:" + ",".join(leaked))
+    """)
+
+    proc = subprocess.run([sys.executable, "-c", script],
+                          capture_output=True, text=True, timeout=300)
+
+    assert proc.returncode == 0, f"the noop run failed:\n{proc.stderr[-3000:]}"
+    leaked = next(l for l in proc.stdout.splitlines() if l.startswith("MODEL:"))
+    assert leaked == "MODEL:", f"a run with nothing to resolve loaded the model: {leaked}"
+
+
 def test_validate_opens_nothing_and_imports_nothing():
     """The same claim for the path that was already meant to be browser-free."""
     script = textwrap.dedent(f"""

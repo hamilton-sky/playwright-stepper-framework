@@ -41,13 +41,13 @@ def mock_page():
 @pytest.fixture(autouse=True)
 def no_embedding_model_loads(monkeypatch):
     """
-    Fail loudly if a unit test constructs a real SemanticResolver.
+    Fail loudly if a unit test makes a real SemanticResolver load its model.
 
-    Its __init__ loads an embedding model. That used to be free: an 87MB copy
-    was committed to the repo, so it came off local disk. The weights are a
-    download cache now, so the same constructor reaches for the hub — turning a
-    3-second offline suite into a ~90MB download, or a failure on a machine with
-    no network.
+    The first score() calls SemanticResolver._load(), which loads an embedding
+    model. That used to be free: an 87MB copy was committed to the repo, so it
+    came off local disk. The weights are a download cache now, so loading them
+    reaches for the hub — turning a 3-second offline suite into a ~90MB
+    download, or a failure on a machine with no network.
 
     Nothing in the unit suite legitimately needs the real thing; tests that care
     about scoring inject a stub. The guard is here rather than in each test file
@@ -59,7 +59,7 @@ def no_embedding_model_loads(monkeypatch):
     """
     def _refuse(self, *a, **kw):
         raise AssertionError(
-            "A unit test constructed a real SemanticResolver, which loads an "
+            "A unit test scored with a real SemanticResolver, which loads an "
             "embedding model and would download ~90MB.\n"
             "Inject a stub instead, e.g.:\n"
             "    monkeypatch.setattr(DOMSnapshotCascade, '_semantic', "
@@ -67,5 +67,5 @@ def no_embedding_model_loads(monkeypatch):
         )
 
     monkeypatch.setattr(
-        "stepper.engine.resolvers.strategies.SemanticResolver.__init__", _refuse
+        "stepper.engine.resolvers.strategies.SemanticResolver._load", _refuse
     )
