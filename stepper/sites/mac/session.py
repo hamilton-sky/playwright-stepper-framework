@@ -27,15 +27,21 @@ mac step with "osascript: command not found".
 
 from __future__ import annotations
 
+import json
 import logging
 import platform
 import shutil
 import subprocess
 import sys
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT_S = 30
+
+# Accessibility lookups (window frames, elements by label, the front app) run
+# in this child, like the mouse events below. See _ax_child.py.
+_AX_CHILD = Path(__file__).with_name("_ax_child.py")
 
 
 # Child script for mac_click and mac_drag: posts real mouse events through
@@ -184,6 +190,29 @@ class MacHandle:
             err = (proc.stderr or proc.stdout or "").strip()
             return False, f"{args[0]} exited {proc.returncode}: {err}"
         return True, (proc.stdout or "").strip()
+
+    def run_ax(self, args: list[str], timeout_s: float = DEFAULT_TIMEOUT_S,
+               ) -> tuple[bool, dict | str]:
+        """Run an _ax_child.py mode. (True, result dict) or (False, error text)."""
+        try:
+            proc = subprocess.run(
+                [sys.executable, str(_AX_CHILD), *args],
+                capture_output=True, text=True, timeout=timeout_s,
+            )
+        except FileNotFoundError:
+            return False, "python interpreter not found for the accessibility lookup"
+        except subprocess.TimeoutExpired:
+            return False, f"accessibility lookup timed out after {timeout_s}s"
+        if proc.returncode != 0:
+            err = (proc.stderr or proc.stdout or "").strip()
+            return False, f"accessibility lookup exited {proc.returncode}: {err}"
+        try:
+            result = json.loads(proc.stdout.strip().splitlines()[-1])
+        except (ValueError, IndexError):
+            return False, f"accessibility lookup printed no result: {proc.stdout[-300:]!r}"
+        if not result.get("ok"):
+            return False, result.get("error") or "accessibility lookup failed"
+        return True, result
 
     def run_screenshot(self, path: str,
                        timeout_s: float = DEFAULT_TIMEOUT_S,
