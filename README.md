@@ -152,12 +152,12 @@ and it is the axis that makes this more than a Playwright wrapper.
   │  knows nothing about browsers, pages or selectors          │
   └──────────────────────────┬─────────────────────────────────┘
                              │ per step: which domain?
-        ┌────────────────────┼────────────────────┐
-        ▼                    ▼                    ▼
-   ┌─────────┐         ┌───────────┐        ┌──────────┐
-   │   web   │         │    db     │        │   noop   │
-   │  Page   │         │Connection │        │  object  │
-   └─────────┘         └───────────┘        └──────────┘
+        ┌───────────────┬────┴──────────┬───────────────┐
+        ▼               ▼               ▼               ▼
+   ┌─────────┐    ┌───────────┐    ┌──────────┐    ┌──────────┐
+   │   web   │    │    db     │    │   mac    │    │   noop   │
+   │  Page   │    │Connection │    │ the Mac  │    │  object  │
+   └─────────┘    └───────────┘    └──────────┘    └──────────┘
 ```
 
 ### One workflow, two domains
@@ -276,6 +276,11 @@ flowchart TD
 Priority order mirrors Playwright's own locator guidance: `role` survives redesigns,
 `xpath` encodes the whole DOM shape and breaks first. Details and the confidence
 constants: [.claude/rules/resolver-cascade.md](.claude/rules/resolver-cascade.md).
+
+Phase 2's model loads on the first semantic comparison, not when the resolver is
+built, so a run that never resolves an element (mac, db, noop) never imports
+sentence-transformers or torch. That is the difference between ~0.4 s and ~4 s
+(warm) or ~25 s (cold) for a one-step non-browser workflow.
 
 The cascade is optional. A POM built with `resolver=None` falls back to its `Locator`'s
 CSS candidates and works with no AI, no keys and no network — see
@@ -463,6 +468,24 @@ unresolved one fails the step rather than being written as a literal.
 
 The db domain also registers one `when` condition, `db_row_exists`. Full tables
 for every site and domain: [.claude/rules/site-actions.md](.claude/rules/site-actions.md).
+
+The **mac** domain (`stepper/sites/mac/`) drives the logged-in user's Mac. `page`
+is a handle whose methods run AppleScript, CoreGraphics mouse events and
+Accessibility lookups in subprocesses:
+
+| Action | Description |
+|---|---|
+| `mac_run_script` | Run AppleScript; refuses without `extra.confirm: true` |
+| `mac_click` | Real mouse click at screen points, at an offset in an app's window (`relative: "window"`), or on an element found by its label (`element: "Learn more"`) |
+| `mac_drag` | Press, drag, release; screen or window-relative |
+| `mac_keypress` | One key with optional modifiers: `"cmd+t"`, `"pagedown"` |
+| `mac_type` | Type text into the front app |
+| `mac_screenshot` | All displays to a PNG |
+
+Every mac action except the screenshot takes `extra.expect`
+(`window_title_contains`, `front_app`, `element`), so a step passes only once
+its effect is visible. Aiming, keys, permissions and how Chrome's page tree is
+reached: [docs/mac-domain.md](docs/mac-domain.md).
 
 ---
 
@@ -832,7 +855,7 @@ drift.
 ## Testing
 
 ```bash
-# Unit — no browser, no network, no credentials. 1263 tests, ~20s.
+# Unit — no browser, no network, no credentials. 1590 tests, ~15s.
 pytest stepper/tests/unit/
 
 # Stepper integration — real browser
@@ -907,6 +930,7 @@ Patterns used and where: [.claude/rules/design-patterns.md](.claude/rules/design
 | How the engine stopped depending on the browser | [docs/universal-runner-plan.md](docs/universal-runner-plan.md) |
 | Why the framework is shaped this way — the original design narrative | [docs/exam-submission.md](docs/exam-submission.md) |
 | How one run came to hold several domains | [docs/mixed-domain-plan.md](docs/mixed-domain-plan.md) |
+| The mac domain: actions, aiming, `expect`, permissions | [docs/mac-domain.md](docs/mac-domain.md) |
 
 ---
 
