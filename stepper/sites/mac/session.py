@@ -2,16 +2,19 @@
 sites/mac/session.py — The mac domain's SessionAdapter, and its preflight.
 
 There is nothing to open: most mac actions shell out to `osascript` per step
-(`mac_drag` drives CoreGraphics directly, `mac_screenshot` shells out to
-`screencapture` — see below), so the session is a thin handle object rather
+(`mac_click` and `mac_drag` drive CoreGraphics directly, `mac_screenshot`
+shells out to `screencapture` — see below), so the session is a thin handle object rather
 than a connection. It exists because the Domain contract requires a session
 factory, and because it gives actions one shared place to run subprocesses
 (timeout, error mapping) instead of each action reimplementing them.
 
-`mac_drag` is the exception to the osascript rule: System Events has no drag
-verb, so the gesture is synthesized with CoreGraphics mouse events posted from
-a small stdlib-only Python child (ctypes — no pyobjc, no extra installs). Like
-the other UI primitives it needs Accessibility permission.
+`mac_click` and `mac_drag` are the exception to the osascript rule. System
+Events has no drag verb, and its `click at` is not a mouse click: it asks the
+accessibility element under the point to press itself, which most web content
+(Chrome, Electron) ignores while osascript still reports success. So both are
+real CoreGraphics mouse events posted from a small stdlib-only Python child
+(ctypes — no pyobjc, no extra installs). Like the other UI primitives they
+need Accessibility permission.
 
 `mac_screenshot` shells out to `screencapture` (all displays, PNG). It needs
 Screen Recording permission — the first run makes macOS show the consent
@@ -35,27 +38,33 @@ logger = logging.getLogger(__name__)
 DEFAULT_TIMEOUT_S = 30
 
 
-# Child script for mac_drag: posts a press-drag-release gesture through
+# Child script for mac_click and mac_drag: posts real mouse events through
 # CoreGraphics using only ctypes (stdlib). It runs under the same interpreter
 # as the workflow (sys.executable), so there is nothing extra to install.
-# Args: x1 y1 x2 y2 [steps].
-_DRAG_PY = """
+# Args: click x y | drag x1 y1 x2 y2 [steps].
+_MOUSE_PY = """
 import ctypes
 import sys
 import time
 
 
 def _fail(msg):
-    sys.stderr.write("drag: " + msg + "\\n")
+    sys.stderr.write("mouse: " + msg + "\\n")
     sys.exit(4)
 
 
 try:
-    x1, y1, x2, y2 = (int(sys.argv[1]), int(sys.argv[2]),
-                      int(sys.argv[3]), int(sys.argv[4]))
-    steps = max(1, int(sys.argv[5])) if len(sys.argv) > 5 else 20
+    mode = sys.argv[1]
+    if mode == "click":
+        x1, y1 = int(sys.argv[2]), int(sys.argv[3])
+    elif mode == "drag":
+        x1, y1, x2, y2 = (int(sys.argv[2]), int(sys.argv[3]),
+                          int(sys.argv[4]), int(sys.argv[5]))
+        steps = max(1, int(sys.argv[6])) if len(sys.argv) > 6 else 20
+    else:
+        raise ValueError(mode)
 except (IndexError, ValueError):
-    _fail("usage: drag x1 y1 x2 y2 [steps]")
+    _fail("usage: click x y | drag x1 y1 x2 y2 [steps]")
 
 try:
     cg = ctypes.CDLL(
@@ -83,6 +92,8 @@ cg.CGEventCreateMouseEvent.restype = ctypes.c_void_p
 cg.CGEventCreateMouseEvent.argtypes = [
     ctypes.c_void_p, ctypes.c_int, CGPoint, ctypes.c_int]
 cg.CGEventPost.argtypes = [ctypes.c_int, ctypes.c_void_p]
+cg.CGEventSetIntegerValueField.argtypes = [
+    ctypes.c_void_p, ctypes.c_int, ctypes.c_int64]
 cg.CFRelease.argtypes = [ctypes.c_void_p]
 
 kCGHIDEventTap = 0
@@ -91,19 +102,28 @@ kCGEventLeftMouseDown = 1
 kCGEventLeftMouseUp = 2
 kCGEventMouseMoved = 5
 kCGEventLeftMouseDragged = 6
+kCGMouseEventClickState = 1
 
 
-def _post(etype, x, y):
+def _post(etype, x, y, clicks=0):
     ev = cg.CGEventCreateMouseEvent(
         None, etype, CGPoint(x, y), kCGMouseButtonLeft)
     if not ev:
         _fail("CGEventCreateMouseEvent returned NULL")
+    if clicks:
+        cg.CGEventSetIntegerValueField(ev, kCGMouseEventClickState, clicks)
     cg.CGEventPost(kCGHIDEventTap, ev)
     cg.CFRelease(ev)
 
 
 _post(kCGEventMouseMoved, x1, y1)
 time.sleep(0.05)
+if mode == "click":
+    _post(kCGEventLeftMouseDown, x1, y1, clicks=1)
+    time.sleep(0.05)
+    _post(kCGEventLeftMouseUp, x1, y1, clicks=1)
+    print("clicked (%d,%d)" % (x1, y1))
+    sys.exit(0)
 _post(kCGEventLeftMouseDown, x1, y1)
 time.sleep(0.15)
 for i in range(1, steps + 1):
@@ -140,22 +160,29 @@ class MacHandle:
             return False, f"osascript exited {proc.returncode}: {err}"
         return True, (proc.stdout or "").strip()
 
+    def run_click(self, x: int, y: int, timeout_s: float = DEFAULT_TIMEOUT_S,
+                  ) -> tuple[bool, str]:
+        return self._run_mouse(["click", str(x), str(y)], timeout_s)
+
     def run_drag(self, x1: int, y1: int, x2: int, y2: int,
                  steps: int = 20, timeout_s: float = DEFAULT_TIMEOUT_S,
                  ) -> tuple[bool, str]:
+        return self._run_mouse(
+            ["drag", str(x1), str(y1), str(x2), str(y2), str(steps)], timeout_s)
+
+    def _run_mouse(self, args: list[str], timeout_s: float) -> tuple[bool, str]:
         try:
             proc = subprocess.run(
-                [sys.executable, "-c", _DRAG_PY,
-                 str(x1), str(y1), str(x2), str(y2), str(steps)],
+                [sys.executable, "-c", _MOUSE_PY, *args],
                 capture_output=True, text=True, timeout=timeout_s,
             )
         except FileNotFoundError:
-            return False, "python interpreter not found for mac_drag"
+            return False, f"python interpreter not found for mac_{args[0]}"
         except subprocess.TimeoutExpired:
-            return False, f"drag timed out after {timeout_s}s"
+            return False, f"{args[0]} timed out after {timeout_s}s"
         if proc.returncode != 0:
             err = (proc.stderr or proc.stdout or "").strip()
-            return False, f"drag exited {proc.returncode}: {err}"
+            return False, f"{args[0]} exited {proc.returncode}: {err}"
         return True, (proc.stdout or "").strip()
 
     def run_screenshot(self, path: str,

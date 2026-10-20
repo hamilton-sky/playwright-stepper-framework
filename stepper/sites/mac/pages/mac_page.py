@@ -97,7 +97,11 @@ class MacPage(PageModule):
             return StepResult(step=step, status="passed", output={"output": out})
 
     class MacClickAction(ActionStrategy):
-        """Click at screen coordinates. Needs Accessibility permission."""
+        """Click at screen coordinates. Needs Accessibility permission.
+
+        A real CoreGraphics mouse click (MacHandle.run_click), not System
+        Events `click at`, which web content ignores while reporting success.
+        """
 
         action_name = "mac_click"
         read_only   = False
@@ -112,9 +116,7 @@ class MacPage(PageModule):
                 return StepResult(step=step, status="failed",
                                   error="mac_click: extra.x and extra.y are "
                                         "required integers")
-            script = (f'tell application "System Events" '
-                      f'to click at {{{x}, {y}}}')
-            ok, out = page.run_script(script, _timeout_s(step))
+            ok, out = page.run_click(x, y, _timeout_s(step))
             if not ok:
                 return StepResult(step=step, status="failed",
                                   error=f"mac_click: {out}")
@@ -215,8 +217,11 @@ class MacPage(PageModule):
                                       "x2": x2, "y2": y2})
 
     class MacScreenshotAction(ActionStrategy):
-        """Capture all displays to a PNG file. Needs Screen Recording
-        permission — the first run makes macOS show the consent dialog."""
+        """Capture all displays to a PNG file.
+
+        Needs Screen Recording permission — the first run makes macOS show
+        the consent dialog.
+        """
 
         action_name = "mac_screenshot"
         read_only   = False

@@ -8,10 +8,6 @@ sites/_noop/ proved.
 The Domain is a module-level constant for the reason sites/_noop/register.py
 explains: register() runs more than once per process, and register_domain
 refuses to replace a domain with a *different* object under the same name.
-
-Copy this folder (sites/mac/) into the checkout's stepper/sites/ directory —
-it is scaffolded outside the repo so the repo itself stays untouched until the
-user decides where it lives.
 """
 
 from __future__ import annotations
