@@ -34,6 +34,8 @@ playwright-stepper-framework/
 │       │                             #   fixtures/ serves it locally, no network
 │       ├── pathly/                   # Pathly Studio — Electron, attached over CDP
 │       ├── db/                       # Non-browser domain — SQLite, stdlib only
+│       ├── mac/                      # Non-browser domain — the user's Mac: AppleScript,
+│       │                             #   real mouse events, Accessibility (docs/mac-domain.md)
 │       └── */workflows/*.json        # Declarative workflow definitions
 │
 ├── examples/

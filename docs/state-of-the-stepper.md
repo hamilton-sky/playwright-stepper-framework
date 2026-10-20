@@ -14,9 +14,9 @@ before touching anything.
 
 Stepper runs declarative JSON workflows. A workflow names *actions*; the engine
 resolves each action, hands it whatever session its **domain** needs, and
-records the result. For three of the four registered domains that session is a
-Playwright `Page`; for the `db` domain it is a `sqlite3.Connection`; for `noop`
-it is a bare object. The engine itself knows none of that — it knows steps,
+records the result. For the `web` domain that session is a Playwright `Page`;
+for `db` it is a `sqlite3.Connection`; for `mac` it is a handle onto the
+logged-in user's Mac; for `noop` it is a bare object. The engine itself knows none of that — it knows steps,
 results, retries, healing and observers. Selectors live only in POMs, flow
 control lives only in workflow JSON, and the layer between them is one action,
 one job.
@@ -89,10 +89,10 @@ file lists the domains** — adding one edits nothing outside its own directory.
 
 | | |
 |---|---|
-| Domains | `web`, `db`, `noop` |
-| Actions | 68 registered names across seven sites — 67 instances, because `ol_collect_books` is an alias bound to the same object as `collect_items`. The 68 include `load_test_data` and `run_workflow`, which declare no domain and are handed no session |
+| Domains | `web`, `db`, `mac`, `noop` |
+| Actions | 73 registered names across eight sites — 67 instances, because `ol_collect_books` is an alias bound to the same object as `collect_items`. The 68 include `load_test_data` and `run_workflow`, which declare no domain and are handed no session |
 | Workflows | 30, all valid (`python stepper/main.py validate`). 12 need no account, no API key and no network; two of those run bare, the other ten want one line of local setup — a loopback fixture server, a `--vars` page path, or two fixture credentials that are nobody's account |
-| Unit tests | 1263, no browser / network / credentials, ~20s |
+| Unit tests | 1590, no browser / network / credentials, ~15s |
 | Source | ~18,600 lines under `stepper/` + `poms/`, excluding tests |
 | Tests | ~14,700 lines |
 
@@ -233,6 +233,21 @@ because someone needed them. M6 found three bugs within an hour of a genuinely
 different domain existing, each having survived several tickets because `noop`
 was too weak to exercise it. A domain written by someone else — AWS, HTTP, a
 message queue — would likely find more.
+
+`mac` is the first domain written because someone needed it, and the first
+day of real use bore that out: its click "passed" while reaching nothing, and
+every run paid ~25 s to import a model it never used. Both are fixed; see
+[mac-domain.md](mac-domain.md).
+
+### 5. The mac domain acts on a real computer
+
+`mac` is the first domain whose session is not something the run opened: its
+clicks and keys land wherever the user's screen says. Its guards are in the
+domain (`confirm` for scripts, `expect` to verify, window raising before
+window or element clicks). The policy around it, meaning who may send which
+workflow and when it may take the mouse, lives in stepper-mailbox, not here.
+The domain's own reference, with its known gaps (no scroll wheel, element lookup
+only as good as the app's accessibility tree): [mac-domain.md](mac-domain.md).
 
 ---
 

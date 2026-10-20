@@ -171,6 +171,33 @@ plan uses (`main.plan_conditions`), not just the primary domain's.
 Its settings come from `stepper/sites/db/config.py` — `STEPPER_DB_PATH`, and
 `STEPPER_DB_TIMEOUT`. Deliberately not under `poms/`: a database has no pages.
 
+### mac (`stepper/sites/mac/pages/`) — the logged-in user's Mac
+
+The domain stepper-mailbox runs its jobs through. Like db and noop, its actions
+subclass `ActionStrategy` directly: there are no selectors and no POMs. `page`
+is the `MacHandle` the session hands over, and every OS call goes through it
+(`run_script`, `run_click`, `run_drag`, `run_ax`, `run_screenshot`). Each runs
+in a subprocess with a timeout and returns `(ok, output)`, never raising.
+
+| Action name | Glue file | POM(s) used |
+|---|---|---|
+| `mac_run_script` | `mac_page.py` | none |
+| `mac_click` | `mac_page.py` | none |
+| `mac_type` | `mac_page.py` | none |
+| `mac_keypress` | `mac_page.py` | none |
+| `mac_drag` | `mac_page.py` | none |
+| `mac_screenshot` | `mac_page.py` | none |
+
+**`mac_run_script` requires `extra.confirm: true`.** A workflow file is code
+execution on the Mac, and only its author can confirm that. New actions stay on
+the narrow side of that line: anything that runs caller-chosen code goes behind
+`confirm`.
+
+Clicks are real CoreGraphics events (`_MOUSE_PY` in `session.py`), never
+System Events `click at`, which web content ignores while exiting 0. Window and
+element aiming and `extra.expect` use the Accessibility child,
+`stepper/sites/mac/_ax_child.py`. Reference: [docs/mac-domain.md](../../docs/mac-domain.md).
+
 ### noop (`stepper/sites/_noop/pages/`) — not a real site
 
 A domain with no browser, no resolver and no POMs. It exists to keep the engine
