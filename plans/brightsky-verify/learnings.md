@@ -10,3 +10,4 @@ ticket number. Never edit or delete another line. Keep it short; a human prunes 
 - (04) To unit-test a provider request, monkeypatch `anthropic.Anthropic` (it is imported inside `ClaudeProvider.chat`); see `_stub_anthropic` in test_ai_providers.py.
 - (10) This host sets `no_proxy`/`NO_PROXY` and `https_proxy`; a proxy-bypass test must delenv both no_proxy spellings and set upper and lower case proxies, or it passes trivially.
 - (12) `StepResult.heal_attempts` is only set when a step heals; a failed heal leaves it 0. To fake the DOM capture in a runner test, `monkeypatch.setattr(DOMSnapshotCascade, "capture", async_callable)` (a plain callable on the class is not bound) and patch `VisualBridge.check` to return None.
+- (05) A StepHook whose `before` raises is logged and the step runs anyway (`_run_step`), so a gate hook must return a failed StepResult itself rather than raise.

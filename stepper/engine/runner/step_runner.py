@@ -208,6 +208,17 @@ class StepRunner:
         self._observers.append(observer)
         return self
 
+    def add_hook(self, domain: str | None, hook: StepHook) -> "StepRunner":
+        """
+        Attach one more hook for `domain`, after any it was built with.
+
+        Replacement runners in the heal loop are built with hooks=self._hooks,
+        so they run it too: a heal whose replacement misses a hook's check is
+        not a heal.
+        """
+        self._hooks.setdefault(domain, []).append(hook)
+        return self
+
     async def run(self, steps: list[StepConfig],
                   context: ExecutionContext | None = None) -> tuple[list[StepResult], ExecutionContext]:
         ctx = context if context is not None else ExecutionContext()

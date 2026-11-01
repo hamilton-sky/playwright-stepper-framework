@@ -1,7 +1,7 @@
 # Add the per-step outcome checks and the conversion to BrightSky step outcomes
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: 03, 12
 Test first: yes
 Level: 3
@@ -97,3 +97,76 @@ prints passed
   `stepper/engine/resolvers/shadow_runner.py` (an existing resolver wrapper)
 
 ## Answer
+
+- **Built**: `stepper/brightsky/executor.py` (new: `ExecutedStep`, `StepExecutor`,
+  `RecordingResolver`, `ExpectationHook`, `executed_steps`), `StepRunner.add_hook` in
+  `stepper/engine/runner/step_runner.py` (next to `add_observer`), tests in
+  `stepper/tests/unit/test_brightsky_executor.py` (new) and
+  `stepper/tests/unit/test_step_hooks.py` (4 new tests). Work started at 7d099e7. The
+  test-only commit 8a3f654 failed for the right reasons: the executor file failed at
+  collection with `ModuleNotFoundError: No module named 'stepper.brightsky.executor'`, and
+  4 hook tests failed with `AttributeError` (no `add_hook`).
+- **Proof**:
+  - `python3 -m pytest stepper/tests/unit/test_brightsky_executor.py -q` printed `46 passed`.
+    The hook tests use fake pages with `timeout_s=0.05, poll_s=0.01`. They cover:
+    `url_change` met, not met, and met after polling;
+    `value_set` with `input_value()` raising, on a non-input, equal, and different;
+    `element_appears` and `element_gone` met and not met; a `count()` that raises counts
+    as not met; each locator kind (role+name `exact=True`, text `exact=True`, css,
+    `xpath=`, `#id`); a failed step is left unchecked; a healed step that misses its outcome
+    is failed. For `before`: a match, a `startsWith` mismatch (with the exact error text),
+    the `includes` mode, and no start_url. In a real `StepRunner` run, a `start_url`
+    mismatch fails the step with `action.calls == 0`, and an unmet outcome fails it after
+    the action ran.
+  - RecordingResolver: the first method is kept (`role`, not the later `css`), a first miss
+    stays `None`, each description is recorded separately, the context description is used
+    when none is passed, `strict` True/False and `action` reach the inner resolver
+    unchanged (exact args and kwargs), the inner result is returned unchanged, and other
+    attributes are delegated.
+  - executed_steps: all passed; healed with `healed_element` (tier `cheap`, kept), healed
+    without it (`healer`, None), and a healed_element with no tier (`healer`); failed and
+    unmatched (step 3 unchecked); outcome-failed `matched=True, tier="css"`; a failed
+    navigate gives step 1 failed and 2 and 3 unchecked; no results gives all unchecked;
+    the last result per number wins; an unmapped description is ignored. Also checked:
+    ExecutedStep is frozen, a stub class passes `isinstance(..., StepExecutor)`, and
+    ExpectationHook is a StepHook.
+  - `python3 -m pytest stepper/tests/unit/test_step_hooks.py -q` printed `21 passed`. New:
+    add_hook returns the runner; hooks added for `web` and `other` each run only for their
+    own domain's step; an added hook runs after the constructor's hooks; and in a heal
+    (non-strict, capture and VisualBridge monkeypatched), the log reads `before, before,
+    after(passed), after(healed)`, so the replacement runner ran the added hook.
+  - `python3 -m pytest stepper/tests/unit/ -q` printed `2067 passed`, exit 0. Build
+    (`compileall`) exited 0. Lint (`main.py validate`) exited 0. Acceptance has 82 passed and
+    79 failed; the failures are in the verify/CLI/executor tests of tickets 06, 07 and 13.
+    `test_add_hook_attaches_a_hook_for_its_domain_and_returns_the_runner` passes.
+- **Decisions**:
+  - The RecordingResolver key is `step_description or` the last context description.
+    Actions pass `step.description`, and the runner sets the same value as context.
+  - When `before` cannot read `session.url`, it returns a failed result
+    (`not on the expected page: cannot read the page URL (...)`) instead of raising. The
+    runner logs a hook that raises and then runs the step anyway, which would bypass the
+    gate.
+  - A `url_change` with no `urlContains` counts as met. The ticket only defines the
+    urlContains check, and mapping stores None when there is none.
+  - The outcome locator takes the first present key, in the order the ticket lists:
+    role+name, text, css, xpath, id. An element cfg with none of these raises inside the
+    check, so the outcome is not met.
+  - The `<what>` text in the outcome error: `URL contains '/search'`,
+    `element {...} appears`, `element {...} is gone`, `element {...} has value 'X'`.
+  - `ExecutedStep`'s `healed`, `healed_element` and `error` default to False, None and "".
+    Callers can still pass all seven fields by keyword (bs_harness does).
+  - `StepExecutor` is `runtime_checkable`.
+  - A healed step's `error` is the result's error, which is normally "".
+- **Shortcuts taken**: a `url_change` with no `urlContains` is not compared with the URL
+  from before the step. This stops working if BrightSky stores bare `url_change` outcomes
+  that mean "the URL must change". Recording the URL in `before` and comparing in `after`
+  would fix it.
+- **For later tickets**:
+  - Ticket 13: attach the hook with `runner.add_hook("web", ExpectationHook(mapped.expectations))`
+    and pass `RecordingResolver(resolver)` as the runner's resolver. Then call
+    `executed_steps(mapped, results, recording.tiers)`.
+  - Replacement runners also run `before`, with the replacement step's description. A heal
+    that changes the description has no expectation in the replacement runner, but the
+    outer runner's `after` still checks the healed result.
+  - A passed step whose first resolve missed (a retry found it) reports `tier=None`,
+    `matched=True`.

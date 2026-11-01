@@ -163,3 +163,4 @@ Ticket lines are added here as tickets resolve.
   live page. The first manual run (ticket 09) will show it, and a heal there is expected
   and useful.
 - 12 — strict heal order opt-in via `StepRunner(strict_heal_order=)` / `RunConfig.strict_heal_order` (default False, no CLI flag); `AiHealer.tier_for` routes embed_direct → cheap (`heal`) ×2 → big (`heal_big`); first free try uncounted, `skip_direct=True` once embed_direct tried; `healed_element["tier"]` (incl. `heal_cache`) only in strict mode.
+- 05 — `executor.py`: `RecordingResolver.tiers` = first resolve's method per description (miss → None, never overwritten); `ExpectationHook` (start_url gate in `before`, polled outcome in `after`, raise = not met, unreadable URL = failed, bare `url_change` = met); `executed_steps` takes the last result per number, healed → failed/`healer` default; `StepRunner.add_hook` appends via setdefault.
