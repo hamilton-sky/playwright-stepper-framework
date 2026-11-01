@@ -13,3 +13,4 @@ ticket number. Never edit or delete another line. Keep it short; a human prunes 
 - (05) A StepHook whose `before` raises is logged and the step runs anyway (`_run_step`), so a gate hook must return a failed StepResult itself rather than raise.
 - Never use `# type: ignore` in tests, even for a frozen-dataclass assignment: the floor guard flags it as a suppression; use `setattr(obj, "field", value)` instead. (05)
 - (05) Playwright's `timeout=0` means no timeout, so a computed "time left" timeout must be clamped to at least 1 ms.
+- (13) To unit-test PipelineExecutor without settings or a resolver, monkeypatch `stepper.main`'s `build_settings` and `build_resolver` too, not just the four pipeline functions; it reads them off the lazily imported module.

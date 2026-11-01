@@ -16,21 +16,32 @@ A passed report auto-verifies a version, so "passed" is decided here:
   BrightSky step. A healed step is `failed`: a version only verifies when its
   stored steps work as stored.
 
-The executors that build a runner around these pieces are ticket 13.
+- `EngineExecutor` runs a mapped workflow on a real StepRunner over a page it
+  is given, launching nothing; `PipelineExecutor` runs it headless through
+  `stepper.main`'s pipeline. Both heal in the strict order with no heal cache.
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import tempfile
 import time
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
+from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 from urllib.parse import urlparse
 
 from stepper.brightsky.mapping import MappedWorkflow, StepExpectation, url_matches
+from stepper.engine.actions.factory import build_default_registry
+from stepper.engine.ai.service import AIService
+from stepper.engine.healer.ai_healer import AiHealer
 from stepper.engine.interfaces import ResolveResult, StepConfig, StepResult
+from stepper.engine.planner.schema_extractor import ActionSchemaExtractor
+from stepper.engine.reporter.reporters import CompositeReporter
 from stepper.engine.runner.hooks import StepHook
+from stepper.engine.runner.step_runner import StepRunner
 
 logger = logging.getLogger(__name__)
 
@@ -254,3 +265,92 @@ def executed_steps(mapped: MappedWorkflow, results: list[StepResult],
             out.append(ExecutedStep(number, "failed", method is not None, method,
                                     error=result.error))
     return out
+
+
+# ── The executors ─────────────────────────────────────────────────────────────
+
+#: One free embed_direct try, then cheap, cheap, big (ticket 12's strict order).
+_MAX_HEAL_ATTEMPTS = 3
+
+
+class EngineExecutor:
+    """
+    Runs mapped steps on a real StepRunner over `page`, launching nothing.
+
+    The real action registry, a real AiHealer over `ai_service` (a real
+    AIService when None, which makes no request without keys), the strict
+    heal order, no heal cache, and a reporter that writes nothing. `page` and
+    `resolver` are whatever the caller gives; a test double is fine.
+    """
+
+    def __init__(self, page: Any, resolver: Any, *, ai_service: Any = None,
+                 max_heal_attempts: int = _MAX_HEAL_ATTEMPTS) -> None:
+        self._page = page
+        self._resolver = resolver
+        self._ai_service = ai_service if ai_service is not None else AIService()
+        self._max_heal_attempts = max_heal_attempts
+
+    async def execute(self, mapped: MappedWorkflow, *,
+                      headless: bool) -> list[ExecutedStep]:
+        # `headless` is unused: nothing is launched here.
+        registry = build_default_registry()
+        resolver = RecordingResolver(self._resolver)
+        runner = StepRunner(
+            page=self._page,
+            action_factory=registry,
+            resolver=resolver,
+            reporter=CompositeReporter([]),
+            healer=AiHealer(ActionSchemaExtractor.extract(registry),
+                            ai_service=self._ai_service),
+            max_heal_attempts=self._max_heal_attempts,
+            cache=None,
+            strict_heal_order=True,
+        )
+        runner.add_hook("web", ExpectationHook(mapped.expectations))
+        results, _ = await runner.run(mapped.steps)
+        return executed_steps(mapped, results, resolver.tiers)
+
+
+class PipelineExecutor:
+    """
+    Runs mapped steps through `stepper.main`'s pipeline, in a real browser.
+
+    The steps are written to a temporary workflow file, removed afterwards.
+    A DomainNotReadyError (no browser here) propagates before anything opens.
+    """
+
+    async def execute(self, mapped: MappedWorkflow, *,
+                      headless: bool) -> list[ExecutedStep]:
+        # Imported here so that importing this module launches and loads nothing.
+        from stepper import main as pipeline
+
+        with tempfile.TemporaryDirectory(prefix="brightsky-verify-") as tmp:
+            workflow_path = Path(tmp) / "workflow.json"
+            workflow_path.write_text(json.dumps({
+                "name": "brightsky verify",
+                "domain": "web",
+                "steps": [asdict(step) for step in mapped.steps],
+            }), encoding="utf-8")
+
+            cfg = pipeline.RunConfig(
+                workflow_path=str(workflow_path),
+                headless=headless,
+                max_heal_attempts=_MAX_HEAL_ATTEMPTS,
+                use_heal_cache=False,
+                strict_heal_order=True,
+            )
+            resolver = RecordingResolver(
+                pipeline.build_resolver(pipeline.build_settings(cfg).use_visual_ai))
+            prepared = pipeline.prepare_run(cfg, resolver=resolver)
+
+            # The same order as `stepper.main.run()`: closing the sessions is
+            # what shuts the browser, so it happens even when the run raised.
+            sessions = pipeline.build_session_set(prepared)
+            try:
+                built = await pipeline.build_pipeline(prepared, sessions)
+                built.runner.add_hook("web", ExpectationHook(mapped.expectations))
+                results = await pipeline.execute_pipeline(built)
+            finally:
+                await sessions.close_all()
+
+        return executed_steps(mapped, results, resolver.tiers)

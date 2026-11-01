@@ -1,7 +1,7 @@
 # Run a mapped workflow: the browser-free EngineExecutor and the real PipelineExecutor
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: 05
 Test first: yes
 Level: 3
@@ -84,3 +84,30 @@ prints passed
   `stepper/tests/unit/test_ai_healer.py` `_ForbiddenAI` for the doubles
 
 ## Answer
+
+Work started at commit `68be132d6bc8b7fe8f66421d84ec62f574a440eb`. Test-first commit `ead77b4`.
+
+- **Built**:
+  - `stepper/brightsky/executor.py`: `EngineExecutor(page, resolver, *, ai_service=None, max_heal_attempts=3)` and `PipelineExecutor()`, both after `executed_steps`. The module docstring's "ticket 13" line now describes them.
+  - `stepper/tests/unit/test_brightsky_executors.py` (new, 14 tests).
+- **Proof** (fresh runs after the last edit):
+  - Test-first commit `ead77b4`: the file failed at collection with `ImportError: cannot import name 'EngineExecutor' from 'stepper.brightsky.executor'`.
+  - `python3 -m pytest stepper/tests/unit/test_brightsky_executors.py -q`: `14 passed`.
+    - Bullet 1: the resolver double's first call is `{"role": "link", "name": "The Hobbit"}` with `strict is True`. Its second call is the found cfg `{"role": "link", "name": "The Hobbit (1937)", "css": "a.result"}`. The step comes back `outcome == "failed"`, `healed is True`, `tier == "embed_direct"`, `matched is False`. The AI double records `[]`, capture is called once, and the locator is clicked once.
+    - Bullet 2: with an embed_direct cfg that misses and AI replies that miss, the AI records `["heal", "heal", "heal_big"]`. Capture's `skip_direct` values are `[False, True, True, True]`, and the step is `failed` with `healed is False`. With `ai_service=None` and `ANTHROPIC_API_KEY`, `GROQ_API_KEY` and `GEMINI_API_KEY` delenv'd, a payload with no cfg gives a `failed` step, and the stored target is the only resolve. The log shows `all providers failed` for `heal`, `heal`, `heal_big`.
+    - Bullet 3: with `stepper.main`'s `prepare_run`, `build_session_set`, `build_pipeline` and `execute_pipeline` patched (plus `build_settings` and `build_resolver`, so no settings or resolver are built), the RunConfig has `max_heal_attempts == 3`, `use_heal_cache is False`, `strict_heal_order is True`, and `headless is headless` (parametrized True and False). The call order is `build_resolver, prepare_run, build_session_set, build_pipeline, execute_pipeline`. The resolver passed is a `RecordingResolver`, and one `ExpectationHook` is added for `"web"`. `close_all` is awaited once on success and once when `execute_pipeline` raises (the error propagates). In both cases the workflow file and its temp dir no longer exist. The written workflow is `domain: "web"`, has a non-empty `name`, and its `steps` equal `[asdict(s) for s in mapped.steps]`.
+    - Extra tests: a passing stored target gives `passed`, `matched`, tier `css`, and no capture. A `start_url` mismatch fails the step with no resolve, which shows the hook is attached in `EngineExecutor`. A `DomainNotReadyError` from `prepare_run` propagates, with no session set built, no close, and the temp dir gone. In a fresh subprocess, `import stepper.brightsky.executor` leaves `'stepper.main' not in sys.modules`. Both classes pass `isinstance(..., StepExecutor)`.
+  - Bullet 4: `python3 -m pytest stepper/tests/unit/ -q` gave `2091 passed`. Build (`compileall`) exit 0, Lint (`main.py validate`) exit 0.
+  - Acceptance, for reference: `85 passed, 76 failed`, up from 82/79. Every remaining failure is `No module named 'stepper.brightsky.verify'` or the CLI having no `brightsky` command, which belong to tickets 06 and 07.
+- **Decisions**:
+  - The reporter that writes nothing is `CompositeReporter([])`, an existing class, rather than a new null reporter.
+  - `EngineExecutor` builds a new registry, `RecordingResolver`, `ExpectationHook` and `StepRunner` on every `execute`. One hook serves one run (ticket 05's note), and `tiers` stays per run. The `AIService` is built once, in `__init__`.
+  - `EngineExecutor` passes no `hooks=` (no CAPTCHA probe or screenshot hook), `behaviour` is left to StepRunner's default `HumanBehaviour` (about 150 ms between steps), and there is no `screenshots_dir`. Only the ExpectationHook is added, as the ticket lists.
+  - `PipelineExecutor` writes `workflow.json` inside `TemporaryDirectory(prefix="brightsky-verify-")`, with the name `"brightsky verify"`. `MappedWorkflow` has no name field. The whole run, including `close_all`, happens inside the `with`, so the directory is gone on every path.
+  - `build_resolver` and `build_settings` are read off the lazily imported `stepper.main`, the same names `prepare_run` uses, so a test can patch them in one place.
+  - `run()`'s `_tee_logs_to_run_file` and `allure_serve` are not used: the ticket's list is build_session_set → build_pipeline → add_hook → execute_pipeline → close in `finally`.
+  - `_MAX_HEAL_ATTEMPTS = 3` is one module constant shared by both executors.
+- **Shortcuts taken**: none.
+- **For later tickets**:
+  - Ticket 06: `PipelineExecutor()` takes no arguments. `EngineExecutor(page, resolver, ai_service=...)` matches `bs_harness.engine_world`. Both return `executed_steps(...)`, one per BrightSky step, so a healed step's `tier` is `healed_element["tier"]` (`embed_direct`, `cheap` or `big`), or `healer` when there is no healed_element (a visual-bridge injection).
+  - A `DomainNotReadyError` from `PipelineExecutor` propagates as `stepper.bootstrap.session.DomainNotReadyError`.
