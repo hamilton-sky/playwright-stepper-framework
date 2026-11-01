@@ -48,7 +48,8 @@ __all__ = [
 
 logger = logging.getLogger(__name__)
 
-#: Seconds each request may take.
+#: Seconds urllib waits on each socket operation (connect, each read); it is not
+#: a total deadline, so a backend that trickles bytes can hold a request longer.
 TIMEOUT = 20.0
 #: The longest backend message kept in an error.
 MAX_MESSAGE = 500
@@ -226,7 +227,7 @@ class BrightSkyClient:
         strings), else the status's reason phrase."""
         try:
             message: Any = json.loads(response.body.decode("utf-8")).get("message")
-        except (ValueError, UnicodeDecodeError, AttributeError):
+        except (ValueError, UnicodeDecodeError, AttributeError, RecursionError):
             message = None
         if isinstance(message, list) and all(isinstance(m, str) for m in message):
             message = "; ".join(message)
@@ -235,8 +236,10 @@ class BrightSkyClient:
                 message = HTTPStatus(response.status).phrase
             except ValueError:
                 message = "error"
-        # Scrub before the cut, so a token across the cut is still replaced whole.
-        return self._scrub(message)[:MAX_MESSAGE]
+        # Scrub before the cut, so a token across the cut is still replaced whole;
+        # control characters become spaces so the message cannot forge log lines.
+        message = "".join(c if c.isprintable() else " " for c in self._scrub(message))
+        return message[:MAX_MESSAGE]
 
     def _scrub(self, text: str) -> str:
         return text.replace(self._config.token, "<token>")
@@ -265,5 +268,5 @@ def _encode(payload: dict) -> bytes:
 def _json(raw: bytes | None) -> Any:
     try:
         return json.loads((raw or b"").decode("utf-8"))
-    except (ValueError, UnicodeDecodeError):
+    except (ValueError, UnicodeDecodeError, RecursionError):
         raise BrightSkyResponseError("the response body is not JSON") from None

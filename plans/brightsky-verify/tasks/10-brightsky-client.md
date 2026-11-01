@@ -1,7 +1,7 @@
 # Add the BrightSky HTTP client with its retry policy
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: 02
 Test first: yes
 Level: 3
@@ -169,6 +169,25 @@ prints passed
      [re-read-5xx | re-read-malformed]: status 503 "upstream timeout", `__cause__` set,
      one versions POST.
   Proof after the fixes: client file `54 passed`; `stepper/tests/unit/` `1938 passed`;
+  Build exit 0; Lint exit 0; `test_accept_config_client.py` `34 passed`.
+- **Review fixes** (round 2; failing tests first in 823eb2d, 4 failed for the right
+  reasons: `RecursionError` from `json.loads` x3 and the message keeping `\n`/`\x1b`;
+  then the fix):
+  1. Deep nesting: `_json` and `_message` also catch `RecursionError`. `_json` raises
+     `BrightSkyResponseError`, `_message` falls back to the reason phrase. New tests
+     `test_a_deeply_nested_body_raises_a_response_error[queue|get_workflow]` (200 with
+     `b"[" * 200000` / `b'{"a":' * 200000`) and
+     `test_a_deeply_nested_error_body_falls_back_to_the_reason_phrase` (400 with
+     `b"[" * 200000` gives `BrightSkyHttpError(400, "Bad Request")`).
+  2. Control characters: `_message` replaces every non-printable character
+     (`str.isprintable`, so also `\x85` and `\u2028`) with a space after scrubbing and
+     before the cut. New test `test_control_characters_in_a_backend_message_are_replaced`.
+  3. Timeout: took the reviewer's second option and recorded on `TIMEOUT` that it is
+     urllib's per socket operation timeout, not a total deadline. A total deadline would
+     need a watchdog thread or a hand-rolled socket loop in `UrllibTransport`; the CI
+     job timeout bounds it today. This is a shortcut: worth a deadline if the client ever
+     runs where no outer job timeout exists.
+  Proof after the fixes: client file `58 passed`; `stepper/tests/unit/` `1942 passed`;
   Build exit 0; Lint exit 0; `test_accept_config_client.py` `34 passed`.
 
 ## Review findings (round 1, pair review)
