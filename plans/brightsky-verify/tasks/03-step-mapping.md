@@ -1,7 +1,7 @@
 # Map BrightSky steps to strict stepper steps
 
 Type: task
-Status: resolved
+Status: open
 Blocked by: 02
 Test first: yes
 Level: 3
@@ -192,3 +192,40 @@ prints passed
   by kind (`//`/`(/` xpath, `#ident` id, else css), so a `placeholder` heal must become
   a css selector such as `[placeholder="Search"]`.
 
+
+## Review findings (round 1, pair review)
+
+Scope of review: ticket file plans/brightsky-verify/tasks/03-step-mapping.md read at 82d5593 (Answer empty there). END = 046a1c4 = HEAD, so no later commits were left out. I did not read the Answer. The Status hunk is open -> resolved. I reviewed /home/claude/hamilton-sky/playwright-stepper-framework/stepper/brightsky/mapping.py and /home/claude/hamilton-sky/playwright-stepper-framework/stepper/tests/unit/test_brightsky_mapping.py, plus the one-line additions to learnings.md and map.md.
+
+Done when, re-run by me: test_brightsky_mapping.py 100 passed; stepper/tests/unit/ 1860 passed. git status is clean afterwards.
+
+Inputs I probed as a hostile caller (level 3):
+- site, and expectedDomain on step 1 and on later steps: tried userinfo, port, path, IP, a numeric last label, a single label and upper case. All handled.
+- expectedUrl as the navigate path: `//evil.com/a` and `/\evil.com` both stay on the site's host, because the host is fixed before the path.
+- target role/accessibleName/selectors, both as wrong types and as blank strings.
+- expectedOutcome.kind and matchMode as wrong types.
+- Quoted fill values with ENV:, ${ENV: and leading whitespace. The engine's `_resolve_input_value` does not strip; mapping strips, so it is stricter, which is fine.
+- `{{` in every field the StepRunner templates (`url`, `input_value`, `element`, `extra`, `description`). All covered.
+
+QUALITY
+1. major /home/claude/hamilton-sky/playwright-stepper-framework/stepper/brightsky/mapping.py: `_map_step` does `mode not in MATCH_MODES` and `_outcome` does `kind not in OUTCOME_KINDS` on raw stored values without a type check. A stored `"matchMode": []` or `"expectedOutcome": {"kind": []}` / `{"kind": {}}` raises `TypeError: unhashable type` instead of `UnmappableStep`. I confirmed all three by calling `map_version`. The ticket says an unknown matchMode or outcome kind is `UnmappableStep`, and later tickets treat `UnmappableStep` as "post a failed report without running", which is a different path from "an entry that raises". So a hostile or malformed workflow can move itself off the intended path. Fix: read both through `_optional_str` (or check `isinstance(..., str)`) before the membership test, and add list/dict cases to `test_wrong_types_are_unmappable`. Today it only tries the hashable `matchMode: 1`.
+2. minor /home/claude/hamilton-sky/playwright-stepper-framework/stepper/brightsky/mapping.py: the host guard is relative to `detail.site` only, so a site like `nip.io` allows `127.0.0.1.nip.io`, and `co.uk` passes as a site (no public-suffix check). This follows the ticket as written, but the site is stored data too. Worth a note for the spec or a later allowlist.
+3. minor /home/claude/hamilton-sky/playwright-stepper-framework/stepper/brightsky/mapping.py: an empty-string `expectedDomain` on step 1 is treated as present and rejected, not as absent with a fallback to site. Use `or detail.site` if blank should count as absent.
+
+REVIEW: FAIL
+
+I reviewed ticket 03 (brightsky-verify, step mapping) over 82d5593e3d4a4c09d89c14f40d331508341e420c..046a1c43a662bd7be0654791b98bab90408b0763. That end commit is HEAD, so there are no later commits I left out. I read the ticket as it stood at the base commit and never saw `## Answer`. The ticket's Status changed from open to resolved. My commands left no files behind.
+
+SPEC
+- test_brightsky_mapping.py passes and covers every target kind and each UnmappableStep reason: MET. I ran `python3 -m pytest stepper/tests/unit/test_brightsky_mapping.py -q` and it printed "100 passed". The parametrized `test_target_kinds` covers role+name, text-only, css, xpath, `#id`, and role+name plus a selector. `test_unmappable_steps_name_their_number_and_reason` and the tests next to it cover the reasons.
+- Pilot fixture maps to navigate, fill with press_enter, then two clicks, all strict; the role-only textbox fills through `{"css": '[placeholder="Search"]'}` with no role key: MET. The fixture matches `pilot-workflows.ts`. `test_the_pilot_maps_to_navigate_fill_click_click` checks the navigate to `https://openlibrary.org/`, the fill of "The Hobbit" with `press_enter`, the two clicks, and `extra["strict"] is True` on each acting step. `test_a_textbox_without_a_name_fills_through_its_selector_alone` asserts the exact element dict.
+- Host guard rejects evil.com, openlibrary.org.evil.com, user@openlibrary.org, openlibrary.org:8080, 127.0.0.1 and openlibrary.org/.., each naming step 1; the ENV and `{{token}}` titles are refused: MET. `test_the_host_guard_refuses_a_navigate_host_off_the_site` lists all six hosts and asserts step_number == 1. `test_the_env_value_is_refused_before_anything_is_returned` and `test_a_template_in_the_title_is_refused` cover the two titles. All passed in the run above.
+- url_matches agrees with matchUrl on startsWith, includes, a valid regex and an invalid regex: MET. `test_url_matches_is_brightsky_match_url` has cases for each. I checked them against `url-match.utils.ts`, which falls back to startsWith on a bad regex.
+- All existing unit tests still pass: MET. `python3 -m pytest stepper/tests/unit/ -q` printed "1860 passed".
+- Acceptance tests for this ticket: not a failure. `plans/brightsky-verify/acceptance/test_accept_mapping.py` gave 30 passed, 7 failed. All 7 fail with `ModuleNotFoundError: No module named 'stepper.brightsky.targets'`, which is ticket 11, explicitly outside this ticket. The verify_cli failures the conductor saw belong to later tickets.
+- scope: OK. The only changes are `stepper/brightsky/mapping.py` and `stepper/tests/unit/test_brightsky_mapping.py` (both listed under Touches), plus the ticket file and one bookkeeping line each in `plans/brightsky-verify/map.md` and `plans/brightsky-verify/learnings.md`, which the flow expects with every ticket.
+- test first: OK. Commit 3a589c1 adds only the test file, which imports `stepper.brightsky.mapping`. That module did not exist then, so the test fails without the production change; the conductor also saw it fail.
+
+The ticket is already level 3, so there is no level raise.
+
+REVIEW: PASS
