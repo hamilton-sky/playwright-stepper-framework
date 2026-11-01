@@ -2,7 +2,7 @@
 
 Type: task
 Status: open
-Blocked by: 02, 03, 04, 05, 06, 07, 08, 10, 11, 12, 13, 14
+Blocked by: 02, 03, 04, 05, 06, 07, 08, 10, 11, 12, 13, 14, 15
 Test first: no
 Level: 1
 
@@ -23,14 +23,16 @@ with the output, and stop. The fix belongs in the ticket that owns that file.
    - Start bright-sky's backend from `/home/claude/bright-sky` on branch
      `claude/workflow-verify` (`docker-compose up`, or `cd backend && npm run start:dev`
      with PostgreSQL). Issue a bridge token for client `stepper` through
-     `POST /api/bridge-tokens` as admin.
+     `POST /api/bridge-tokens` as admin. learnings.md's (09) line lists what the backend
+     needs to boot on this host and how to mint the admin JWT.
    - Export `BRIGHTSKY_API_URL=http://localhost:3001` and `BRIGHTSKY_BRIDGE_TOKEN`.
    - On a host whose prebuilt chromium differs from the pinned Playwright's, also export
      `BROWSER_EXECUTABLE_PATH` (CLAUDE.md, "Run against a browser Playwright did not
      download for itself").
    - Run `python3 -m stepper brightsky verify openlibrary-find-author`. It must exit 0,
      and `GET /api/workflows/openlibrary-find-author` must then show
-     `currentVersion.status` `"verified"`.
+     `data.currentVersion.status` `"verified"` (the backend wraps every success body in
+     `{"success", "data", "timestamp"}`; ticket 15).
    - If the first run heals instead (exit 1, `-> proposed v2`), that is the loop working
      (the brief's Unsure line). v2 is now current, and with source `stepper`/`haiku` it
      needs two passing runs with distinct keys. Run the command twice more. The second of
@@ -51,8 +53,8 @@ with the output, and stop. The fix belongs in the ticket that owns that file.
   each of the five bar items.
 - `python3 -m stepper brightsky verify openlibrary-find-author` exits 0 against the
   local backend. The Answer says how many runs that took.
-- Fetching `$BRIGHTSKY_API_URL/api/workflows/openlibrary-find-author` then prints
-  `"status":"verified"` for the current version.
+- Fetching `$BRIGHTSKY_API_URL/api/workflows/openlibrary-find-author` then shows
+  `"status":"verified"` at `data.currentVersion.status`.
 
 ```check
 # The conductor runs this block before review.
@@ -61,7 +63,7 @@ prints passed
 $ python3 -m stepper brightsky verify openlibrary-find-author
 prints openlibrary-find-author
 needs a local bright-sky backend on claude/workflow-verify, BRIGHTSKY_API_URL and BRIGHTSKY_BRIDGE_TOKEN set, a chromium browser and network access to openlibrary.org
-$ python3 -c "import json, os, urllib.request as u; o = u.build_opener(u.ProxyHandler({})); d = json.load(o.open(os.environ['BRIGHTSKY_API_URL'].rstrip('/') + '/api/workflows/openlibrary-find-author')); print('status:' + d['currentVersion']['status'])"
+$ python3 -c "import json, os, urllib.request as u; o = u.build_opener(u.ProxyHandler({})); d = json.load(o.open(os.environ['BRIGHTSKY_API_URL'].rstrip('/') + '/api/workflows/openlibrary-find-author')); print('status:' + d['data']['currentVersion']['status'])"
 prints status:verified
 needs a local bright-sky backend on claude/workflow-verify with BRIGHTSKY_API_URL set, after a passing verify run
 ```
@@ -95,7 +97,7 @@ error: the verification queue must be a list
 ```
 (The token does not appear in the output.)
 
-Cause: the backend's global `TransformInterceptor` (`backend/src/main.ts`, `common/interceptors/transform.interceptor.ts`) wraps every response not marked `@SkipTransform()` as `{"success": true, "data": <body>, "timestamp": ...}`. No workflow-store controller is marked, so the queue, the workflow detail, the run report and the propose responses are all enveloped. `stepper/brightsky/client.py` (line 151, `queue must be a list`) and the readers in `models.py` parse the bare body. What the backend actually returned:
+Cause: the backend's global `TransformInterceptor` (`/home/claude/bright-sky/backend/src/main.ts`, `/home/claude/bright-sky/backend/src/common/interceptors/transform.interceptor.ts`) wraps every response not marked `@SkipTransform()` as `{"success": true, "data": <body>, "timestamp": ...}`. No workflow-store controller is marked, so the queue, the workflow detail, the run report and the propose responses are all enveloped. `stepper/brightsky/client.py` (line 151, `queue must be a list`) and the readers in `models.py` parse the bare body. What the backend actually returned:
 - `GET /api/workflows/verification-queue` → `dict ['data', 'success', 'timestamp']`, `data` a list of 1: `('openlibrary-find-author', 1)`;
 - `GET /api/workflows/openlibrary-find-author` → `data.currentVersion.status` = `unverified`.
 
