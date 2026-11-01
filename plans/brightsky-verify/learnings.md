@@ -9,3 +9,4 @@ ticket number. Never edit or delete another line. Keep it short; a human prunes 
 - (03) The acceptance mapping file also imports `stepper.brightsky.targets` (ticket 11), so 7 of its tests fail with ModuleNotFoundError until then; the rest pass.
 - (04) To unit-test a provider request, monkeypatch `anthropic.Anthropic` (it is imported inside `ClaudeProvider.chat`); see `_stub_anthropic` in test_ai_providers.py.
 - (10) This host sets `no_proxy`/`NO_PROXY` and `https_proxy`; a proxy-bypass test must delenv both no_proxy spellings and set upper and lower case proxies, or it passes trivially.
+- (12) `StepResult.heal_attempts` is only set when a step heals; a failed heal leaves it 0. To fake the DOM capture in a runner test, `monkeypatch.setattr(DOMSnapshotCascade, "capture", async_callable)` (a plain callable on the class is not bound) and patch `VisualBridge.check` to return None.

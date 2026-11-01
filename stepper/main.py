@@ -156,6 +156,9 @@ class RunConfig:
     record_video: bool = False
     variables: dict | None = None
     max_heal_attempts: int = 0
+    #: Heal each step in the strict rung order (free embed_direct, cheap twice,
+    #: big). Off for `run --heal N`; only the BrightSky executors set it.
+    strict_heal_order: bool = False
     use_heal_cache: bool = True
     shadow: bool = False
     ci: bool = False
@@ -641,6 +644,7 @@ async def build_pipeline(prepared: PreparedRun, session, observers=None) -> Pipe
         screenshots_dir=prepared.screenshots_dir,
         healer=build_healer(cfg, prepared.registry),
         max_heal_attempts=cfg.max_heal_attempts,
+        strict_heal_order=cfg.strict_heal_order,
         cache=heal_cache,
         # Every domain's hooks, keyed by domain. A step runs its own domain's
         # and no others, so the browser's screenshot hook never reaches a

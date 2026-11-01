@@ -1,7 +1,7 @@
 # Add the opt-in strict heal order: a free embed_direct try, two cheap tries, then the big model
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: 04, 14
 Test first: yes
 Level: 3
@@ -136,3 +136,50 @@ prints passed
   `stepper/tests/unit/test_ai_healer.py` `_ForbiddenAI`
 
 ## Answer
+
+Work started at commit `0747cb4a29a380291ac826303f77ba808bc73a93`. Test-first commit `adcde35`.
+
+**Built**
+- `stepper/engine/healer/interfaces.py`: `FREE_TIER = "embed_direct"`. `HealerStrategy.heal(..., tried: tuple[str, ...] = ())`, and a non-abstract `tier_for(dom, tried) -> "healer"`. The class docstring's contract describes both.
+- `stepper/engine/healer/ai_healer.py`: `AiHealer.tier_for` returns `embed_direct` when a cfg is set and `embed_direct` is not in `tried`, `big` when `tried.count("cheap") >= 2`, and `cheap` otherwise. `heal(..., tried=())` routes on it: `embed_direct` takes the zero-token fast path, `cheap` uses `task_type="heal"`, and `big` uses `task_type="heal_big"` with the same prompt and parse. The module docstring now lists the rungs.
+- `stepper/engine/runner/step_runner.py`:
+  - New keyword `StepRunner(..., strict_heal_order=False)`, stored as `_strict_heal_order` and not passed to replacement runners.
+  - With the flag off, `_run_heal_loop` takes the old branch: `capture(self._page, step)`, then `heal(...)` with no `tried`.
+  - With the flag on, the loop keeps a per-step `tried` list. Once `embed_direct` is in it, `capture` is called with `skip_direct=True`. The loop calls `tier_for(dom, tuple(tried))` and passes `tried=` to `heal`. The tier is appended to `tried` when the healer raises, when the replacement fails, or when `heal_assert` fails.
+  - The loop counts iterations that use up an attempt (`counted`) separately from `heal_attempt`. The first `FREE_TIER` iteration is not counted. An iteration that raises before the tier is known is counted.
+  - `healed_element["tier"]` holds the rung that healed, or `"heal_cache"` on a cache hit. Both are set only in strict mode.
+- `stepper/main.py`: `RunConfig.strict_heal_order: bool = False`. `build_pipeline` passes `strict_heal_order=cfg.strict_heal_order` next to `max_heal_attempts=`. No CLI flag sets it.
+- Tests:
+  - `stepper/tests/unit/test_ai_healer.py`: parametrized `tier_for` and `heal` routing over 6 rung cases, a direct-call-without-`tried` test, and the default `tier_for == "healer"` / `FREE_TIER` test.
+  - `stepper/tests/unit/test_step_runner.py`: `ElementAction`, `_TierAI` and `_FakeCapture` doubles, a `heal_world` fixture (built on `make_runner`, a real `AiHealer`, and `VisualBridge.check` patched to None), 6 strict tests, 3 default tests, and a test that the flag is off by default.
+  - `stepper/tests/unit/test_run_config.py`: `RunConfig(task=...).strict_heal_order is False`.
+
+**Proof** (fresh runs after the last edit)
+- At test-first commit `adcde35`, the tests failed for the expected reasons: `13 failed` in test_ai_healer (no `tier_for`, no `tried` keyword), `7 failed` in test_step_runner (`unexpected keyword argument 'strict_heal_order'`), and test_run_config failed on `no attribute 'strict_heal_order'`. The 3 default-order tests already passed on the old code, so they pin the old behaviour.
+- `python3 -m pytest stepper/tests/unit/test_ai_healer.py -q`: `31 passed`. The `tier_for` cases are: cfg with `()` gives `embed_direct`; cfg with `("embed_direct",)` gives `cheap`; no cfg gives `cheap`; one `cheap` gives `cheap`; two give `big`. `heal` with the same inputs asks the AI with task types `[]`, `["heal"]`, `["heal"]`, `["heal"]`, `["heal_big"]`.
+- `python3 -m pytest stepper/tests/unit/test_step_runner.py -q`: `36 passed`.
+  - Strict, embed_direct miss with every replacement failing: `task_types == ["heal","heal","heal_big"]`, every prompt contains `PAGE-CONTENT-7`, the first capture has no `skip_direct`, the other 3 captures have `skip_direct=True`, and the step ends `failed`.
+  - The same where only the third AI reply works: `healed`, `tier == "big"`, `heal_attempts == 4`.
+  - Strict with no cfg: `["heal","heal","heal_big"]`, `failed`.
+  - Strict with a cfg that works: `healed` on iteration 1, no AI call, `tier == "embed_direct"`.
+  - A `heal_big` double that raises: two `heal` calls, then `failed`.
+  - A strict cache hit: `tier == "heal_cache"`.
+  - Default with `max=2` and a cfg that misses: action elements `[orig, cfg, cfg]`, no AI call, each capture called as `(page, step)` with `{}` kwargs.
+  - Default with no cfg and `max=3`: `["heal","heal","heal"]`.
+  - A default heal has no `"tier"` key, and `test_max_heal_attempts_is_capped_at_three` passes unchanged.
+- `python3 -m pytest stepper/tests/unit/test_run_config.py -q`: `26 passed`.
+- `python3 -m pytest stepper/tests/unit/ -q`: `2017 passed`. Build (`compileall`) exit 0, Lint (`stepper/main.py validate`) exit 0.
+- Acceptance, for reference (`plans/brightsky-verify/acceptance/test_accept_heal.py`): the engine-level tests pass (strict runner, defaults, tier_for, minimal healer). 21 others fail with `ModuleNotFoundError: stepper.brightsky.executor` and 1 with no `StepRunner.add_hook`; both belong to later tickets.
+
+**Decisions**
+- On a heal failure, `StepResult.heal_attempts` stays as before: it is set only when a step heals, so a failed step still reports 0. When a step heals it reports every iteration, including the free one, so 4 for a heal on the big rung. Setting it on failure would have changed default mode.
+- In strict mode, `tier` is `None` until `tier_for` runs. A cache hit or a visual-bridge injection that breaks out of the loop never appends to `tried`. A stale cache entry falls through to the cascade in the same iteration, as it does today.
+- `AiHealer.heal` routes on `tier_for`, not on `dom.healed_cfg`. So a payload with a cfg and `tried=("embed_direct",)` goes to the AI. `skip_direct` should make that case impossible in the loop.
+- The default branch is the old capture → assert → heal sequence, unchanged, inside `if not strict:`. The strict branch duplicates the `heal(...)` call so that the default call never receives `tried=`.
+
+**Shortcuts taken**: none.
+
+**For later tickets**
+- Ticket 13: `RunConfig(strict_heal_order=True, max_heal_attempts=3)` gives the full order (free + cheap + cheap + big). With `max_heal_attempts=2`, the big rung is never reached. `healed_element["tier"]` is one of `embed_direct`, `cheap`, `big` or `heal_cache`. A visual-bridge heal (scroll_to or wait injection) sets no `healed_element` at all, so read `.get("tier")` defensively.
+- `heal_attempts` is 0 on a failed step in both modes.
+
