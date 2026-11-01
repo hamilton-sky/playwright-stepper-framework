@@ -1,7 +1,7 @@
 # Run a mapped workflow: the browser-free EngineExecutor and the real PipelineExecutor
 
 Type: task
-Status: resolved
+Status: open
 Blocked by: 05
 Test first: yes
 Level: 3
@@ -111,3 +111,37 @@ Work started at commit `68be132d6bc8b7fe8f66421d84ec62f574a440eb`. Test-first co
 - **For later tickets**:
   - Ticket 06: `PipelineExecutor()` takes no arguments. `EngineExecutor(page, resolver, ai_service=...)` matches `bs_harness.engine_world`. Both return `executed_steps(...)`, one per BrightSky step, so a healed step's `tier` is `healed_element["tier"]` (`embed_direct`, `cheap` or `big`), or `healer` when there is no healed_element (a visual-bridge injection).
   - A `DomainNotReadyError` from `PipelineExecutor` propagates as `stepper.bootstrap.session.DomainNotReadyError`.
+
+## Review findings (round 1, pair review)
+
+Scope of review: range 68be132d..a5791c96 (END equals HEAD, so no later commits are left out). I read the ticket blob at the base commit, which has an empty Answer, and the diff with the tasks folder left out. The Answer did not reach me. Both Done when commands pass when I run them: test_brightsky_executors.py gives 14 passed, and stepper/tests/unit/ gives 2091 passed. `git status` is clean. I left no files behind. My one probe ran from a stdin heredoc and wrote nothing.
+
+Inputs I probed as a hostile caller:
+- mapped.steps sent through the temp workflow.json. The round trip is safe: there is no `include` key, no variables, so no `{{}}` substitution happens, and dict_to_step_config gives back the same fields.
+- `headless`
+- `ai_service` and `max_heal_attempts`. These are constructor arguments set by the caller, as the spec says.
+- The temp dir path. The site comes out as "shared", so no storage state is written.
+- The heal model's reply and the prompt it is built from. The prompt holds the step description and element from the backend, plus the page DOM.
+
+QUALITY
+1. major stepper/brightsky/executor.py: The heal loop lets a run go off-site, which skips the host check in mapping.py. Both executors give AiHealer the action schema of the whole registry. EngineExecutor does it with `ActionSchemaExtractor.extract(build_default_registry())`. PipelineExecutor does it through `build_healer(cfg, prepared.registry)`. That registry has 22 actions, including navigate, load_test_data, screenshot (whose filename comes from extra), ensure_login and parallel. AiHealer._parse accepts any of them, and StepRunner runs the replacement steps. So whoever controls the heal prompt (the BrightSky title or target text, or the page content) can make a verify run navigate to any URL, read local JSON files, or write screenshots. I confirmed this in memory: a mapped click step plus an AI reply of `[{"action":"navigate","url":"https://evil.example/steal"}]` gave `page.goto("https://evil.example/steal")` through EngineExecutor. The verdict is still `failed`, but the off-site visit and other side effects have already happened. The ticket is level 3 precisely because these executors "decide which pages a run visits". Fix: in both executors, limit the healer schema to the mapped step's own action (or to {click, fill}), or reject any replacement step whose action differs from the failed step's. PipelineExecutor needs this too, which means a seam in build_healer or build_pipeline. The ticket text says "schema from the same registry", so if the conductor wants that wording settled, send it to the architect.
+2. minor stepper/brightsky/executor.py: In `EngineExecutor.__init__`, `ai_service if ai_service is not None else AIService()` repeats what AiHealer already does (`ai_service or AIService()`). Pass `ai_service` straight through.
+3. minor stepper/brightsky/executor.py: The site comes from the temp path through `_extract_site`. If TMPDIR contains a `sites/<name>` segment, the run would load that site's settings and could use its storage_state path. Fix: put the temp file under a fixed site-neutral path, or say in a comment that the site is always "shared".
+
+REVIEW: FAIL
+
+Reviewed brightsky-verify ticket 13 over the range 68be132..a5791c9. a5791c9 is the newest commit that touches the ticket, and it is also HEAD, so there are no later commits left out of the review. I read the ticket at the base commit, where Answer is still empty, and never read its Answer. The ticket's Status hunk changes `open` to `resolved`. git status is clean, and the pytest runs I did used `-p no:cacheprovider`.
+
+SPEC
+- `python3 -m pytest stepper/tests/unit/test_brightsky_executors.py -q` passes, plus the EngineExecutor embed_direct heal test: MET (conductor). I read `test_engine_an_embed_direct_cfg_that_resolves_heals_with_no_ai_call`. It checks that the first resolve is for the stored `{"role":"link","name":"The Hobbit"}` with `strict is True`, then that the next resolve is for the found cfg, that the outcome is `failed` with `healed is True` and `tier == "embed_direct"`, and that `ai.task_types == []`. Both probes are monkeypatched by the `probes` fixture.
+- Embed_direct miss goes `["heal","heal","heal_big"]` and ends `failed`/`healed=False`; `ai_service=None` with no keys and a no-cfg payload ends `failed`: MET (conductor). Both cases are in that same file: `test_engine_a_missing_cfg_and_missing_ai_replies_go_cheap_cheap_big` and `test_engine_without_an_ai_service_or_keys_leaves_a_no_cfg_step_failed`. The second one `delenv`s ANTHROPIC_API_KEY, GROQ_API_KEY and GEMINI_API_KEY. Those are the only keys `stepper/engine/ai/providers.py` reads.
+- PipelineExecutor RunConfig, hook, close on raise, no temp file: MET (conductor). The four pipeline functions are monkeypatched in the same file, and so are `build_settings` and `build_resolver`. One test checks `max_heal_attempts == 3`, `use_heal_cache is False`, `strict_heal_order is True` and `headless` for both True and False. Other tests check that an ExpectationHook is attached on "web", that `close_all` runs when `execute_pipeline` raises, and that the temp file and its directory are gone afterwards.
+- `python3 -m pytest stepper/tests/unit/ -q`: MET (conductor).
+- scope: OK. The changed files are `stepper/brightsky/executor.py` and `stepper/tests/unit/test_brightsky_executors.py`, which are the files the ticket lists. The other changes are one appended line each in `plans/brightsky-verify/map.md` and `plans/brightsky-verify/learnings.md`, tagged (13). Those are the plan's standard append-only bookkeeping, which every ticket commits along with its code. Nothing in the diff touches ticket 05's hook, recording resolver or conversion, or ticket 06's backend or proposal work.
+- test first: OK. ead77b4 adds the test file before the code. The conductor saw it fail before a5791c9, and it has to fail without the production change, because it imports `EngineExecutor` and `PipelineExecutor`, which did not exist then.
+
+Acceptance check: I ran `python3 -m pytest plans/brightsky-verify/acceptance/test_accept_heal.py -q` myself, since it exercises EngineExecutor: 18 failed, 11 passed. All 18 failures are `ModuleNotFoundError: No module named 'stepper.brightsky.verify'`, a module that belongs to a ticket not built yet. None fails on behaviour this ticket delivers. The conductor's failing list is in `test_accept_verify_cli.py`, the CLI ticket.
+
+The level stays at 3. The heal budget and the strict order are in the ticket's own text, so they are already covered.
+
+REVIEW: PASS
