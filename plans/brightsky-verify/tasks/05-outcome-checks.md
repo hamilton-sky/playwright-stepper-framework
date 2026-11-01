@@ -1,7 +1,7 @@
 # Add the per-step outcome checks and the conversion to BrightSky step outcomes
 
 Type: task
-Status: resolved
+Status: open
 Blocked by: 03, 12
 Test first: yes
 Level: 3
@@ -183,3 +183,52 @@ prints passed
 floor guard: the diff weakens the bar instead of meeting it
 suppress: stepper/tests/unit/test_brightsky_executor.py: executed.outcome = "failed"  # type: ignore[misc]
 if a finding is intended, the ticket needs a line like: Floor: allow <category>
+
+## Review findings (round 2, pair review)
+
+I'm failing ticket 05 on one major finding. A `url_change` outcome is counted as met without checking that the URL changed, and this hook is the gate that auto-verifies a version.
+
+Scope of what I reviewed:
+- Range: `7d099e7..d972813`. `$END` is HEAD, so no later commits were left out.
+- I read the ticket at the base commit and the round-1 "Review findings" section only. I did not read `## Answer`. The ticket's Status hunk is open -> resolved.
+- I re-ran the Done when commands and all passed: `test_brightsky_executor.py` 46 passed, `test_step_hooks.py` 21 passed, `stepper/tests/unit/` 2067 passed. The working tree is clean and nothing was left behind.
+
+Inputs I probed as a hostile caller (level 3):
+- `StepExpectation.start_url` and `match_mode`, and `session.url` in `before`.
+- `outcome_kind`, `outcome_element` (role/name/text/css/xpath/id), `url_contains` and `step.input_value` in `after`.
+- `result.status` and `healed_element` in `executed_steps`.
+- `step_description` and the context description in `RecordingResolver`.
+- `add_hook` sharing hooks with the heal replacement runners.
+
+What holds up:
+- An `after` that raises cannot leave a step passed: only `_check` can raise, and it is caught as not met.
+- `before` turns an unreadable URL into a failed step.
+- Healed and skipped steps map to failed.
+- Descriptions are unique per step (`Step N: ...`).
+
+QUALITY
+1. major /home/claude/hamilton-sky/playwright-stepper-framework/stepper/brightsky/executor.py: `_check` returns True for a `url_change` with no `urlContains` (`exp.url_contains is None or ...`) without looking at the page. With `urlContains`, it also passes when the page already contained it before the step acted. So a click that goes nowhere still passes the outcome check, and the version can auto-verify.
+   - Such steps do occur: bright-sky's own generator emits a bare `{ kind: 'url_change' }` (`backend/src/agents/workflow-generation-agent/generate-steps.strategy.ts:549`).
+   - bright-sky's own checker, `checkUrlChangeOutcome` in `step-verification.service.ts`, fails when the URL is unchanged ("url_change: URL unchanged").
+   - No test covers the bare case. map.md records "bare url_change = met" as the author's own call; the ticket and spec do not decide it.
+   - Fix: record `session.url` in `before`, keyed by step, and require `session.url != pre_url` (plus the `urlContains` check when it is set) in `_check`. Add tests for a bare `url_change` with an unchanged URL (not met) and a changed one (met).
+2. minor /home/claude/hamilton-sky/playwright-stepper-framework/stepper/brightsky/executor.py: `locator.input_value()` is called without a `timeout`. On a missing element, Playwright's default 30 s wait applies, so `timeout_s` (10 s) does not actually bound the `value_set` check. A deterministic error such as an unknown kind or an element cfg with no locator fields also polls for the full timeout. Fix: pass `timeout=` (in ms, based on the time left) to `input_value()`, and treat a `ValueError` from `_locator` or `_check` as not met right away.
+3. minor /home/claude/hamilton-sky/playwright-stepper-framework/stepper/brightsky/executor.py: `executed_steps` reports a `passed` step with `tier=None` when its first resolve missed and a later retry found the element. Spec § Acceptance asks for a non-empty tier on a passed step. Fix: decide what tier a retry-found pass reports (for example the retry's method, or downgrade the step), and test it.
+4. minor /home/claude/hamilton-sky/playwright-stepper-framework/stepper/brightsky/executor.py: `before` passes a `match_mode` regex from the version author to `url_matches` (`re.search`, no time bound). A catastrophic pattern can hang the verify run. This is ticket 03's function, newly reached from here. Fix: cap the pattern length or run the match with a time bound.
+
+REVIEW: FAIL
+
+SPEC
+- `python3 -m pytest stepper/tests/unit/test_brightsky_executor.py -q` passes, and its hook tests cover url_change met and not met, a value_set whose input_value() raises counting as not met, and a start_url mismatch failing the step before the action runs: MET (conductor). I read the tests and they cover each case: test_url_change_met_keeps_the_step_passed, test_url_change_not_met_fails_the_step, test_value_set_whose_input_value_raises_is_not_met, and test_a_start_url_mismatch_fails_the_step_before_the_action_runs. The last one runs a real StepRunner with add_hook and asserts action.calls == 0.
+- RecordingResolver keeps the first method for a description and passes strict through unchanged: MET (conductor). The tests are test_recording_resolver_keeps_the_first_method_for_a_description, test_a_first_miss_is_recorded_as_none_and_not_overwritten, and test_recording_resolver_passes_strict_through_unchanged, which runs with strict True and False and asserts the inner call's exact args and kwargs.
+- executed_steps maps passed, healed (with and without healed_element), failed, outcome-failed (matched=True), unchecked, and a failed navigate correctly: MET (conductor). Each case has its own test: test_all_passed, test_a_healed_step_is_failed_with_its_tier_and_healed_element, test_a_healed_step_without_healed_element_is_tier_healer, test_a_failed_step_that_never_matched, test_an_outcome_failed_step_is_matched, test_no_results_at_all_is_every_step_unchecked, and test_a_failed_navigate_fails_step_1_and_leaves_the_rest_unchecked.
+- `python3 -m pytest stepper/tests/unit/test_step_hooks.py -q` passes, with new tests showing an add_hook hook runs for its domain only and is seen by a heal replacement runner: MET (conductor). The new tests are test_a_hook_added_through_add_hook_runs_for_its_domain_only and test_a_hook_added_through_add_hook_is_seen_by_a_heal_replacement_runner. The second asserts the hook's before and after calls from the replacement runner.
+- All existing tests still pass (`python3 -m pytest stepper/tests/unit/ -q`): MET (conductor).
+- Acceptance: the failures the conductor listed are all in test_accept_verify_cli.py, which covers later tickets. The acceptance test for this ticket's piece, test_accept_heal.py::test_add_hook_attaches_a_hook_for_its_domain_and_returns_the_runner, passes ("1 passed"); I ran it alone. The other executor acceptance tests need EngineExecutor, which is ticket 13. git status was clean after the run.
+- Round 1 review finding (floor guard, `# type: ignore` in the test): fixed. The diff has no suppressions left, and test_executed_step_is_frozen now uses setattr.
+- scope: OK. The range 7d099e7..d972813 changes these files: stepper/brightsky/executor.py, stepper/engine/runner/step_runner.py (only add_hook added), the two test files, the ticket, plans/brightsky-verify/map.md (the ticket's own line) and plans/brightsky-verify/learnings.md (two lines tagged 05). END is HEAD (d972813), so there are no later commits left out of the review. There is no EngineExecutor, PipelineExecutor or backend code, which matches `Not in this ticket`. The ticket's Status changed from open to resolved.
+- test first: OK. Commit 8a3f654 adds the tests before the code, and the conductor saw it fail. The tests import stepper.brightsky.executor and StepRunner.add_hook, and neither exists before 0cb1d96, so they could not pass without the production change.
+
+I did not read the ticket's ## Answer. I read the pre-work ticket from 7d099e7 and the "Review findings (round 1)" section, which sits after the Answer, starting at its heading. The ticket is already level 3, so there is no level change.
+
+REVIEW: PASS
