@@ -37,6 +37,7 @@ cleanly while the secrets are unset.
 ## Decisions so far
 
 - Non-current versions (ticket 01, answered by the user 2026-11-01, option A): a non-current queue entry prints `<slug> v<N> skipped: not the current version` and does not change `--all-unverified`'s exit code; `verify <slug> --version N` for a non-current N exits 3.
+- 01 — Option A: a non-current `--all-unverified` entry is skipped (`<slug> v<N> skipped: not the current version (v<M>)`), nothing posted, exit code unchanged; `verify <slug> --version N` for a non-current N exits 3.
 
 Outside facts the plan relies on, with their sources:
 

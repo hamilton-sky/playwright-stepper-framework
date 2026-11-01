@@ -1,7 +1,7 @@
 # Decide how verify treats a version that is not the workflow's current one
 
 Type: settle
-Status: open
+Status: resolved
 Blocked by: —
 Test first: no
 Level: 1
@@ -60,5 +60,31 @@ open.
 
 ## Answer
 
+**Decision: option A** (chosen by the user, "Yes, skips stay green", 2026-11-01).
 
-A. The user chose "Yes, skips stay green" on 2026-11-01: `verify <slug> --version N` for a non-current N exits 3 with the not-current error; in `--all-unverified` a non-current entry prints `<slug> v<N> skipped: not the current version` and does not change the exit code. Nothing is posted for it.
+- `verify <slug> --version N` with N not the current version: nothing is run or posted
+  (only the token check and the `GET`), stderr gets
+  `error: <slug> v<N> is not the current version (v<M>); the backend serves only the current version's steps`,
+  **exit 3**. `--version` equal to the current version runs as if it were not given.
+- `verify --all-unverified`, an entry whose version is not current: only its `GET` is
+  sent, nothing is posted, it prints `<slug> v<N> skipped: not the current version (v<M>)`,
+  and it **does not change the exit code** (exit stays as the other entries make it; a
+  queue of only skipped entries exits 0).
+
+- **Built**: no code (settle ticket). Changed this ticket's Status and Answer, and
+  appended one `01 —` line to map.md § Decisions so far.
+- **Proof**: the Done when is a document check. `grep -n "option A\|^- 01 —" plans/brightsky-verify/map.md`
+  shows the decision line in § Decisions so far; this Answer names A with both exit codes.
+- **Decisions**: A over B. The verified version stays current while a newer proposal
+  waits, so non-current queue entries are the normal case; B would keep the daily
+  schedule red for something stepper cannot fix (no backend route serves named-version
+  steps, and the backend is out of scope). A keeps red meaning "a run failed or healed".
+  Rejected: B (permanent red), and running the current version's steps under the
+  queued version's number (would report results against the wrong version).
+- **Shortcuts taken**: none.
+- **For later tickets**: 06 (queue walk) and 07 (exit codes) build A. Use the message
+  forms with the trailing `(v<M>)`, as in spec.md and the acceptance test
+  `test_a_queue_entry_that_is_not_current_is_skipped_and_exits_0`
+  (`old-flow v1 skipped: not the current version (v2)`); the ticket's option text above
+  omits `(v<M>)` on the skip line, and the spec wins. A map.md decision line for this
+  already existed in the plan commit; the `01 —` line restates it in the standard form.
