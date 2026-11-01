@@ -9,6 +9,7 @@ How a JSON step becomes a browser action, and what happens when it fails.
 - [Action execution — the template method](#action-execution--the-template-method)
 - [Element resolution cascade](#element-resolution-cascade)
 - [Self-healing cascade](#self-healing-cascade)
+- [BrightSky verification](#brightsky-verification)
 - [Configuration](#configuration)
 - [Reporting](#reporting)
 - [Extension points](#extension-points)
@@ -404,6 +405,57 @@ Suggestions are also written to `reports/<run>/heal_suggestions.json`, which
 
 Opt a step out with `"heal": false`. Verify a heal actually landed with
 `"heal_assert": {"url_contains": "/inventory"}`.
+
+---
+
+## BrightSky verification
+
+`stepper/brightsky/` is an adapter, not a site: `python3 -m stepper brightsky verify
+<slug> | --all-unverified` fetches BrightSky workflow versions with a bridge token, maps
+them to strict stepper steps, runs them through the normal pipeline, and reports each run
+back. Usage and exit codes are in the README.
+
+```
+ CLI: brightsky verify <slug> | --all-unverified        cli.py
+   │ argv
+   ▼
+ verify.py  verify_slug / verify_all_unverified
+   │ GET detail / queue          ▲ RunReport, Proposal
+   ▼                             │
+ client.py  BrightSkyClient ─────┘  urllib, 1 retry
+   │ WorkflowDetail (models.py, config.py)
+   ▼
+ mapping.py  map_version ──► MappedWorkflow
+   │ StepConfigs + expectations      └─► UnmappableStep ──► failed report
+   ▼
+ executor.py  PipelineExecutor | EngineExecutor
+   │ prepare_run ─► build_pipeline ─► execute_pipeline
+   │   RecordingResolver (tier)  ExpectationHook (outcome)
+   ▼
+ StepRunner ── element not found ──► _run_heal_loop
+   │   strict order, BrightSky runs only (strict_heal_order=True):
+   │   free:     embed_direct (once, if the DOM gave a cfg)
+   │   then capture(skip_direct=True): candidates with page content
+   │   paid 1-2: cheap chain  (task "heal": groq/gemini/haiku)
+   │   paid 3:   big model    (task "heal_big", Sonnet-class)
+   ▼ StepResults
+ ExecutedStep[] ─► verify.py: healed => report failed,
+                   then propose(source, note)
+                   targets.py target_from_element
+```
+
+- **Healed means failed.** A healed step is reported `outcome: "failed"` so the backend
+  never auto-promotes a version that needed a heal; the healed steps are proposed as a
+  new unverified version instead (source `stepper` for `embed_direct`/`heal_cache` heals,
+  `haiku` for any AI rung).
+- **Strict acting steps.** Every mapped `click`/`fill` has `extra.strict: true`, so a miss
+  goes to the heal loop rather than to a description match that could click the wrong
+  element.
+- **The strict heal order is opt-in.** `StepRunner` and `RunConfig` default to
+  `strict_heal_order=False`; only the BrightSky executors set it, so `run --heal N`
+  heals as before.
+- **The token is checked first.** `verify <slug>` makes one guarded call (the queue
+  read) before the public fetch, so a rejected token exits 3 before a browser starts.
 
 ---
 

@@ -342,6 +342,56 @@ best match does not suit the action, the AI decides — the runner-up is never p
 
 ---
 
+## BrightSky verification
+
+`stepper/brightsky/` verifies workflows stored in a BrightSky backend: it fetches a
+version, maps its steps to strict stepper steps, runs them headless through the normal
+pipeline, and reports the run back. The backend promotes an unverified version after a
+fully passing run (two, with distinct idempotency keys, for a version stepper or Haiku
+proposed).
+
+Set two variables, in the environment or in `.env`:
+
+| Variable | What it is |
+|---|---|
+| `BRIGHTSKY_API_URL` | The backend's base URL, e.g. `http://localhost:3001`. It must be `https`; plain `http` is allowed only for `localhost`, `127.0.0.1` and `::1`, because the token is only sent over https |
+| `BRIGHTSKY_BRIDGE_TOKEN` | The bridge token, sent as `Authorization: Bearer <token>`. It is never logged or printed |
+
+```bash
+python3 -m stepper brightsky verify openlibrary-find-author   # one workflow's current version
+python3 -m stepper brightsky verify --all-unverified          # the whole verification queue
+```
+
+Each prints one line per workflow, `<slug> v<N> passed|failed|healed|skipped[: <reason>][ -> proposed v<M>]`.
+Add `--show` for a visible browser. `--version N` runs only if N is the current version:
+the backend serves no other version's steps, so any other N exits 3.
+
+| Exit | Meaning |
+|---|---|
+| 0 | every run passed, or the queue was empty (a skipped queue entry leaves the code alone) |
+| 1 | a run failed or healed, a report or proposal failed, or the backend failed after one retry |
+| 3 | bad input or config: a missing variable, an unsafe URL, a bad slug, a usage error, a 404 on the fetch, or a token rejected (401/403) on any call |
+
+**Healed means failed.** When a step's element cannot be found, the heal cascade runs in a
+strict order: one free `embed_direct` try, then two cheap-tier AI tries (the `heal` chain:
+Groq, Gemini or Haiku), then one big-model try (`heal_big`, `claude-sonnet-5-5`, which
+needs `ANTHROPIC_API_KEY`). A run that needed a heal is still reported `failed`; if every
+other step passed, the healed steps are proposed as a new unverified version with source
+`stepper` (only `embed_direct` heals) or `haiku` (any AI heal). With no AI key only
+`embed_direct` can heal.
+
+**Cost.** `--all-unverified` walks the whole queue, oldest first, with no cap. Each step
+that heals or fails can cost two cheap calls and one big-model call, and a version that
+keeps failing stays in the queue and is paid for again on every run.
+
+**Schedule.** `.github/workflows/brightsky-verify.yml` runs `--all-unverified` daily and
+on `workflow_dispatch`, with the repo secrets `BRIGHTSKY_API_URL` and
+`BRIGHTSKY_BRIDGE_TOKEN` (the AI keys are optional). Until both are set it emits a notice
+and stays green. GitHub runs it only once the file is on `main`, and disables a public
+repo's schedule after 60 days without activity.
+
+---
+
 ## Step Controls
 
 | Field | Default | Effect |
