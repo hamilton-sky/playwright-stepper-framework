@@ -46,6 +46,7 @@ cleanly while the secrets are unset.
 - 08 — `.github/workflows/brightsky-verify.yml`: daily cron `17 6 * * *` + dispatch, job-level read-only permissions, 30-min timeout, concurrency group `brightsky-verify` (no cancel-in-progress); `id: secrets` env test emits `::notice` and gates every later step on `steps.secrets.outputs.available == 'true'`.
 - 10 — `client.BrightSkyClient`: one retry (5xx/OSError, sleep 1.0–1.5 s) in `_request`, 4xx never; `BrightSkyHttpError(status, message)` (0 = network, token scrubbed); bad slug → `ValueError` before any request; queue reasons `entry <n>: <reason>` (1-based); propose re-reads notes before its retry; `UrllibTransport` follows no redirects and uses `ProxyHandler({})` for loopback.
 - 11 — `targets.target_from_element`: role+name from the element, else only `original`'s role; selectors in cascade order placeholder (`[placeholder="…"]`, `\` and `"` escaped), `#id`, css, xpath, each ≤1024; role ≤64 / name ≤512 else ignored; score 0.8, grounding `current_page`; None when neither role+name nor a selector.
+- 14 — `DOMSnapshotCascade.capture(page, step, *, skip_direct=False)`; `skip_direct=True` turns both `embed_direct` returns (lone high, clear winner) into `_candidates_payload(scored, "embed_candidates")` (top 5 incl. runners-up, `healed_cfg=None`), skipping `_pinned_cfg`; default path unchanged.
 
 Outside facts the plan relies on, with their sources:
 

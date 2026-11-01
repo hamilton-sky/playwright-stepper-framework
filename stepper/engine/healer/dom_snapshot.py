@@ -265,7 +265,8 @@ class _CrossEncoderReranker:
 
 
 class DOMSnapshotCascade:
-    """Embed-first cascade. One public method: capture(page, step) -> DomPayload."""
+    """Embed-first cascade. One public method: capture(page, step, *, skip_direct=False) -> DomPayload;
+    skip_direct=True returns embed_candidates where it would return embed_direct."""
 
     _semantic: SemanticResolver | None = None
 
@@ -278,7 +279,7 @@ class DOMSnapshotCascade:
     # ── Public API ───────────────────────────────────────────────────────────
 
     @classmethod
-    async def capture(cls, page, step: StepConfig) -> DomPayload:
+    async def capture(cls, page, step: StepConfig, *, skip_direct: bool = False) -> DomPayload:
         query = cls._build_query(step)
         elements = await cls._collect_elements(page)
 
@@ -304,6 +305,8 @@ class DOMSnapshotCascade:
         if top_score >= _HIGH_THRESHOLD:
             high = [s for s in scored if s[1] >= _HIGH_THRESHOLD]
             if len(high) == 1:
+                if skip_direct:
+                    return cls._candidates_payload(scored, "embed_candidates")
                 element = high[0][0]
                 return DomPayload(
                     strategy_used="embed_direct",
@@ -315,6 +318,8 @@ class DOMSnapshotCascade:
 
         winner = cls._clear_winner(step.action, minilm_ranked, reranked)
         if winner is not None:
+            if skip_direct:
+                return cls._candidates_payload(scored, "embed_candidates")
             return DomPayload(
                 strategy_used="embed_direct",
                 content="",

@@ -1,7 +1,7 @@
 # Let DOMSnapshotCascade.capture skip its embed_direct shortcut on request
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: —
 Test first: yes
 Level: 3
@@ -63,3 +63,24 @@ prints passed
 - `stepper/tests/unit/test_dom_snapshot_cascade.py` `fixed_scores` fixture
 
 ## Answer
+
+Work started at commit `0fb81901bc344fb2fd8fa9008d67a48a4f32da21`.
+
+**Built**
+- `stepper/engine/healer/dom_snapshot.py`: `DOMSnapshotCascade.capture(cls, page, step, *, skip_direct: bool = False)`. With `skip_direct=True`, the lone-high-scorer return and the `_clear_winner` return both become `cls._candidates_payload(scored, "embed_candidates")`. The class docstring's contract names the keyword. Scoped, aria and the ambiguous-high return are untouched.
+- `stepper/tests/unit/test_dom_snapshot_cascade.py`: appended `test_skip_direct_turns_a_lone_high_scorer_into_candidates` (the page and scores of `test_a_unique_high_scoring_element_costs_no_tokens`) and `test_skip_direct_turns_a_clear_winner_into_candidates` (the `_login_form()` click page of `test_a_click_ignores_text_fields_and_heals_to_the_lone_button`). Both use `fixed_scores`. Each calls the default capture and the `skip_direct=True` capture on the same page and checks both. No existing line changed (`git diff 0fb8190` on the file shows 0 removed lines).
+
+**Proof**
+- Test-first commit `f53f573` (test file only): the file ran with `2 failed, 108 passed`, both with `TypeError: DOMSnapshotCascade.capture() got an unexpected keyword argument 'skip_direct'`.
+- `python3 -m pytest stepper/tests/unit/test_dom_snapshot_cascade.py -q`: `110 passed`, exit 0. The new tests check that the skip_direct call gives `strategy_used == "embed_candidates"`, `healed_cfg is None`, `token_estimate > 0`, and a non-empty `candidates` list in which one entry, with `_score` removed, equals the default call's `healed_cfg`.
+- Default path in the same tests: `strategy_used == "embed_direct"` and `content == ""` for both pages. All existing tests in the file pass unchanged.
+- `python3 -m pytest stepper/tests/unit/ -q`: `1992 passed`. Build (`compileall`) exit 0, Lint (`stepper/main.py validate`) exit 0.
+
+**Decisions**
+- Passed the full `scored` list to `_candidates_payload`, as the ticket says, not `high`. `_candidates_payload` slices `[:_TOP_N]` itself. For a lone high scorer this also gives the AI the runners-up, not just the one element that already missed.
+- The skip check comes before `_pinned_cfg`, so `skip_direct=True` makes no `page.locator` or `get_by_*` calls for the pin.
+
+**Shortcuts taken**: none.
+
+**For later tickets**
+- Ticket 12: pass `skip_direct=True` to `DOMSnapshotCascade.capture` after an `embed_direct` cfg has been tried. The result is `embed_candidates` with `healed_cfg=None`, so `AiHealer.heal` goes on to the AI with `dom.content` set. The `DomPayload` docstring in `stepper/engine/healer/interfaces.py` ("empty for embed_direct") is still true, since skip_direct never returns `embed_direct`.
