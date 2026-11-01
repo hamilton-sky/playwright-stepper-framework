@@ -52,6 +52,8 @@ logger = logging.getLogger(__name__)
 TIMEOUT = 20.0
 #: The longest backend message kept in an error.
 MAX_MESSAGE = 500
+#: The largest response body read, in bytes; a larger one is a failed response.
+MAX_BODY = 4 * 1024 * 1024
 
 QUEUE_PATH = "/api/workflows/verification-queue"
 
@@ -105,14 +107,22 @@ class UrllibTransport:
         request = urllib.request.Request(url, data=body, headers=headers, method=method)
         try:
             with opener.open(request, timeout=timeout) as response:
-                return HttpResponse(status=response.status, body=response.read())
+                return HttpResponse(status=response.status, body=_read_capped(response))
         except urllib.error.HTTPError as err:
             # HTTPError is an OSError too; an error status is an answer, not a failure.
             with err:
-                return HttpResponse(status=err.code, body=err.read())
+                return HttpResponse(status=err.code, body=_read_capped(err))
         except http.client.HTTPException as err:
             # A malformed or cut-off response is a network failure to the caller.
             raise OSError(f"bad HTTP response: {type(err).__name__}") from err
+
+
+def _read_capped(response: Any) -> bytes:
+    """Read at most MAX_BODY bytes; a longer body raises OSError (a failed response)."""
+    body = response.read(MAX_BODY + 1)
+    if len(body) > MAX_BODY:
+        raise OSError(f"response body is larger than {MAX_BODY} bytes")
+    return body
 
 
 class BrightSkyClient:
@@ -184,8 +194,17 @@ class BrightSkyClient:
         for attempt in (1, 2):
             if attempt == 2:
                 self._sleep(1.0 + random.uniform(0, 0.5))
-                if before_retry is not None and before_retry():
-                    return None
+                if before_retry is not None:
+                    try:
+                        done = before_retry()
+                    except (BrightSkyHttpError, BrightSkyResponseError) as err:
+                        # Unsure whether the first attempt was stored: do not send
+                        # again; report the first attempt's error, the re-read's chained.
+                        logger.warning("brightsky re-read before retry failed method=%s "
+                                       "path=%s error=%s", method, path, type(err).__name__)
+                        raise failure from err
+                    if done:
+                        return None
             started = time.monotonic()
             try:
                 response = self._transport.send(method, url, headers, body, TIMEOUT)
@@ -216,7 +235,8 @@ class BrightSkyClient:
                 message = HTTPStatus(response.status).phrase
             except ValueError:
                 message = "error"
-        return self._scrub(message[:MAX_MESSAGE])
+        # Scrub before the cut, so a token across the cut is still replaced whole.
+        return self._scrub(message)[:MAX_MESSAGE]
 
     def _scrub(self, text: str) -> str:
         return text.replace(self._config.token, "<token>")

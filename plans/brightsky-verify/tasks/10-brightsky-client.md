@@ -1,7 +1,7 @@
 # Add the BrightSky HTTP client with its retry policy
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: 02
 Test first: yes
 Level: 3
@@ -148,6 +148,28 @@ prints passed
 - **For later tickets**: 06 and 07 branch on `BrightSkyHttpError.status` (0 = network)
   and `.message`; the client raises `ValueError` for a bad slug, so 07 must validate the
   slug first (as planned). Import `BrightSkyResponseError` from either module (same class).
+- **Review fixes** (round 1; failing tests first in b486975, 5 failed for the right
+  reasons, then the fix):
+  1. Token across the cut: `_message` now scrubs, then cuts
+     (`self._scrub(message)[:MAX_MESSAGE]`). New test
+     `test_a_token_across_the_message_cut_is_scrubbed_whole` (490 'a' + token) gives
+     `"a" * 490 + "<token>"`; before the fix it ended in `bst_unit_s`.
+  2. Body cap: `UrllibTransport` reads at most `MAX_BODY` (4 MiB) + 1 bytes through
+     `_read_capped`, for 2xx and error bodies alike; a larger body raises `OSError`
+     (a failed response, per the Transport contract), so the policy retries it once and
+     then raises `BrightSkyHttpError(0, ...)`. This also supersedes the earlier
+     "Shortcuts taken" line about no size cap. New test
+     `test_urllib_transport_refuses_a_body_over_the_cap[200|500]` (cap patched to 64:
+     64 bytes pass, 65 raise).
+  3. Propose re-read failure: in `_request`, a `BrightSkyHttpError` or
+     `BrightSkyResponseError` from `before_retry` is logged (type only) and the first
+     attempt's error is raised with the re-read's chained (`raise failure from err`);
+     nothing is re-posted, keeping "no duplicate on uncertainty". New test
+     `test_a_propose_whose_re_read_fails_raises_the_post_error_and_does_not_re_post`
+     [re-read-5xx | re-read-malformed]: status 503 "upstream timeout", `__cause__` set,
+     one versions POST.
+  Proof after the fixes: client file `54 passed`; `stepper/tests/unit/` `1938 passed`;
+  Build exit 0; Lint exit 0; `test_accept_config_client.py` `34 passed`.
 
 ## Review findings (round 1, pair review)
 
