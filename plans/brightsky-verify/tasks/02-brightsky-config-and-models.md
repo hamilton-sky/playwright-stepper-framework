@@ -1,7 +1,7 @@
 # Add the BrightSky config and the validated wire models
 
 Type: task
-Status: resolved
+Status: open
 Blocked by: —
 Test first: yes
 Level: 3
@@ -147,3 +147,55 @@ floor guard: the diff weakens the bar instead of meeting it
 suppress: stepper/tests/unit/test_brightsky_models.py: config.token = "other"  # type: ignore[misc]
 suppress: stepper/tests/unit/test_brightsky_models.py: WorkflowDetail.from_json(_detail(currentSteps=[_step(), _step(title)]))  # type: ignore[arg-type]
 if a finding is intended, the ticket needs a line like: Floor: allow <category>
+
+## Review findings (round 2, pair review)
+
+I'm failing ticket 02 (brightsky-verify) on one major finding: a bridge token with a line break in it gets through config, and a later step can then print it in full.
+
+**Scope**
+- Range reviewed: 555d159..5df595f. 5df595f is the ticket's last commit and is also HEAD, so no later commits were left out.
+- I read the ticket as it stood at the base commit, cut at `## Answer`. From the working copy I read only the round-1 "Review findings" section, which comes after the Answer. The Answer itself never reached me.
+- The ticket's Status line in the diff changed from `open` to `resolved`.
+- Round-1 floor-guard issue: the two `# type: ignore` lines are gone from the test file. I found no skip, xfail, noqa or `assert True` in it.
+
+**Done when, re-run by me**
+- `pytest stepper/tests/unit/test_brightsky_models.py -q`: 100 passed.
+- `pytest stepper/tests/unit/test_packaging.py -q`: 23 passed.
+- `pytest stepper/tests/unit/ -q`: 1690 passed.
+
+**Hostile probing (level 3)**
+- BRIGHTSKY_API_URL, all rejected as they should be:
+  - `localhost.evil.com`, `127.0.0.1.nip.io`, `localhost@evil.com`, `0x7f000001`, `[::ffff:127.0.0.1]`
+  - `ftp://`, `https://`, `http:///localhost`, `http://[::1`
+  - No rejection message contains the token, even when the token sits in the URL.
+- BRIGHTSKY_BRIDGE_TOKEN: a token with CR/LF in it is accepted (finding 1).
+- Reader input (slug, versions, steps, notes): a slug with a trailing `\n` is rejected (fullmatch), a float version is rejected, a bool can't pass as an int, a note that isn't a string is rejected, and error messages name the field without echoing the value.
+- Writer constructor arguments: wrong types raise `TypeError` instead of `ValueError`, and some limits aren't checked (findings 4 and 5).
+
+My probe scripts ran from the scratchpad with no bytecode writes, so they left no files in the repo.
+
+QUALITY
+1. major stepper/brightsky/config.py: `load_config` accepts a token with CR/LF or other control characters inside it (`"abc\r\nX-Evil: 1"` comes back unchanged; `.strip()` only trims the ends). The stdlib transport that ticket 10 will likely use rejects such a header value and puts the whole value in its exception message: `http.client` raises `ValueError: Invalid header value b'Bearer sekret\nX: y'` (checked). Ticket 07 turns these exceptions into stderr output, so the token would be printed. That breaks the "token appears in no message" guarantee at this boundary. Fix: in `load_config`, reject a token with any whitespace or control character (e.g. require printable ASCII with no spaces), with a message that does not include the token, and add a test.
+2. minor stepper/brightsky/config.py: an `api_url` with a query or fragment is accepted (`https://x/?a=1`, `https://example.com#frag`). Ticket 10 will add paths onto the base URL, so the path would land in the query or fragment and the request would go to the wrong endpoint with the token on it. Also accepted: a space in the host (`https://a b`), a bad port (`http://localhost:abc`), and userinfo (`http://user:pw@localhost`), which then shows up in the repr. Fix: reject a query, fragment or userinfo, and read `parts.port` inside the existing try so a bad port is caught.
+3. minor stepper/brightsky/models.py: the comment on `SLUG_PATTERN` says to use fullmatch because `$` accepts a trailing newline, but the pattern still has `^...$`. `_slug` uses fullmatch, but ticket 10 may call `.match`. Fix: drop the anchors or use `\Z` so the pattern is safe with any method.
+4. minor stepper/brightsky/models.py: the writers don't check everything the backend DTO limits. `RunReport` accepts `version=0`, `RunStep` accepts `step_number=-1` and `matched="yes"`, and `Proposal` doesn't check that it has 1 to 50 steps. Each of these becomes a 400 from the backend instead of a `ValueError` here. Fix: check version ≥ 1, step_number ≥ 1 as an int, matched as a bool, and 1 to MAX_STEPS proposal steps.
+5. minor stepper/brightsky/models.py: `tier=5`, `note=None` and `idempotency_key=None` raise `TypeError` from `len()`, not `ValueError`, so a caller that only catches `ValueError` misses them. Fix: check the type first and raise `ValueError`.
+
+REVIEW: FAIL
+
+I reviewed ticket 02 of brightsky-verify, range 555d159..5df595f. 5df595f is both HEAD and the newest commit that touches the ticket, so no later commits were left out. I read the ticket as it stood at the base commit, plus its round 1 findings section by itself; I did not read the `## Answer`. I read the diff with the ticket folder excluded.
+
+SPEC
+- test_brightsky_models.py passes, and its config tests cover missing, blank, non-http(s) and http to a non-loopback host, the loopback hosts that are accepted, and that the token is in no message or repr: MET (conductor). I checked the content in the diff: the missing and blank variable tests match exactly `^<VAR> is not set$`. The scheme tests use ftp, file, ws and a URL with no scheme. The non-loopback tests include localhost.example.com and 127.0.0.2, and both groups assert "only sent over https" and that the token is absent. localhost, LOCALHOST, 127.0.0.1 and [::1] are accepted. `TOKEN not in repr/str` is asserted, and `token` is `field(repr=False)`.
+- The reader tests cover missing `currentVersion`, 51 steps, a non-str title and a non-int version, each raising `BrightSkyResponseError` that names the field, and `QueueItem` rejects `../x`: MET (conductor). Confirmed in the diff: the tests match on the field (`currentVersion`, `currentSteps`, `currentSteps[1].title`, `currentVersion.version`), and `../x` is in the bad-slug parametrize list.
+- The DTO keys for `RunReport` and `Proposal`, a duplicate step number or source `claude` raising `ValueError`, and a 1500-character note cut to 1000: MET (conductor). Confirmed in the diff: the exact-dict assertions for both `to_json()` outputs, the duplicate-step test, `claude` in the source parametrize list, and the 1500-character note asserted to be 1000 characters ending in "…".
+- test_packaging.py passes: MET (conductor).
+- All existing unit tests pass: MET (conductor).
+- Acceptance tests (my own run of `python3 -m pytest plans/brightsky-verify/acceptance/test_accept_config_client.py -q`, which printed 21 failed, 13 passed): every config test this ticket delivers passes (missing/blank variables, frozen config, https-or-loopback refusals, loopback accepted). All 21 failures are `ModuleNotFoundError: No module named 'stepper.brightsky.client'`, which is ticket 10's HTTP client. The verify_cli failures the conductor listed belong to later tickets.
+- Round 1 finding (the `# type: ignore` lines that weakened the floor): resolved. Grep finds no `type: ignore` in the test or in `stepper/brightsky/`, and the frozen-config test now uses `setattr`.
+- scope: OK. The changed files are the four in Touches (stepper/brightsky/__init__.py, config.py, models.py, stepper/tests/unit/test_brightsky_models.py), plus the plan's learnings.md and map.md entries that the flow expects and the ticket file itself (Status changed from open to resolved). Nothing comes from `Not in this ticket`: no HTTP client, retries or exit codes.
+- test first: OK. Commit 8756dd5 adds the test before any code. It imports `stepper.brightsky.config` and `stepper.brightsky.models`, which did not exist then, so it fails without the production change; the conductor saw it fail.
+
+My acceptance run may have left `__pycache__` folders behind. I did not remove anything. The ticket is already level 3, so I did not raise it.
+
+REVIEW: PASS
