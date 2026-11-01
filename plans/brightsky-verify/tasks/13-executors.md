@@ -1,7 +1,7 @@
 # Run a mapped workflow: the browser-free EngineExecutor and the real PipelineExecutor
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: 05
 Test first: yes
 Level: 3
@@ -85,12 +85,13 @@ prints passed
 
 ## Answer
 
-Work started at commit `68be132d6bc8b7fe8f66421d84ec62f574a440eb`. Test-first commit `ead77b4`.
+Work started at commit `68be132d6bc8b7fe8f66421d84ec62f574a440eb`. Test-first commits `ead77b4` (round 0) and `cfd5660` (round 1 review fixes).
 
 - **Built**:
   - `stepper/brightsky/executor.py`: `EngineExecutor(page, resolver, *, ai_service=None, max_heal_attempts=3)` and `PipelineExecutor()`, both after `executed_steps`. The module docstring's "ticket 13" line now describes them.
-  - `stepper/tests/unit/test_brightsky_executors.py` (new, 14 tests).
-- **Proof** (fresh runs after the last edit):
+  - `stepper/tests/unit/test_brightsky_executors.py` (new, 19 tests after round 1).
+- **Proof** (round 1, fresh runs after the last edit): `test_brightsky_executors.py` gives `19 passed`; `stepper/tests/unit/` gives `2096 passed`; Build exit 0; Lint exit 0; acceptance unchanged at `85 passed, 76 failed` (all 06/07 modules). At `cfd5660` the four new tests failed for the right reason: the navigate reply healed the step (`['heal'] != ['heal','heal','heal_big']`), the extra-step reply clicked 3 times, the pipeline runner's healer was still the unwrapped one, and the site-naming temp dir did not raise.
+- **Proof** (round 0, kept for the record; counts were 14 and 2091 then):
   - Test-first commit `ead77b4`: the file failed at collection with `ImportError: cannot import name 'EngineExecutor' from 'stepper.brightsky.executor'`.
   - `python3 -m pytest stepper/tests/unit/test_brightsky_executors.py -q`: `14 passed`.
     - Bullet 1: the resolver double's first call is `{"role": "link", "name": "The Hobbit"}` with `strict is True`. Its second call is the found cfg `{"role": "link", "name": "The Hobbit (1937)", "css": "a.result"}`. The step comes back `outcome == "failed"`, `healed is True`, `tier == "embed_direct"`, `matched is False`. The AI double records `[]`, capture is called once, and the locator is clicked once.
@@ -107,8 +108,13 @@ Work started at commit `68be132d6bc8b7fe8f66421d84ec62f574a440eb`. Test-first co
   - `build_resolver` and `build_settings` are read off the lazily imported `stepper.main`, the same names `prepare_run` uses, so a test can patch them in one place.
   - `run()`'s `_tee_logs_to_run_file` and `allure_serve` are not used: the ticket's list is build_session_set → build_pipeline → add_hook → execute_pipeline → close in `finally`.
   - `_MAX_HEAL_ATTEMPTS = 3` is one module constant shared by both executors.
-- **Shortcuts taken**: none.
+- **Shortcuts taken**: `PipelineExecutor` wraps the healer by assigning `built.runner._healer`, a private StepRunner attribute, because `build_pipeline`/`build_healer` (stepper/main.py, outside Touches) offer no seam. It breaks if StepRunner renames the attribute; a `healer_wrapper` or `healer=` argument on `build_pipeline` would be the upgrade, worth it once a second caller needs it.
+- **Review fixes** (round 1):
+  1. major, off-site heals: both executors now wrap their healer in `_ElementOnlyHealer` (executor.py). A reply must be exactly one step of the failed step's own action with a non-empty element, else `HealingError` (the heal loop counts it as a failed attempt and climbs the rungs). The step that runs is `dataclasses.replace(failed_step, element=reply.element)`, so a reply cannot change the URL, value, extra or add steps either. The schema is still the full registry's, as the ticket says; enforcement is after the reply. Tests: `test_engine_rejects_a_heal_reply_that_navigates_off_site` (AI replies navigate to evil.example: `page.goto` never called, `["heal","heal","heal_big"]`, step failed, not healed), `test_engine_rejects_a_heal_reply_that_adds_steps`, `test_engine_accepts_a_heal_reply_that_only_changes_the_element` (tier `cheap`), `test_pipeline_limits_the_runners_healer_to_element_changes`.
+  2. minor: `EngineExecutor.__init__` passes `ai_service` straight to AiHealer; the unused `AIService` import is gone. The no-keys test still passes with `ai_service=None`.
+  3. minor: `PipelineExecutor` now raises `RuntimeError` before `prepare_run` when `_extract_site` of the temp workflow path is not `"shared"` (a TMPDIR inside `sites/<name>`), so no site's settings or storage state can reach a verify run. Test: `test_pipeline_refuses_a_temp_dir_that_names_a_site` (nothing in the pipeline is called, the temp dir is removed).
 - **For later tickets**:
+  - Ticket 06: a heal reply that is not one same-action step with an element is a failed heal attempt, so a healed step's `healed_element["healed"]` is always just an element cfg on the original step.
   - Ticket 06: `PipelineExecutor()` takes no arguments. `EngineExecutor(page, resolver, ai_service=...)` matches `bs_harness.engine_world`. Both return `executed_steps(...)`, one per BrightSky step, so a healed step's `tier` is `healed_element["tier"]` (`embed_direct`, `cheap` or `big`), or `healer` when there is no healed_element (a visual-bridge injection).
   - A `DomainNotReadyError` from `PipelineExecutor` propagates as `stepper.bootstrap.session.DomainNotReadyError`.
 

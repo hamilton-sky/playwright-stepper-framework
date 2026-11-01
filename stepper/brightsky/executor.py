@@ -18,7 +18,10 @@ A passed report auto-verifies a version, so "passed" is decided here:
 
 - `EngineExecutor` runs a mapped workflow on a real StepRunner over a page it
   is given, launching nothing; `PipelineExecutor` runs it headless through
-  `stepper.main`'s pipeline. Both heal in the strict order with no heal cache.
+  `stepper.main`'s pipeline. Both heal in the strict order with no heal cache,
+  and both accept only a heal that changes the failed step's element: any
+  other replacement (another action, a new URL, extra steps) is rejected, so
+  a heal reply cannot take a run off the mapped pages.
 """
 
 from __future__ import annotations
@@ -28,15 +31,15 @@ import json
 import logging
 import tempfile
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 from urllib.parse import urlparse
 
 from stepper.brightsky.mapping import MappedWorkflow, StepExpectation, url_matches
 from stepper.engine.actions.factory import build_default_registry
-from stepper.engine.ai.service import AIService
 from stepper.engine.healer.ai_healer import AiHealer
+from stepper.engine.healer.interfaces import DomPayload, HealerStrategy, HealingError
 from stepper.engine.interfaces import ResolveResult, StepConfig, StepResult
 from stepper.engine.planner.schema_extractor import ActionSchemaExtractor
 from stepper.engine.reporter.reporters import CompositeReporter
@@ -273,6 +276,37 @@ def executed_steps(mapped: MappedWorkflow, results: list[StepResult],
 _MAX_HEAL_ATTEMPTS = 3
 
 
+class _ElementOnlyHealer(HealerStrategy):
+    """
+    Wraps a healer so a heal can change the failed step's element and nothing
+    else. BrightSky only takes a new target back, and the heal prompt carries
+    backend and page text, so a reply of other than one step of the same
+    action with an element (navigate elsewhere, read a file, add steps)
+    raises HealingError, which the heal loop counts as a failed attempt. The
+    step that runs is the failed step with the reply's element swapped in, so
+    a reply cannot change its URL, value or extra either.
+    """
+
+    def __init__(self, inner: HealerStrategy) -> None:
+        self._inner = inner
+
+    def tier_for(self, dom: DomPayload, tried: tuple[str, ...]) -> str:
+        return self._inner.tier_for(dom, tried)
+
+    async def heal(self, step: StepConfig, error: str, dom: DomPayload,
+                   **kwargs: Any) -> list[StepConfig]:
+        reply = await self._inner.heal(step, error, dom, **kwargs)
+        if len(reply) != 1:
+            raise HealingError(
+                f"heal for '{step.description}' must be one step, got {len(reply)}")
+        healed = reply[0]
+        if healed.action != step.action or not healed.element:
+            raise HealingError(
+                f"heal for '{step.description}' must be a '{step.action}' with an "
+                f"element, got '{healed.action}'")
+        return [replace(step, element=dict(healed.element))]
+
+
 class EngineExecutor:
     """
     Runs mapped steps on a real StepRunner over `page`, launching nothing.
@@ -287,7 +321,7 @@ class EngineExecutor:
                  max_heal_attempts: int = _MAX_HEAL_ATTEMPTS) -> None:
         self._page = page
         self._resolver = resolver
-        self._ai_service = ai_service if ai_service is not None else AIService()
+        self._ai_service = ai_service
         self._max_heal_attempts = max_heal_attempts
 
     async def execute(self, mapped: MappedWorkflow, *,
@@ -300,8 +334,8 @@ class EngineExecutor:
             action_factory=registry,
             resolver=resolver,
             reporter=CompositeReporter([]),
-            healer=AiHealer(ActionSchemaExtractor.extract(registry),
-                            ai_service=self._ai_service),
+            healer=_ElementOnlyHealer(AiHealer(ActionSchemaExtractor.extract(registry),
+                                               ai_service=self._ai_service)),
             max_heal_attempts=self._max_heal_attempts,
             cache=None,
             strict_heal_order=True,
@@ -326,6 +360,11 @@ class PipelineExecutor:
 
         with tempfile.TemporaryDirectory(prefix="brightsky-verify-") as tmp:
             workflow_path = Path(tmp) / "workflow.json"
+            # The run's site comes from a `sites/<name>` part of this path; a
+            # site's settings or saved login must never reach a verify run.
+            if pipeline._extract_site(str(workflow_path)) != "shared":
+                raise RuntimeError(
+                    f"temp dir {tmp} names a site; set TMPDIR outside any sites/ folder")
             workflow_path.write_text(json.dumps({
                 "name": "brightsky verify",
                 "domain": "web",
@@ -349,6 +388,9 @@ class PipelineExecutor:
             try:
                 built = await pipeline.build_pipeline(prepared, sessions)
                 built.runner.add_hook("web", ExpectationHook(mapped.expectations))
+                # build_pipeline gives no seam for the healer, so it is wrapped here.
+                if built.runner._healer is not None:
+                    built.runner._healer = _ElementOnlyHealer(built.runner._healer)
                 results = await pipeline.execute_pipeline(built)
             finally:
                 await sessions.close_all()
