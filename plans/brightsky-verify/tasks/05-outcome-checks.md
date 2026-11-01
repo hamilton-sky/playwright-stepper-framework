@@ -1,7 +1,7 @@
 # Add the per-step outcome checks and the conversion to BrightSky step outcomes
 
 Type: task
-Status: resolved
+Status: open
 Blocked by: 03, 12
 Test first: yes
 Level: 3
@@ -170,3 +170,9 @@ prints passed
     outer runner's `after` still checks the healed result.
   - A passed step whose first resolve missed (a retry found it) reports `tier=None`,
     `matched=True`.
+
+## Review findings (round 1, floor guard)
+
+floor guard: the diff weakens the bar instead of meeting it
+suppress: stepper/tests/unit/test_brightsky_executor.py: executed.outcome = "failed"  # type: ignore[misc]
+if a finding is intended, the ticket needs a line like: Floor: allow <category>
