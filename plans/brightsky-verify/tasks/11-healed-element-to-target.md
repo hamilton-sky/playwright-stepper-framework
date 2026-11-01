@@ -1,7 +1,7 @@
 # Describe a healed element as a BrightSky target
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: 02, 03
 Test first: yes
 Level: 2
@@ -94,3 +94,45 @@ prints passed
   `readPlanStepTarget` (read only)
 
 ## Answer
+
+- **Built**: `stepper/brightsky/targets.py` (new: `target_from_element`) and
+  `stepper/tests/unit/test_brightsky_targets.py` (new). Work started at 14b76b9.
+  Test-only commit f961314 first; it failed at collection with
+  `ModuleNotFoundError: No module named 'stepper.brightsky.targets'`.
+- **Proof**:
+  - `python3 -m pytest stepper/tests/unit/test_brightsky_targets.py -q` → `42 passed`.
+    `test_each_element_kind_becomes_a_target` asserts the exact target for role+name,
+    css, xpath, id (`#searchbox`), placeholder, placeholder with `"`
+    (`[placeholder="Say \"hi\""]`), placeholder with `\`, and role+name plus css.
+  - Same file: `{"text": "x"}`, `{"label": "x"}`, `{}`, `{"role": "link", "name": "  "}`,
+    role-only, name-only, and non-dicts (None, str, list, int) each return None; a
+    2000-character css alone gives None and beside an id is dropped (selectors `["#q"]`).
+    Non-str / blank values are ignored.
+  - Same file, round trip through `WorkflowDetail.from_json` + `map_version`: the
+    pilot-like step 1 healed to `{"placeholder": "Search"}`, `{"css": ...}` and
+    `{"id": "searchbox"}` each map to `fill`, `input_value == "The Hobbit"`,
+    `press_enter` true, element exactly `{"css": '[placeholder="Search"]'}` /
+    `{"css": "input.search-bar"}` / `{"id": "searchbox"}` (no `role`, `name`, `text`, no
+    `Search` value). A role+name heal to `searchbox` "Find" gives element
+    `{"role": "searchbox", "name": "Find"}`. A control test shows that without
+    `original` the same heal maps to `click`.
+  - Every non-None result passes `_valid_plan_step_target` (readPlanStepTarget's rules:
+    role+accessibleName non-blank or a selector, ≤5 selectors each non-blank ≤1024,
+    score 0..1, grounding `current_page`, role ≤64, name ≤512).
+  - `python3 -m pytest stepper/tests/unit/ -q` → `1990 passed`.
+  - Also: Build exit 0, Lint exit 0, acceptance `test_accept_mapping.py` → `37 passed`
+    (its 7 targets tests no longer fail).
+- **Decisions**:
+  - Selectors are listed in the resolver cascade's priority order (placeholder 30,
+    id 50, css 60, xpath 70), because `map_version` takes only the first selector.
+  - A role longer than 64 or a name longer than 512 characters is ignored like a
+    non-str value (readPlanStepTarget refuses the whole target for those), so the role
+    falls back to `original`'s role or is left out.
+  - Values are copied as given (not stripped); blankness is checked with `strip()`.
+    `map_version` strips them when it reads them back.
+  - An element's lone `role` (no name) is not used; only `original`'s role is, as the
+    ticket says.
+- **Shortcuts taken**: none.
+- **For later tickets**: ticket 06 should pass `original=step.get("target")` and treat
+  None as "nothing to propose". The returned dict is new each call; `original` is not
+  changed.
