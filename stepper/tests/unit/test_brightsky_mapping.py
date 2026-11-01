@@ -453,12 +453,24 @@ def test_a_template_in_the_title_is_refused():
 
 @pytest.mark.parametrize("field,value", [
     ("target", "link"), ("expectedOutcome", "url_change"), ("expectedDomain", 5),
-    ("expectedUrl", ["/"]), ("matchMode", 1), ("explanation", 3),
+    ("expectedUrl", ["/"]), ("matchMode", 1), ("matchMode", []), ("matchMode", {}),
+    ("expectedOutcome", {"kind": []}), ("expectedOutcome", {"kind": {}}),
+    ("explanation", 3),
 ])
 def test_wrong_types_are_unmappable(field, value):
     steps = _steps()
     steps[1][field] = value
     assert _unmappable(steps).step_number == 2
+
+
+@pytest.mark.parametrize("field,value", [
+    ("matchMode", []), ("matchMode", {}),
+    ("expectedOutcome", {"kind": []}), ("expectedOutcome", {"kind": {}}),
+])
+def test_unhashable_mode_or_kind_on_step_1_is_unmappable(field, value):
+    steps = _steps()
+    steps[0][field] = value
+    assert _unmappable(steps).step_number == 1
 
 
 def test_wrong_target_field_types_are_unmappable():
