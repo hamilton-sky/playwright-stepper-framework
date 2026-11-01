@@ -47,7 +47,8 @@ stepper/sites/shared/
 stepper/sites/db/artifacts/
 
 jira-to-stepper-pipeline/
-plans/
+plans/*
+!plans/brightsky-verify/
 strategy/
 
 
