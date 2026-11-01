@@ -315,3 +315,100 @@ async def test_hooks_reach_the_runner_that_injects_a_pre_step(make_runner):
 
     # pre-step + the re-run original, each through before and after
     assert [e[1] for e in log] == ["before", "after", "before", "after"]
+
+
+# ── add_hook ──────────────────────────────────────────────────────────────────
+
+class OtherDomainAction(PassingAction):
+    domain = "other"
+
+
+class DomainFactory(ActionFactory):
+    """`scripted` is a web action, `elsewhere` belongs to another domain."""
+
+    def __init__(self):
+        self.web = PassingAction()
+        self.other = OtherDomainAction()
+
+    def create(self, action_name):
+        return self.other if action_name == "elsewhere" else self.web
+
+
+def test_add_hook_returns_the_runner(make_runner):
+    runner = make_runner(PassingAction())
+
+    assert runner.add_hook("web", StepHook()) is runner
+
+
+async def test_a_hook_added_through_add_hook_runs_for_its_domain_only(reporter, behaviour):
+    log: list = []
+    runner = StepRunner(session=NoSession(), action_factory=DomainFactory(),
+                        reporter=reporter, behaviour=behaviour)
+    runner.add_hook("web", RecordingHook(log, "web"))
+    runner.add_hook("other", RecordingHook(log, "other"))
+
+    await runner.run([step(description="on the web"),
+                      step(action="elsewhere", description="somewhere else")])
+
+    assert [(e[0], e[1], e[2]) for e in log] == [
+        ("web", "before", 0), ("web", "after", 0),
+        ("other", "before", 1), ("other", "after", 1),
+    ]
+
+
+async def test_add_hook_appends_after_the_hooks_given_at_construction(make_runner):
+    log: list = []
+    runner = make_runner(PassingAction(), hooks={"web": [RecordingHook(log, "given")]})
+    runner.add_hook("web", RecordingHook(log, "added"))
+
+    await runner.run([step()])
+
+    assert [(e[0], e[1]) for e in log] == [
+        ("given", "before"), ("added", "before"),
+        ("given", "after"), ("added", "after"),
+    ]
+
+
+class FailsOnOldElement(ActionStrategy):
+    action_name = "scripted"
+    domain      = "web"
+
+    async def _execute(self, page, step, resolver, context, behaviour=None):
+        if step.element == {"css": ".old"}:
+            return StepResult(step=step, status="failed", error="Element not found")
+        return StepResult(step=step, status="passed")
+
+
+class ReplacingHealer:
+    async def heal(self, step, error, dom, **kwargs):
+        import dataclasses
+        return [dataclasses.replace(step, element={"css": ".new"},
+                                    description="the replacement")]
+
+
+async def test_a_hook_added_through_add_hook_is_seen_by_a_heal_replacement_runner(
+        make_runner, monkeypatch):
+    from stepper.engine.healer.dom_snapshot import DOMSnapshotCascade
+    from stepper.engine.healer.interfaces import DomPayload
+    from stepper.engine.healer.visual_bridge import VisualBridge
+
+    async def capture(page, step, *, skip_direct=False):
+        return DomPayload("aria", "{}")
+
+    async def check(page, step):
+        return None
+
+    monkeypatch.setattr(DOMSnapshotCascade, "capture", capture)
+    monkeypatch.setattr(VisualBridge, "check", check)
+
+    log: list = []
+    runner = make_runner(FailsOnOldElement(), healer=ReplacingHealer(), max_heal_attempts=1)
+    runner.add_hook("web", RecordingHook(log))
+
+    results, _ = await runner.run([step(description="the original", element={"css": ".old"})])
+
+    assert results[0].status == "healed"
+    # outer before, the replacement runner's before and after, then the outer after
+    assert [(e[1], e[3] if len(e) > 3 else None) for e in log] == [
+        ("before", None), ("before", None), ("after", "passed"), ("after", "healed"),
+    ]
