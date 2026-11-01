@@ -136,7 +136,7 @@ def _map_step(raw: dict, n: int, shown_site: str, site: str) -> tuple[StepConfig
         raise UnmappableStep(n, f"expected domain {_shown(domain)} is not the "
                                 f"workflow's site {_shown(shown_site)}")
     expected_url = _optional_str(raw, "expectedUrl", n)
-    mode = raw.get("matchMode")
+    mode = _optional_str(raw, "matchMode", n)
     if mode is not None and mode not in MATCH_MODES:
         raise UnmappableStep(n, f"unknown matchMode {_shown(mode)}")
 
@@ -211,7 +211,7 @@ def _outcome(outcome: Any, n: int) -> tuple[str | None, dict | None, str | None]
     if not isinstance(outcome, dict):
         raise UnmappableStep(n, "expectedOutcome must be an object")
     kind = outcome.get("kind")
-    if kind not in OUTCOME_KINDS:
+    if not isinstance(kind, str) or kind not in OUTCOME_KINDS:
         raise UnmappableStep(n, f"outcome kind {_shown(kind)} is not supported")
     if kind == "url_change":
         return kind, None, _optional_str(outcome, "urlContains", n) or None

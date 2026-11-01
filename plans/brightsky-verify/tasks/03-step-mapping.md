@@ -1,7 +1,7 @@
 # Map BrightSky steps to strict stepper steps
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: 02
 Test first: yes
 Level: 3
@@ -192,6 +192,25 @@ prints passed
   by kind (`//`/`(/` xpath, `#ident` id, else css), so a `placeholder` heal must become
   a css selector such as `[placeholder="Search"]`.
 
+
+- **Review fixes** (round 1): test-only commit 7e80d7f first (8 new cases failed with
+  `TypeError: unhashable type`), then the fix. After it:
+  `test_brightsky_mapping.py` → `108 passed`; `stepper/tests/unit/` → `1868 passed`;
+  Build exit 0; Lint exit 0; acceptance mapping still 30 passed / 7 failed, all 7
+  `No module named 'stepper.brightsky.targets'` (ticket 11).
+  1. (major, fixed) `matchMode` is now read through `_optional_str`, and `_outcome`
+     checks `isinstance(kind, str)` before the membership test, so `"matchMode": []`/`{}`
+     and `"expectedOutcome": {"kind": []}`/`{"kind": {}}` raise `UnmappableStep` on step 1
+     and on later steps. A non-string `matchMode` now reads `matchMode must be a string`.
+     Cases added to `test_wrong_types_are_unmappable` and a new
+     `test_unhashable_mode_or_kind_on_step_1_is_unmappable`.
+  2. (minor, not changed) The guard is relative to `detail.site`, as the ticket specifies;
+     a site such as `nip.io` or `co.uk` passes. A public-suffix or site allowlist is a
+     spec decision outside this ticket; noted here for the spec owner / a later ticket.
+  3. (minor, not changed) A blank `expectedDomain` stays refused, on step 1 and on later
+     steps alike. The ticket's fallback is for an absent domain; refusing a blank one fails
+     closed and keeps one rule for every step. If BrightSky is found to store `""` for
+     "no domain", switching to `or detail.site` is a one-line change.
 
 ## Review findings (round 1, pair review)
 
