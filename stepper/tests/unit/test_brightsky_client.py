@@ -472,6 +472,22 @@ class _Backend(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(payload)
             return
+        if "/broken-chunked" in self.path:
+            # /broken-chunked?status=<code>: a chunked body whose chunk size is not hex.
+            query = dict(part.split("=") for part in urlsplit(self.path).query.split("&"))
+            self.send_response(int(query.get("status", "200")))
+            self.send_header("Transfer-Encoding", "chunked")
+            self.end_headers()
+            self.wfile.write(b"zz\r\nabc\r\n0\r\n\r\n")
+            return
+        if self.path.startswith("/short"):
+            # /short?status=<code>: declares 100 bytes, sends 3, then closes.
+            query = dict(part.split("=") for part in urlsplit(self.path).query.split("&"))
+            self.send_response(int(query.get("status", "200")))
+            self.send_header("Content-Length", "100")
+            self.end_headers()
+            self.wfile.write(b"abc")
+            return
         status = 404 if self.path == "/missing" else 200
         payload = json.dumps({"ok": status == 200, "echo": body.decode()}).encode()
         self.send_response(status)
@@ -565,3 +581,34 @@ def test_urllib_transport_refuses_a_body_over_the_cap(loopback_server, dead_prox
 
     with pytest.raises(OSError, match="64"):
         transport.send("GET", f"{loopback_server}/sized?n=65&status={status}", {}, None, 5.0)
+
+
+@pytest.mark.parametrize("status", [200, 400, 503])
+def test_urllib_transport_raises_oserror_on_a_broken_chunked_body(loopback_server,
+                                                                  dead_proxy, status):
+    with pytest.raises(OSError, match="bad HTTP response"):
+        UrllibTransport().send("GET", f"{loopback_server}/broken-chunked?status={status}",
+                               {}, None, 5.0)
+
+
+def test_a_503_with_a_broken_chunked_body_is_retried_then_raises_status_0(loopback_server,
+                                                                          dead_proxy):
+    sleeps: list[float] = []
+    client = BrightSkyClient(
+        BrightSkyConfig(api_url=loopback_server + "/broken-chunked?status=503&x=",
+                        token=TOKEN),
+        sleep=sleeps.append)
+
+    with pytest.raises(BrightSkyHttpError) as caught:
+        client.queue()
+
+    assert caught.value.status == 0
+    assert len(_Backend.seen) == 2 and len(sleeps) == 1
+
+
+@pytest.mark.parametrize("status", [200, 500])
+def test_urllib_transport_raises_oserror_on_a_body_shorter_than_its_length(
+        loopback_server, dead_proxy, status):
+    with pytest.raises(OSError, match="shorter"):
+        UrllibTransport().send("GET", f"{loopback_server}/short?status={status}",
+                               {}, None, 5.0)
