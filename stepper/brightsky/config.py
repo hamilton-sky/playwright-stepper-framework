@@ -48,14 +48,28 @@ def _required(environ: Mapping[str, str], name: str) -> str:
     return value
 
 
+def _visible_ascii(value: str) -> bool:
+    """True when every character is printable ASCII other than space (! to ~)."""
+    return all("!" <= ch <= "~" for ch in value)
+
+
 def load_config(environ: Mapping[str, str]) -> BrightSkyConfig:
     """Read and check the two BrightSky variables. Raises BrightSkyConfigError."""
     api_url = _required(environ, API_URL_VAR).rstrip("/")
     token = _required(environ, TOKEN_VAR)
 
+    # A line break in the token would end up in an HTTP header, and the stdlib
+    # transport echoes a bad header value, token and all, in its exception.
+    if not _visible_ascii(token):
+        raise BrightSkyConfigError(
+            f"{TOKEN_VAR} may contain only visible ASCII characters")
+
+    if not _visible_ascii(api_url):
+        raise BrightSkyConfigError(f"{API_URL_VAR} is not a valid URL")
     try:
         parts = urlsplit(api_url)
         host = parts.hostname
+        parts.port  # raises ValueError on a non-numeric or out-of-range port
     except ValueError:
         raise BrightSkyConfigError(f"{API_URL_VAR} is not a valid URL") from None
     scheme = parts.scheme.lower()
@@ -64,6 +78,11 @@ def load_config(environ: Mapping[str, str]) -> BrightSkyConfig:
         raise BrightSkyConfigError(_HTTPS_ONLY)
     if not host:
         raise BrightSkyConfigError(f"{API_URL_VAR} has no host")
+    # Request paths are appended to the base URL, so a query or fragment would
+    # swallow them; userinfo would put a credential in the repr.
+    if "?" in api_url or "#" in api_url or "@" in parts.netloc:
+        raise BrightSkyConfigError(
+            f"{API_URL_VAR} must not have a query, a fragment or a user name")
     if scheme == "http" and host not in LOOPBACK_HOSTS:
         raise BrightSkyConfigError(_HTTPS_ONLY)
 

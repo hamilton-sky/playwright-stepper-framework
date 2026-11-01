@@ -434,10 +434,12 @@ def test_a_duplicate_step_number_raises():
 
 
 def test_more_than_50_steps_raises():
-    steps = [RunStep(step_number=n, matched=True, tier="role", outcome="passed")
-             for n in range(1, 52)]
+    # Step numbers stop at 50, so the 51st step repeats one; the length is
+    # checked before uniqueness, so the length is what this report fails on.
+    steps = [RunStep(step_number=n % 50 + 1, matched=True, tier="role", outcome="passed")
+             for n in range(51)]
 
-    with pytest.raises(ValueError, match="50"):
+    with pytest.raises(ValueError, match="at most 50 steps"):
         RunReport(version=1, steps=steps, result="passed", idempotency_key="k")
 
 

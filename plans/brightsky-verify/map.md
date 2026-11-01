@@ -39,6 +39,7 @@ cleanly while the secrets are unset.
 - Non-current versions (ticket 01, answered by the user 2026-11-01, option A): a non-current queue entry prints `<slug> v<N> skipped: not the current version` and does not change `--all-unverified`'s exit code; `verify <slug> --version N` for a non-current N exits 3.
 - 01 — Option A: a non-current `--all-unverified` entry is skipped (`<slug> v<N> skipped: not the current version (v<M>)`), nothing posted, exit code unchanged; `verify <slug> --version N` for a non-current N exits 3.
 - 02 — `stepper/brightsky/` config + wire models: `load_config` (https or loopback http only, token hidden from repr/messages), readers raise `BrightSkyResponseError` naming the field (never the value), writers raise `ValueError`; `SLUG_PATTERN` is matched with `fullmatch`.
+- 02 — round 2: token must be visible ASCII (no CR/LF), base URL refuses query/fragment/userinfo/bad port, `SLUG_PATTERN` ends in `\Z`, writers check every top-level DTO limit and raise `ValueError` (never `TypeError`).
 
 Outside facts the plan relies on, with their sources:
 

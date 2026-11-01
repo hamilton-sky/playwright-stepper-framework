@@ -1,7 +1,7 @@
 # Add the BrightSky config and the validated wire models
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: —
 Test first: yes
 Level: 3
@@ -92,7 +92,8 @@ prints passed
   `stepper/tests/unit/test_brightsky_models.py`. Test-only commit 8756dd5 first (failed
   at collection: `ModuleNotFoundError: No module named 'stepper.brightsky'`).
 - **Proof**:
-  - `python3 -m pytest stepper/tests/unit/test_brightsky_models.py -q` → `100 passed`.
+  - `python3 -m pytest stepper/tests/unit/test_brightsky_models.py -q` → `170 passed`
+    (round 2; was 100).
     Config tests: missing and blank (`""`, `"   "`, `"\t\n"`) for both variables raise
     `^<NAME> is not set$`; `ftp://`, `file://`, `ws://` and a scheme-less URL, and http
     to `bright-sky.example.com`, `10.0.0.5`, `localhost.example.com`, `127.0.0.2` raise
@@ -108,7 +109,7 @@ prints passed
     duplicate step number and source `claude` raise `ValueError`; a 1500-char note
     becomes 1000 chars ending in `…`.
   - `python3 -m pytest stepper/tests/unit/test_packaging.py -q` → `23 passed`.
-  - `python3 -m pytest stepper/tests/unit/ -q` → `1690 passed`.
+  - `python3 -m pytest stepper/tests/unit/ -q` → `1760 passed` (round 2).
   - Also: Build (`compileall`) exit 0, Lint (`main.py validate`) exit 0, and the
     acceptance config tests (`-k "load_config or https"`) `13 passed`.
 - **Decisions**:
@@ -125,10 +126,10 @@ prints passed
   - `Proposal` truncates in `__post_init__` (via `object.__setattr__` on the frozen
     dataclass), so `proposal.note` is the value sent and the propose retry check
     (ticket 10) compares against what the backend stored.
-- **Shortcuts taken**: writers check only the limits the ticket lists. `RunReport.version`,
-  `RunStep.step_number` and `Proposal.steps` (1–50, title ≤ 200 ...) are not checked here;
-  the backend's 400 would catch them. Worth adding if a caller ever builds them from
-  untrusted data.
+- **Shortcuts taken**: the writers now check every top-level DTO limit (round 2), but
+  not the fields inside each `Proposal` step (title ≤ 200, target shape ...): the steps
+  are copied from the backend's own `currentSteps`, so the backend's 400 would catch a
+  bad one. Worth adding if a caller ever builds proposal steps itself.
 - **Review fixes** (round 1, floor guard): removed both `# type: ignore` comments from
   `stepper/tests/unit/test_brightsky_models.py`, without weakening either test.
   The frozen test now assigns through `setattr(config, "token", "other")` and still expects
@@ -136,6 +137,32 @@ prints passed
   the tests deliberately pass non-str titles, so no ignore is needed. Re-proved: the
   models file `100 passed`, packaging `23 passed`, unit suite `1690 passed`, Build and
   Lint exit 0. `git diff 555d159` shows no `type: ignore`/`noqa`/skip in code.
+- **Review fixes** (round 2, pair review). Failing tests first in 78102b3 (58 failed),
+  then the fix:
+  1. major, token with CR/LF: `load_config` refuses a token with any character outside
+     `!`..`~` (whitespace, control, DEL, non-ASCII) with
+     `BRIGHTSKY_BRIDGE_TOKEN may contain only visible ASCII characters`, no token text.
+     Tested with `abc\r\nX-Evil: 1`, `\n`, space, tab, NUL, DEL, `é`; a token of
+     printable punctuation is kept as is.
+  2. minor, URL shape: a query or fragment (even an empty `?`/`#`), userinfo, any
+     whitespace or non-ASCII in the URL, and a bad port (`:abc`, `:99999`, `parts.port`
+     now read inside the try) are refused; messages name the variable, not the value.
+     A base URL with a path (`https://x/api/`) is still accepted.
+  3. minor: `SLUG_PATTERN` is now `^[a-z0-9-]{3,100}\Z`, so `.match`, `.search` and
+     `.fullmatch` all refuse `abc\n` (tested for each).
+  4. minor, missing writer limits: `RunReport.version` int 1..2147483647 (the DTO's
+     `maxVersion`), steps a list of `RunStep`; `RunStep.step_number` int 1..50 (DTO
+     `@Max(maxSteps)`), `matched` a bool; `Proposal.steps` a list of 1..50 dicts.
+     bool is refused where an int is expected.
+  5. minor, `TypeError` instead of `ValueError`: `tier`, `outcome`, `result`, `source`,
+     `note` and `idempotency_key` are type-checked first, so non-str values (None, int,
+     bytes, list) raise `ValueError`.
+  Extra edit inside a Touches file: `test_more_than_50_steps_raises` built step numbers
+  1..51, which the new 1..50 cap refuses before the report exists. It now builds 51 steps
+  numbered `n % 50 + 1` and matches the stricter `at most 50 steps` (length is checked
+  before uniqueness), so it still proves the 50-step limit. Re-proved: models 170 passed,
+  packaging 23 passed, unit 1760 passed, Build and Lint exit 0, acceptance config subset
+  13 passed.
 - **For later tickets**: ticket 10 must re-export `BrightSkyResponseError` from
   `stepper.brightsky.client` (the acceptance tests import it from there) and reuse
   `SLUG_PATTERN` with `fullmatch`. `QueueItem.from_json` errors read like

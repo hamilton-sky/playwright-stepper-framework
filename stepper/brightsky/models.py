@@ -19,11 +19,13 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
-#: The backend's slug rule (`WORKFLOW_API_LIMITS.slugPattern`). Use fullmatch:
-#: `$` alone would accept a trailing newline.
-SLUG_PATTERN = re.compile(r"^[a-z0-9-]{3,100}$")
+#: The backend's slug rule (`WORKFLOW_API_LIMITS.slugPattern`), anchored with
+#: `\Z` rather than `$` (which accepts a trailing newline), so match, search
+#: and fullmatch all refuse "abc\n".
+SLUG_PATTERN = re.compile(r"^[a-z0-9-]{3,100}\Z")
 
 MAX_STEPS = 50
+MAX_VERSION = 2_147_483_647
 MAX_TIER = 100
 MAX_IDEMPOTENCY_KEY = 100
 MAX_NOTE = 1000
@@ -134,6 +136,11 @@ class WorkflowDetail:
 
 # ── writing ──────────────────────────────────────────────────────────────────
 
+def _is_int(value: object, low: int, high: int) -> bool:
+    # bool is an int subclass; True is not a number here either.
+    return (isinstance(value, int) and not isinstance(value, bool)
+            and low <= value <= high)
+
 @dataclass(frozen=True)
 class RunStep:
     """One step of a run report: did its element match, by which tier, and the outcome."""
@@ -143,10 +150,15 @@ class RunStep:
     outcome: str
 
     def __post_init__(self) -> None:
-        if self.outcome not in STEP_OUTCOMES:
+        if not _is_int(self.step_number, 1, MAX_STEPS):
+            raise ValueError(f"step number must be an integer from 1 to {MAX_STEPS}")
+        if not isinstance(self.matched, bool):
+            raise ValueError("matched must be a bool")
+        if not isinstance(self.outcome, str) or self.outcome not in STEP_OUTCOMES:
             raise ValueError(f"outcome must be one of {sorted(STEP_OUTCOMES)}")
-        if self.tier is not None and len(self.tier) > MAX_TIER:
-            raise ValueError(f"tier must be at most {MAX_TIER} characters")
+        if self.tier is not None and (not isinstance(self.tier, str)
+                                      or len(self.tier) > MAX_TIER):
+            raise ValueError(f"tier must be None or a string of at most {MAX_TIER} characters")
 
     def to_json(self) -> dict:
         return {"stepNumber": self.step_number, "matched": self.matched,
@@ -163,14 +175,20 @@ class RunReport:
     client: str = "stepper"
 
     def __post_init__(self) -> None:
+        if not _is_int(self.version, 1, MAX_VERSION):
+            raise ValueError(f"version must be an integer from 1 to {MAX_VERSION}")
+        if (not isinstance(self.steps, list)
+                or not all(isinstance(s, RunStep) for s in self.steps)):
+            raise ValueError("steps must be a list of RunStep")
         if len(self.steps) > MAX_STEPS:
             raise ValueError(f"a run report has at most {MAX_STEPS} steps")
         numbers = [s.step_number for s in self.steps]
         if len(set(numbers)) != len(numbers):
             raise ValueError("step numbers must be unique")
-        if self.result not in RUN_RESULTS:
+        if not isinstance(self.result, str) or self.result not in RUN_RESULTS:
             raise ValueError(f"result must be one of {sorted(RUN_RESULTS)}")
-        if not 1 <= len(self.idempotency_key) <= MAX_IDEMPOTENCY_KEY:
+        if (not isinstance(self.idempotency_key, str)
+                or not 1 <= len(self.idempotency_key) <= MAX_IDEMPOTENCY_KEY):
             raise ValueError(
                 f"idempotency key must be 1 to {MAX_IDEMPOTENCY_KEY} characters")
 
@@ -191,8 +209,14 @@ class Proposal:
     note: str
 
     def __post_init__(self) -> None:
-        if self.source not in PROPOSAL_SOURCES:
+        if (not isinstance(self.steps, list)
+                or not 1 <= len(self.steps) <= MAX_STEPS
+                or not all(isinstance(s, dict) for s in self.steps)):
+            raise ValueError(f"steps must be a list of 1 to {MAX_STEPS} step objects")
+        if not isinstance(self.source, str) or self.source not in PROPOSAL_SOURCES:
             raise ValueError(f"source must be one of {sorted(PROPOSAL_SOURCES)}")
+        if not isinstance(self.note, str):
+            raise ValueError("note must be a string")
         if len(self.note) > MAX_NOTE:
             object.__setattr__(self, "note", self.note[:MAX_NOTE - 1] + "…")
 
