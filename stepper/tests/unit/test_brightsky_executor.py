@@ -11,6 +11,7 @@ step is never reported passed.
 from __future__ import annotations
 
 import dataclasses
+import time
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -34,6 +35,7 @@ class FakeLocator:
         self._count = count
         self._value = value
         self._raises = raises
+        self.timeouts: list = []
 
     async def count(self) -> int:
         if self._raises is not None:
@@ -41,6 +43,7 @@ class FakeLocator:
         return self._count
 
     async def input_value(self, *, timeout=None) -> str:
+        self.timeouts.append(timeout)
         if self._raises is not None:
             raise self._raises
         if self._value is None:
@@ -98,10 +101,12 @@ def hook_for(exp: StepExpectation, description="Search for 'The Hobbit'") -> Exp
 async def test_url_change_met_keeps_the_step_passed():
     cfg = step()
     result = StepResult(step=cfg, status="passed")
-    page = FakePage(url="https://openlibrary.org/search?q=the+hobbit")
+    page = FakePage(urls=["https://openlibrary.org/",
+                          "https://openlibrary.org/search?q=the+hobbit"])
 
-    await hook_for(expectation(kind="url_change", url_contains="/search")).after(
-        page, cfg, result, 1)
+    hook = hook_for(expectation(kind="url_change", url_contains="/search"))
+    await hook.before(page, cfg, 1)
+    await hook.after(page, cfg, result, 1)
 
     assert result.status == "passed"
     assert result.error == ""
@@ -112,8 +117,9 @@ async def test_url_change_not_met_fails_the_step():
     result = StepResult(step=cfg, status="passed")
     page = FakePage(url="https://openlibrary.org/")
 
-    await hook_for(expectation(kind="url_change", url_contains="/search")).after(
-        page, cfg, result, 1)
+    hook = hook_for(expectation(kind="url_change", url_contains="/search"))
+    await hook.before(page, cfg, 1)
+    await hook.after(page, cfg, result, 1)
 
     assert result.status == "failed"
     assert result.error.startswith("expected outcome not met: ")
@@ -124,11 +130,12 @@ async def test_url_change_is_polled_until_it_holds():
     cfg = step()
     result = StepResult(step=cfg, status="passed")
     page = FakePage(urls=["https://openlibrary.org/", "https://openlibrary.org/",
-                          "https://openlibrary.org/search?q=x"])
+                          "https://openlibrary.org/", "https://openlibrary.org/search?q=x"])
 
     hook = ExpectationHook({cfg.description: expectation(kind="url_change",
                                                          url_contains="/search")},
                            timeout_s=1.0, poll_s=0.01)
+    await hook.before(page, cfg, 1)
     await hook.after(page, cfg, result, 1)
 
     assert result.status == "passed"
@@ -139,11 +146,99 @@ async def test_a_healed_step_whose_outcome_is_not_met_is_failed():
     result = StepResult(step=cfg, status="healed", healed_element={"tier": "cheap"})
     page = FakePage(url="https://openlibrary.org/")
 
+    hook = hook_for(expectation(kind="url_change", url_contains="/search"))
+    await hook.before(page, cfg, 1)
+    await hook.after(page, cfg, result, 1)
+
+    assert result.status == "failed"
+    assert result.error.startswith("expected outcome not met: ")
+
+
+async def test_a_bare_url_change_with_an_unchanged_url_is_not_met():
+    cfg = step()
+    result = StepResult(step=cfg, status="passed")
+    page = FakePage(url="https://openlibrary.org/")
+
+    hook = hook_for(expectation(kind="url_change"))
+    await hook.before(page, cfg, 1)
+    await hook.after(page, cfg, result, 1)
+
+    assert result.status == "failed"
+    assert result.error == "expected outcome not met: URL changes"
+
+
+async def test_a_bare_url_change_with_a_changed_url_is_met():
+    cfg = step()
+    result = StepResult(step=cfg, status="passed")
+    page = FakePage(urls=["https://openlibrary.org/", "https://openlibrary.org/books"])
+
+    hook = hook_for(expectation(kind="url_change"))
+    await hook.before(page, cfg, 1)
+    await hook.after(page, cfg, result, 1)
+
+    assert result.status == "passed"
+
+
+async def test_url_contains_already_on_the_unchanged_page_is_not_met():
+    cfg = step()
+    result = StepResult(step=cfg, status="passed")
+    page = FakePage(url="https://openlibrary.org/search?q=x")
+
+    hook = hook_for(expectation(kind="url_change", url_contains="/search"))
+    await hook.before(page, cfg, 1)
+    await hook.after(page, cfg, result, 1)
+
+    assert result.status == "failed"
+    assert result.error == "expected outcome not met: URL changes to contain '/search'"
+
+
+async def test_a_url_change_whose_before_url_was_never_read_is_not_met():
+    cfg = step()
+    result = StepResult(step=cfg, status="passed")
+    page = FakePage(url="https://openlibrary.org/search?q=x")
+
     await hook_for(expectation(kind="url_change", url_contains="/search")).after(
         page, cfg, result, 1)
 
     assert result.status == "failed"
-    assert result.error.startswith("expected outcome not met: ")
+
+
+async def test_a_url_change_whose_before_url_raises_is_not_met():
+    class NoUrlYet(FakePage):
+        reads = 0
+
+        @property
+        def url(self) -> str:
+            NoUrlYet.reads += 1
+            if NoUrlYet.reads == 1:
+                raise RuntimeError("page closed")
+            return "https://openlibrary.org/search?q=x"
+
+    cfg = step()
+    result = StepResult(step=cfg, status="passed")
+    page = NoUrlYet()
+
+    hook = hook_for(expectation(kind="url_change", url_contains="/search"))
+    assert await hook.before(page, cfg, 1) is None
+    await hook.after(page, cfg, result, 1)
+
+    assert result.status == "failed"
+
+
+async def test_a_heal_replacements_before_keeps_the_url_from_before_the_step():
+    # The outer runner's before reads "/", a replacement runner's before for the
+    # same description reads the moved page; the check compares with "/".
+    cfg = step()
+    replaced = StepResult(step=cfg, status="healed")
+    page = FakePage(urls=["https://openlibrary.org/", "https://openlibrary.org/search?q=x",
+                          "https://openlibrary.org/search?q=x"])
+
+    hook = hook_for(expectation(kind="url_change", url_contains="/search"))
+    await hook.before(page, cfg, 1)
+    await hook.before(page, cfg, 0)
+    await hook.after(page, cfg, replaced, 1)
+
+    assert replaced.status == "healed"
 
 
 async def test_a_failed_step_is_not_checked_and_keeps_its_error():
@@ -273,6 +368,50 @@ async def test_a_count_that_raises_is_not_met_not_a_pass():
         page, cfg, result, 1)
 
     assert result.status == "failed"
+
+
+async def test_value_set_bounds_input_value_by_the_time_left():
+    cfg = step(input_value="The Hobbit")
+    result = StepResult(step=cfg, status="passed")
+    field = FakeLocator(count=1, value="The Hobbit")
+    page = FakePage(locators={("locator", "#q"): field})
+
+    hook = ExpectationHook({cfg.description: expectation(kind="value_set",
+                                                         element={"id": "q"})},
+                           timeout_s=2.0, poll_s=0.01)
+    await hook.after(page, cfg, result, 1)
+
+    assert result.status == "passed"
+    assert len(field.timeouts) == 1
+    assert 0 < field.timeouts[0] <= 2000
+
+
+async def test_an_element_cfg_with_no_locator_fields_is_not_met_at_once():
+    cfg = step()
+    result = StepResult(step=cfg, status="passed")
+
+    hook = ExpectationHook({cfg.description: expectation(kind="element_appears",
+                                                         element={"placeholder": "x"})},
+                           timeout_s=5.0, poll_s=0.01)
+    started = time.monotonic()
+    await hook.after(FakePage(), cfg, result, 1)
+
+    assert result.status == "failed"
+    assert time.monotonic() - started < 1.0
+
+
+async def test_an_unknown_outcome_kind_is_not_met_at_once():
+    cfg = step()
+    result = StepResult(step=cfg, status="passed")
+
+    hook = ExpectationHook({cfg.description: expectation(kind="title_change",
+                                                         element={"css": "h1"})},
+                           timeout_s=5.0, poll_s=0.01)
+    started = time.monotonic()
+    await hook.after(FakePage(), cfg, result, 1)
+
+    assert result.status == "failed"
+    assert time.monotonic() - started < 1.0
 
 
 @pytest.mark.parametrize("element, key", [
@@ -455,6 +594,39 @@ async def test_recording_resolver_returns_the_inner_result_unchanged():
     resolver = RecordingResolver(_inner(expected))
 
     assert await resolver.resolve(MagicMock(), {}, "d") is expected
+
+
+class ResolvingAction(ActionStrategy):
+    """Resolves the step's element once, as ClickAction and FillAction do."""
+    action_name = "scripted"
+    domain = "web"
+
+    async def _execute(self, page, step, resolver, context, behaviour=None):
+        found = await resolver.resolve(page, step.element, step.description, strict=True)
+        status = "passed" if found.found else "failed"
+        return StepResult(step=step, status=status)
+
+
+async def test_a_passed_mapped_step_always_has_its_first_resolves_tier():
+    # Mapped steps keep StepConfig's retry=0, so the first resolve is the one
+    # the step acts on: a miss fails it, and a later find cannot make it pass
+    # with no tier.
+    inner = _inner(ResolveResult(found=False, method="not-found"),
+                   ResolveResult(found=True, method="css"))
+    recording = RecordingResolver(inner)
+    cfg = step(description=ONE, action="scripted", element={"css": ".x"})
+    assert cfg.retry == 0
+    behaviour = MagicMock()
+    behaviour.inter_step_delay = AsyncMock(return_value=None)
+    runner = StepRunner(page=FakePage(), action_factory=OneActionFactory(ResolvingAction()),
+                        resolver=recording, reporter=MagicMock(), behaviour=behaviour)
+
+    results, _ = await runner.run([cfg])
+    out = executed_steps(MappedWorkflow(steps=[cfg], step_numbers={ONE: 1}, expectations={}),
+                         results, recording.tiers)
+
+    assert inner.resolve.await_count == 1
+    assert out == [ExecutedStep(1, "failed", False, None, False, None, results[0].error)]
 
 
 def test_other_attributes_are_delegated_to_the_inner_resolver():
