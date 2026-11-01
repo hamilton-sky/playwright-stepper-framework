@@ -231,6 +231,29 @@ def test_a_token_across_the_message_cut_is_scrubbed_whole():
     assert TOKEN[:8] not in str(caught.value)
 
 
+def test_control_characters_in_a_backend_message_are_replaced():
+    message = "x\n::error::pwn\u001b[31m\r\t\u0085\u2028end"
+    stub = StubTransport().on("GET", QUEUE, (400, _error(400, message)))
+
+    with pytest.raises(BrightSkyHttpError) as caught:
+        _client(stub).queue()
+
+    assert caught.value.message.isprintable()
+    assert "\n" not in str(caught.value) and "\x1b" not in str(caught.value)
+    assert caught.value.message.startswith("x")
+    assert caught.value.message.endswith("end")
+
+
+def test_a_deeply_nested_error_body_falls_back_to_the_reason_phrase():
+    stub = StubTransport().on("GET", QUEUE, (400, b"[" * 200_000))
+
+    with pytest.raises(BrightSkyHttpError) as caught:
+        _client(stub).queue()
+
+    assert caught.value.status == 400
+    assert caught.value.message == "Bad Request"
+
+
 def test_a_retried_report_run_sends_a_byte_identical_body():
     stub = StubTransport().on("POST", RUNS, (502, _error(502, "bad gateway")),
                               (201, {"id": "run-1"}))
@@ -367,6 +390,15 @@ def test_a_queue_body_that_is_not_a_json_array_raises_a_response_error(body):
 
     with pytest.raises(BrightSkyResponseError):
         _client(stub).queue()
+
+
+@pytest.mark.parametrize("call", ["queue", "get_workflow"])
+def test_a_deeply_nested_body_raises_a_response_error(call):
+    stub = (StubTransport().on("GET", QUEUE, (200, b"[" * 200_000))
+            .on("GET", DETAIL, (200, b'{"a":' * 200_000)))
+
+    with pytest.raises(BrightSkyResponseError):
+        getattr(_client(stub), call)(*([] if call == "queue" else [SLUG]))
 
 
 def test_a_queue_with_one_bad_slug_returns_one_item_and_one_reason():
