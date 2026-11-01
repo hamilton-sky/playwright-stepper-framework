@@ -130,6 +130,60 @@ def test_a_url_with_no_host_is_refused_without_the_token():
     assert TOKEN not in str(caught.value)
 
 
+@pytest.mark.parametrize("token", [
+    "abc\r\nX-Evil: 1",
+    "abc\nX: y",
+    "has space",
+    "tab\there",
+    "nul\x00byte",
+    "del\x7fchar",
+    "non-ascii-\u00e9",
+])
+def test_a_token_with_whitespace_or_control_characters_is_refused(token):
+    with pytest.raises(BrightSkyConfigError) as caught:
+        load_config(_env(BRIGHTSKY_BRIDGE_TOKEN=token))
+
+    message = str(caught.value)
+    assert message.startswith("BRIGHTSKY_BRIDGE_TOKEN ")
+    for piece in ("abc", "Evil", "space", "tab", "nul", "del", "non-ascii"):
+        assert piece not in message
+
+
+def test_a_token_of_printable_ascii_is_kept_as_is():
+    token = "bst_A-z0.9~+/=!"
+    config = load_config(_env(BRIGHTSKY_BRIDGE_TOKEN=token))
+
+    assert config.token == token
+
+
+@pytest.mark.parametrize("url", [
+    "https://bright-sky.example.com/?a=1",
+    "https://bright-sky.example.com?a=1",
+    "https://bright-sky.example.com#frag",
+    "https://bright-sky.example.com/api#",
+    "https://bright-sky.example.com/api?",
+    "http://user:pw@localhost",
+    "https://user@bright-sky.example.com",
+    "https://a b",
+    "http://localhost:abc",
+    "http://localhost:99999",
+])
+def test_a_url_with_a_query_fragment_userinfo_or_bad_host_or_port_is_refused(url):
+    with pytest.raises(BrightSkyConfigError) as caught:
+        load_config(_env(BRIGHTSKY_API_URL=url))
+
+    message = str(caught.value)
+    assert "BRIGHTSKY_API_URL" in message
+    assert TOKEN not in message
+    assert "pw" not in message
+
+
+def test_a_base_url_with_a_path_is_accepted():
+    config = load_config(_env(BRIGHTSKY_API_URL="https://bright-sky.example.com/api/"))
+
+    assert config.api_url == "https://bright-sky.example.com/api"
+
+
 # ── readers: QueueItem ────────────────────────────────────────────────────────
 
 def _queue_item(**overrides: object) -> dict:
@@ -188,6 +242,12 @@ def test_the_slug_pattern_is_the_backend_one():
     assert SLUG_PATTERN.fullmatch("openlibrary-find-author")
     assert not SLUG_PATTERN.fullmatch("../x")
     assert not SLUG_PATTERN.fullmatch("abc\n")
+
+
+@pytest.mark.parametrize("method", ["match", "search", "fullmatch"])
+def test_the_slug_pattern_refuses_a_trailing_newline_with_any_method(method):
+    assert getattr(SLUG_PATTERN, method)("abc\n") is None
+    assert getattr(SLUG_PATTERN, method)("openlibrary-find-author") is not None
 
 
 # ── readers: WorkflowDetail ───────────────────────────────────────────────────
@@ -416,6 +476,66 @@ def test_a_tier_of_100_characters_is_accepted():
     assert step.to_json()["tier"] == "t" * 100
 
 
+@pytest.mark.parametrize("version", [0, -1, True, "1", 1.0, None, 2_147_483_648])
+def test_a_run_report_with_a_bad_version_raises(version):
+    with pytest.raises(ValueError, match="version"):
+        RunReport(version=version, steps=[], result="passed", idempotency_key="k")
+
+
+def test_a_run_report_of_the_largest_version_is_accepted():
+    report = RunReport(version=2_147_483_647, steps=[], result="passed",
+                       idempotency_key="k")
+
+    assert report.to_json()["version"] == 2_147_483_647
+
+
+@pytest.mark.parametrize("steps", [None, ("not", "a list"), [{"stepNumber": 1}]])
+def test_a_run_report_whose_steps_are_not_run_steps_raises(steps):
+    with pytest.raises(ValueError, match="steps"):
+        RunReport(version=1, steps=steps, result="passed", idempotency_key="k")
+
+
+@pytest.mark.parametrize("result", [None, 1, ["passed"]])
+def test_a_result_that_is_not_a_string_raises_value_error(result):
+    with pytest.raises(ValueError, match="result"):
+        RunReport(version=1, steps=[], result=result, idempotency_key="k")
+
+
+@pytest.mark.parametrize("key", [None, 5, b"stepper-abc"])
+def test_an_idempotency_key_that_is_not_a_string_raises_value_error(key):
+    with pytest.raises(ValueError, match="idempotency"):
+        RunReport(version=1, steps=[], result="passed", idempotency_key=key)
+
+
+@pytest.mark.parametrize("number", [0, -1, 51, True, "1", 1.0, None])
+def test_a_bad_step_number_raises(number):
+    with pytest.raises(ValueError, match="step number"):
+        RunStep(step_number=number, matched=True, tier=None, outcome="passed")
+
+
+def test_step_number_50_is_accepted():
+    assert RunStep(step_number=50, matched=True, tier=None,
+                   outcome="passed").to_json()["stepNumber"] == 50
+
+
+@pytest.mark.parametrize("matched", ["yes", 1, 0, None])
+def test_matched_that_is_not_a_bool_raises(matched):
+    with pytest.raises(ValueError, match="matched"):
+        RunStep(step_number=1, matched=matched, tier=None, outcome="passed")
+
+
+@pytest.mark.parametrize("tier", [5, ["role"], b"role"])
+def test_a_tier_that_is_not_a_string_or_none_raises_value_error(tier):
+    with pytest.raises(ValueError, match="tier"):
+        RunStep(step_number=1, matched=True, tier=tier, outcome="passed")
+
+
+@pytest.mark.parametrize("outcome", [None, 1, ["passed"]])
+def test_an_outcome_that_is_not_a_string_raises_value_error(outcome):
+    with pytest.raises(ValueError, match="outcome"):
+        RunStep(step_number=1, matched=True, tier=None, outcome=outcome)
+
+
 def test_a_proposal_has_the_dto_keys():
     steps = [_step(), _step("Open the book page")]
     proposal = Proposal(steps=steps, source="haiku", note="healed by stepper-abc")
@@ -443,6 +563,40 @@ def test_a_note_of_1000_characters_is_kept():
     proposal = Proposal(steps=[_step()], source="stepper", note="n" * 1000)
 
     assert proposal.note == "n" * 1000
+
+
+@pytest.mark.parametrize("steps", [[], None, "steps", {"title": "x"}])
+def test_a_proposal_without_a_list_of_1_to_50_steps_raises(steps):
+    with pytest.raises(ValueError, match="steps"):
+        Proposal(steps=steps, source="stepper", note="n")
+
+
+def test_a_proposal_with_51_steps_raises():
+    with pytest.raises(ValueError, match="50"):
+        Proposal(steps=[_step() for _ in range(51)], source="stepper", note="n")
+
+
+def test_a_proposal_with_50_steps_is_accepted():
+    steps = [_step() for _ in range(50)]
+
+    assert Proposal(steps=steps, source="stepper", note="n").to_json()["steps"] == steps
+
+
+def test_a_proposal_step_that_is_not_an_object_raises():
+    with pytest.raises(ValueError, match="steps"):
+        Proposal(steps=[_step(), "step"], source="stepper", note="n")
+
+
+@pytest.mark.parametrize("source", [None, 1, ["stepper"]])
+def test_a_source_that_is_not_a_string_raises_value_error(source):
+    with pytest.raises(ValueError, match="source"):
+        Proposal(steps=[_step()], source=source, note="n")
+
+
+@pytest.mark.parametrize("note", [None, 5, b"note"])
+def test_a_note_that_is_not_a_string_raises_value_error(note):
+    with pytest.raises(ValueError, match="note"):
+        Proposal(steps=[_step()], source="stepper", note=note)
 
 
 def test_an_idempotency_key_is_stepper_and_a_uuid4_hex():
