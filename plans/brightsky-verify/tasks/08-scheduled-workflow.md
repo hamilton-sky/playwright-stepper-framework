@@ -1,7 +1,7 @@
 # Add the scheduled GitHub Actions workflow that walks the verification queue
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: —
 Test first: yes
 Level: 3
@@ -90,3 +90,26 @@ prints passed
 
 ## Answer
 
+
+Work started at commit `6973a09b0e00f6892beeb456640644df1f62e58a`; the test-only commit is `test(brightsky-verify): 08 failing test` (7 failed: the workflow file did not exist).
+
+**Built**
+- `.github/workflows/brightsky-verify.yml` (new): `on: schedule` (`"17 6 * * *"`) + `workflow_dispatch`; one job `verify` with `runs-on: ubuntu-latest`, `timeout-minutes: 30`, `permissions: contents: read`, `concurrency: group: brightsky-verify`; job env maps `BRIGHTSKY_API_URL`, `BRIGHTSKY_BRIDGE_TOKEN`, `GROQ_API_KEY`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY` from secrets. First step `id: secrets` tests the env, writes `available=true|false`, and on false echoes `::notice title=BrightSky verification skipped::...` naming both secrets plus a `$GITHUB_STEP_SUMMARY` line; no exit. Every later step (checkout, setup-python 3.11, pip cache, both installs, playwright, model cache, model download, `python -m stepper brightsky verify --all-unverified`) has `if: steps.secrets.outputs.available == 'true'`. Header comment covers default-branch-only and the 60-day public-repo disable.
+- `stepper/tests/unit/test_brightsky_workflow_file.py` (new): 7 tests covering every assertion the ticket lists (triggers, job env secrets, first step id + `::notice`, gating of every later step, the verify run, no `secrets.` in any `run`, permissions/timeout, plus concurrency present).
+
+**Proof**
+- `python3 -m pytest stepper/tests/unit/test_brightsky_workflow_file.py -q` → `7 passed in 0.06s`, exit 0.
+- `python3 -c "import yaml; yaml.safe_load(open('.github/workflows/brightsky-verify.yml')); print('yaml ok')"` → `yaml ok`, exit 0.
+- `python3 -m pytest stepper/tests/unit/ -q` → `1884 passed in 19.07s`, exit 0.
+- Also: `python3 -m pytest plans/brightsky-verify/acceptance/test_accept_schedule.py -q` → `3 passed`; Build `compileall` exit 0; Lint `validate` exit 0.
+
+**Decisions**
+- `concurrency` without `cancel-in-progress`, so a running verify is never cut mid-report (map.md docs line: a new queued run replaces a pending one).
+- `permissions`, `timeout-minutes` and `concurrency` sit at job level (the test accepts workflow level too for permissions/concurrency).
+- Step summary is one line rather than ci.yml's multi-line block: the ticket asks for "a line".
+
+**Shortcuts taken**: none.
+
+**For later tickets**
+- The verify step fails when run until ticket 07 adds `brightsky verify` to the CLI; with secrets unset (today) it is skipped, so the job is green.
+- Ticket 07's docs could mention this workflow and the two secrets; this ticket did not touch README.
