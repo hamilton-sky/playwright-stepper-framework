@@ -107,22 +107,30 @@ class UrllibTransport:
         opener = self._direct if urlsplit(url).hostname in LOOPBACK_HOSTS else self._default
         request = urllib.request.Request(url, data=body, headers=headers, method=method)
         try:
-            with opener.open(request, timeout=timeout) as response:
-                return HttpResponse(status=response.status, body=_read_capped(response))
-        except urllib.error.HTTPError as err:
-            # HTTPError is an OSError too; an error status is an answer, not a failure.
-            with err:
-                return HttpResponse(status=err.code, body=_read_capped(err))
+            try:
+                with opener.open(request, timeout=timeout) as response:
+                    return HttpResponse(status=response.status, body=_read_capped(response))
+            except urllib.error.HTTPError as err:
+                # HTTPError is an OSError too; an error status is an answer, not a failure.
+                with err:
+                    return HttpResponse(status=err.code, body=_read_capped(err))
         except http.client.HTTPException as err:
+            # Outer try: a broken error body, read in the handler above, lands here too.
             # A malformed or cut-off response is a network failure to the caller.
             raise OSError(f"bad HTTP response: {type(err).__name__}") from err
 
 
 def _read_capped(response: Any) -> bytes:
-    """Read at most MAX_BODY bytes; a longer body raises OSError (a failed response)."""
+    """Read at most MAX_BODY bytes; a longer body, or one shorter than its
+    Content-Length, raises OSError (a failed response)."""
     body = response.read(MAX_BODY + 1)
     if len(body) > MAX_BODY:
         raise OSError(f"response body is larger than {MAX_BODY} bytes")
+    # http.client counts down `length` (None when chunked or unsized) and returns a
+    # short read without error when the connection closes early.
+    missing = getattr(response, "length", None)
+    if isinstance(missing, int) and missing > 0:
+        raise OSError(f"response body is shorter than its Content-Length by {missing} bytes")
     return body
 
 

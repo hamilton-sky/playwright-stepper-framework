@@ -1,7 +1,7 @@
 # Add the BrightSky HTTP client with its retry policy
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: 02
 Test first: yes
 Level: 3
@@ -188,6 +188,25 @@ prints passed
      job timeout bounds it today. This is a shortcut: worth a deadline if the client ever
      runs where no outer job timeout exists.
   Proof after the fixes: client file `58 passed`; `stepper/tests/unit/` `1942 passed`;
+  Build exit 0; Lint exit 0; `test_accept_config_client.py` `34 passed`.
+- **Review fixes** (round 3; failing tests first in 662f3d7, 5 failed for the right
+  reasons: `http.client.IncompleteRead` escaping for a 400/503 broken chunked body, x2
+  plus the client-level test, and "DID NOT RAISE" for the short body x2; then the fix):
+  1. Broken error body: `UrllibTransport.send` now has an outer `try` whose
+     `except http.client.HTTPException` also covers the error-body read in the
+     `HTTPError` handler, so it raises `OSError("bad HTTP response: ...")`. New tests
+     `test_urllib_transport_raises_oserror_on_a_broken_chunked_body[200|400|503]` (a
+     `Transfer-Encoding: chunked` body with chunk size `zz`) and
+     `test_a_503_with_a_broken_chunked_body_is_retried_then_raises_status_0` (real
+     `BrightSkyClient.queue()` over loopback: 2 requests, 1 sleep, status 0).
+  2. Short body: `_read_capped` checks the http.client response's remaining `length`
+     after the read (None when chunked or unsized; `HTTPError` delegates the attribute
+     to its response) and raises `OSError("response body is shorter than its
+     Content-Length by N bytes")`, so a cut-off 2xx is a retried network failure, not a
+     success. New test
+     `test_urllib_transport_raises_oserror_on_a_body_shorter_than_its_length[200|500]`
+     (declares 100 bytes, sends 3).
+  Proof after the fixes: client file `64 passed`; `stepper/tests/unit/` `1948 passed`;
   Build exit 0; Lint exit 0; `test_accept_config_client.py` `34 passed`.
 
 ## Review findings (round 1, pair review)
