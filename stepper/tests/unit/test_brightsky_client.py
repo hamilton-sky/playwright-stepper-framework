@@ -422,6 +422,113 @@ def test_a_malformed_detail_raises_a_response_error_naming_the_field():
         _client(stub).get_workflow(SLUG)
 
 
+# ── the backend's envelope and error shape ───────────────────────────────────
+# bright-sky's global TransformInterceptor wraps every 2xx body; its
+# AllExceptionsFilter writes errors with HttpException.getResponse() as `message`.
+
+def _wrapped(data: object) -> dict:
+    return {"success": True, "data": data, "timestamp": "2026-11-01T06:17:00.000Z"}
+
+
+def _filter_error(status: int, message: object) -> dict:
+    return {"statusCode": status, "timestamp": "2026-11-01T06:17:00.000Z",
+            "path": DETAIL, "message": message}
+
+
+def test_an_enveloped_queue_returns_its_entry():
+    stub = StubTransport().on("GET", QUEUE, (200, _wrapped([_queue_item(SLUG, 2)])))
+
+    items, rejected = _client(stub).queue()
+
+    assert [(i.slug, i.version) for i in items] == [(SLUG, 2)]
+    assert rejected == []
+
+
+def test_an_enveloped_queue_whose_data_is_not_a_list_raises_must_be_a_list():
+    stub = StubTransport().on("GET", QUEUE, (200, _wrapped({"items": []})))
+
+    with pytest.raises(BrightSkyResponseError, match="must be a list"):
+        _client(stub).queue()
+
+
+def test_an_enveloped_detail_returns_its_current_version_and_steps():
+    stub = StubTransport().on("GET", DETAIL,
+                              (200, _wrapped(_detail([_version(1), _version(2)]))))
+
+    detail = _client(stub).get_workflow(SLUG)
+
+    assert detail.current_version == 2
+    assert detail.steps == [_step()]
+
+
+def test_an_enveloped_version_view_returns_its_number():
+    stub = StubTransport().on("POST", VERSIONS, (201, _wrapped(_version(2, NOTE))))
+
+    assert _client(stub).propose_version(SLUG, _proposal()) == 2
+
+
+@pytest.mark.parametrize("body, field", [
+    ({"success": False, "data": [], "timestamp": "2026-11-01T06:17:00.000Z"}, "success"),
+    ({"success": True, "timestamp": "2026-11-01T06:17:00.000Z"}, "data"),
+], ids=["success-false", "no-data"])
+@pytest.mark.parametrize("call", ["queue", "get_workflow", "propose_version"])
+def test_a_bad_envelope_raises_a_response_error_naming_the_field_after_one_call(
+        call, body, field):
+    stub = (StubTransport().on("GET", QUEUE, (200, body)).on("GET", DETAIL, (200, body))
+            .on("POST", VERSIONS, (201, body)))
+    args = {"queue": (), "get_workflow": (SLUG,),
+            "propose_version": (SLUG, _proposal())}[call]
+
+    with pytest.raises(BrightSkyResponseError, match=field):
+        getattr(_client(stub), call)(*args)
+
+    assert len(stub.sent) == 1
+
+
+def test_a_nested_404_message_is_the_backends_text():
+    nested = {"message": "Workflow not found: x", "error": "Not Found", "statusCode": 404}
+    stub = StubTransport().on("GET", DETAIL, (404, _filter_error(404, nested)))
+
+    with pytest.raises(BrightSkyHttpError) as caught:
+        _client(stub).get_workflow(SLUG)
+
+    assert (caught.value.status, caught.value.message) == (404, "Workflow not found: x")
+
+
+def test_a_nested_400_list_message_is_joined():
+    nested = {"message": ["version must be >= 1", "steps too long"],
+              "error": "Bad Request", "statusCode": 400}
+    stub = StubTransport().on("POST", RUNS, (400, _filter_error(400, nested)))
+
+    with pytest.raises(BrightSkyHttpError) as caught:
+        _client(stub).report_run(SLUG, _report())
+
+    assert caught.value.message == "version must be >= 1; steps too long"
+
+
+def test_a_429_with_a_top_level_string_message_keeps_it():
+    stub = StubTransport().on("GET", QUEUE, (429, _filter_error(
+        429, "ThrottlerException: Too Many Requests")))
+
+    with pytest.raises(BrightSkyHttpError) as caught:
+        _client(stub).queue()
+
+    assert (caught.value.status, caught.value.message) == (
+        429, "ThrottlerException: Too Many Requests")
+
+
+def test_a_nested_message_that_echoes_the_token_is_scrubbed():
+    nested = {"message": f"Invalid token {TOKEN}", "error": "Unauthorized",
+              "statusCode": 401}
+    stub = StubTransport().on("GET", QUEUE, (401, _filter_error(401, nested)))
+
+    with pytest.raises(BrightSkyHttpError) as caught:
+        _client(stub).queue()
+
+    assert caught.value.message == "Invalid token <token>"
+    assert TOKEN not in str(caught.value)
+
+
 # ── logging ───────────────────────────────────────────────────────────────────
 
 def test_one_log_line_per_request_and_never_the_token_or_a_body(caplog):

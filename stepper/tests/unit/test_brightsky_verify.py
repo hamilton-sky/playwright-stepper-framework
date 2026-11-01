@@ -189,6 +189,26 @@ async def test_a_full_pass_posts_one_passed_report_with_one_key_and_no_proposal(
     assert executor.calls[0]["headless"] is True
 
 
+async def test_a_full_pass_against_enveloped_bodies_posts_one_passed_report():
+    # bright-sky's TransformInterceptor wraps every 2xx body this way.
+    def wrapped(data: object) -> dict:
+        return {"success": True, "data": data, "timestamp": "2026-11-01T06:17:00.000Z"}
+
+    transport = StubTransport()
+    transport.on("GET", QUEUE, (200, wrapped([_queue_item(SLUG)])))
+    transport.on("GET", detail_path(), (200, wrapped(_detail())))
+    transport.on("POST", runs_path(), (201, wrapped({"id": "run-1", "result": "passed"})))
+    executor = FakeExecutor([passed(1), passed(2), passed(3)])
+
+    outcome = await verify_slug(_client(transport), executor, SLUG)
+
+    assert outcome.status == "passed"
+    [report] = transport.bodies("POST", runs_path())
+    assert isinstance(report["idempotencyKey"], str) and report["idempotencyKey"]
+    assert [s["outcome"] for s in report["steps"]] == ["passed", "passed", "passed"]
+    assert transport.bodies("POST", versions_path()) == []
+
+
 async def test_each_run_gets_its_own_idempotency_key():
     transport = _backend()
     executor = FakeExecutor([passed(1), passed(2), passed(3)])
