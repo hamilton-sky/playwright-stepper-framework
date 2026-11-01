@@ -281,3 +281,59 @@ async def test_a_valid_multi_step_reply_is_accepted():
 
     assert [s.action for s in steps] == ["click", "click"]
     assert steps[0].element == {"role": "button", "name": "Menu"}
+
+
+# ── The strict heal order: which rung is next ─────────────────────────────────
+
+_DIRECT = DomPayload("embed_direct", "", {"placeholder": "Username"}, 0)
+_PAGE   = DomPayload("scoped", '{"best_match": {}}', None, 120)
+
+_RUNG_CASES = [
+    # (payload, tried, tier, task_type the AI is asked with — None means no call)
+    (_DIRECT, (),                                  "embed_direct", None),
+    (_DIRECT, ("embed_direct",),                   "cheap",        "heal"),
+    (_PAGE,   (),                                  "cheap",        "heal"),
+    (_PAGE,   ("embed_direct", "cheap"),           "cheap",        "heal"),
+    (_PAGE,   ("embed_direct", "cheap", "cheap"),  "big",          "heal_big"),
+    (_PAGE,   ("cheap", "cheap"),                  "big",          "heal_big"),
+]
+
+
+@pytest.mark.parametrize("dom,tried,tier,_task", _RUNG_CASES)
+def test_tier_for_names_the_next_rung(dom, tried, tier, _task):
+    assert _healer().tier_for(dom, tried) == tier
+
+
+@pytest.mark.parametrize("dom,tried,_tier,task", _RUNG_CASES)
+async def test_heal_routes_on_the_rung_tier_for_names(dom, tried, _tier, task):
+    ai = _RecordingAI(json.dumps([{
+        "action": "fill", "element": {"placeholder": "User"},
+        "input_value": "standard_user", "description": "fill the username field",
+    }]))
+
+    steps = await _healer(ai).heal(_failed_step(), "timeout", dom, tried=tried)
+
+    assert [c["task_type"] for c in ai.calls] == ([] if task is None else [task])
+    if task is not None:
+        # The big model gets the same prompt and the same parse as the cheap tier.
+        assert json.loads(ai.calls[0]["prompt"])["dom"] == dom.content
+        assert steps[0].element == {"placeholder": "User"}
+    else:
+        assert steps[0].element == {"placeholder": "Username"}
+
+
+async def test_a_direct_heal_call_without_tried_behaves_as_before():
+    """No `tried` means the empty tuple, which routes exactly as heal did."""
+    steps = await _healer(_ForbiddenAI()).heal(_failed_step(), "timeout", _DIRECT)
+    assert steps[0].element == {"placeholder": "Username"}
+
+
+def test_a_healer_without_its_own_tier_for_is_named_healer():
+    from stepper.engine.healer.interfaces import FREE_TIER, HealerStrategy
+
+    class _Minimal(HealerStrategy):
+        async def heal(self, step, error, dom, **kw):
+            return [step]
+
+    assert FREE_TIER == "embed_direct"
+    assert _Minimal().tier_for(_PAGE, ()) == "healer"
