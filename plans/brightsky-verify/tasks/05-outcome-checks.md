@@ -1,7 +1,7 @@
 # Add the per-step outcome checks and the conversion to BrightSky step outcomes
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: 03, 12
 Test first: yes
 Level: 3
@@ -161,6 +161,13 @@ prints passed
   from before the step. This stops working if BrightSky stores bare `url_change` outcomes
   that mean "the URL must change". Recording the URL in `before` and comparing in `after`
   would fix it.
+- **Review fixes**:
+  - Round 1, floor guard (`# type: ignore[misc]` in `test_executed_step_is_frozen`): the
+    assignment is now `setattr(executed, "outcome", "failed")` inside the same
+    `pytest.raises(dataclasses.FrozenInstanceError)`, so the test checks the same thing
+    without a suppression. Re-run after the fix: `test_brightsky_executor.py` 46 passed,
+    `test_step_hooks.py` 21 passed, `stepper/tests/unit/` 2067 passed, build and lint exit 0,
+    and `git diff 7d099e7 -- stepper` has no `type: ignore`, `noqa`, skip or xfail lines.
 - **For later tickets**:
   - Ticket 13: attach the hook with `runner.add_hook("web", ExpectationHook(mapped.expectations))`
     and pass `RecordingResolver(resolver)` as the runner's resolver. Then call

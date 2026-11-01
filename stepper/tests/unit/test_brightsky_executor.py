@@ -594,7 +594,7 @@ def test_executed_step_is_frozen():
     executed = ExecutedStep(1, "passed", True, "role", False, None, "")
 
     with pytest.raises(dataclasses.FrozenInstanceError):
-        executed.outcome = "failed"  # type: ignore[misc]
+        setattr(executed, "outcome", "failed")
 
 
 def test_a_class_with_execute_is_a_step_executor():
