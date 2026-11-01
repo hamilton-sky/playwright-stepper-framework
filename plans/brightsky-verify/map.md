@@ -44,6 +44,7 @@ cleanly while the secrets are unset.
 - 03 — round 1: `matchMode` and outcome `kind` are type-checked before the set lookup, so unhashable stored values are `UnmappableStep`, not `TypeError`.
 - 04 — `heal_big` chain = `["claude_big"]` (1024 tokens), `claude_big` = `ClaudeProvider(model="claude-sonnet-5-5")`; `ClaudeProvider(model=...)` defaults to Haiku and stores it as `_model`; no key means heal_big raises RuntimeError with no request.
 - 08 — `.github/workflows/brightsky-verify.yml`: daily cron `17 6 * * *` + dispatch, job-level read-only permissions, 30-min timeout, concurrency group `brightsky-verify` (no cancel-in-progress); `id: secrets` env test emits `::notice` and gates every later step on `steps.secrets.outputs.available == 'true'`.
+- 10 — `client.BrightSkyClient`: one retry (5xx/OSError, sleep 1.0–1.5 s) in `_request`, 4xx never; `BrightSkyHttpError(status, message)` (0 = network, token scrubbed); bad slug → `ValueError` before any request; queue reasons `entry <n>: <reason>` (1-based); propose re-reads notes before its retry; `UrllibTransport` follows no redirects and uses `ProxyHandler({})` for loopback.
 
 Outside facts the plan relies on, with their sources:
 

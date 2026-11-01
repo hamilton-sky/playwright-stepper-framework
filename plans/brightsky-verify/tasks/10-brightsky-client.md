@@ -1,7 +1,7 @@
 # Add the BrightSky HTTP client with its retry policy
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: 02
 Test first: yes
 Level: 3
@@ -90,3 +90,61 @@ prints passed
   pattern
 
 ## Answer
+
+- **Built**: `stepper/brightsky/client.py` (new: `TIMEOUT`, `HttpResponse`, `Transport`,
+  `UrllibTransport`, `BrightSkyHttpError`, `BrightSkyClient`; re-exports
+  `BrightSkyResponseError`), `stepper/tests/unit/test_brightsky_client.py` (new).
+  Test-only commit 960a04f first; it failed at collection with
+  `ModuleNotFoundError: No module named 'stepper.brightsky.client'`.
+- **Proof** (all run after the last edit):
+  - `python3 -m pytest stepper/tests/unit/test_brightsky_client.py -q` → `49 passed`.
+    Retry: 503 then 200 → 2 calls, 1 sleep in [1.0, 1.5]; two 503s →
+    `BrightSkyHttpError` status 503, message "still busy", 2 calls; 400/401/404/429 → 1
+    call, `sleeps == []`; `ConnectionRefusedError`, `TimeoutError`, `OSError` each retried
+    once (2 calls, 1 sleep); two network errors → status 0.
+  - Same file: a 502-then-201 `report_run` sends `first.body == second.body` with
+    `idempotencyKey` intact; a propose whose POST got 503 and whose re-read finds the
+    note returns 2 with calls `[POST versions, GET detail]` (one POST); not found → a
+    second, byte-identical POST, returns 3.
+  - Same file: every request (queue, detail, runs ×2, versions) has
+    `Authorization: Bearer <token>`, `Accept: application/json`, timeout 20; slugs
+    `../x`, `a/b/c`, `Find-Author`, `ab`, `abc\n`, `abc?x=1` raise `ValueError` with
+    `stub.sent == []` for get/report/propose; queue bodies `{"items": []}`, `"[]"`,
+    `null`, non-JSON, bad UTF-8 raise `BrightSkyResponseError`; a queue of one valid
+    entry and `../x` gives 1 item and `entry 2: slug must match ...`; the caplog test sees
+    exactly 3 records for 3 sends, each with method/path/status/attempt/duration_ms, no
+    token (even when the OSError text and the backend message contain it), no body.
+  - Loopback: `test_urllib_transport_skips_the_proxy_for_loopback` passes with
+    `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY` (and lowercase) at `http://127.0.0.1:9` and
+    `NO_PROXY`/`no_proxy` removed; the control test shows a plain
+    `urllib.request.build_opener()` raises `URLError` under the same env, and a 404 comes
+    back as `HttpResponse(404)`.
+  - `python3 -m pytest stepper/tests/unit/ -q` → `1933 passed`.
+  - Also: Build exit 0, Lint exit 0, and
+    `plans/brightsky-verify/acceptance/test_accept_config_client.py` → `34 passed` (was
+    21 failed).
+- **Decisions**:
+  - A bad slug raises `ValueError` (a caller bug, as the models' writers do); ticket 07
+    validates the CLI slug itself and exits 3 before the client is called.
+  - Queue rejection reasons are `entry <n>: <reader message>`, n counted from 1. The
+    reader's message names the rule, not the value (ticket 02's choice), so the reason
+    reads `entry 2: slug must match ^[a-z0-9-]{3,100}\Z`, not the ticket's example with
+    the value quoted.
+  - `UrllibTransport` follows no redirects (both openers): urllib forwards
+    `Authorization` on a redirect to any host or scheme, which would leak the token. A
+    3xx comes back as a non-retried `BrightSkyHttpError`. `http.client.HTTPException`
+    (cut-off or malformed response) is raised as `OSError`, per the Transport contract.
+  - Propose retry: sleep, then `get_workflow` (with its own retry), then a note match
+    returns that version; else one more POST. If the re-read itself fails, its error
+    propagates and nothing is re-posted (no duplicate on uncertainty).
+  - A backend message that is a list of strings (NestJS validation) is joined with
+    "; "; no usable message falls back to the status phrase; messages are cut to 500
+    characters and any occurrence of the token is replaced with `<token>`.
+  - `str(BrightSkyHttpError)` is `HTTP <status>: <message>`, or just the message for
+    status 0 (`network error: <Type>: <text>`). Log level INFO for 2xx, WARNING otherwise.
+- **Shortcuts taken**: the response body is read in full with no size cap; the backend is
+  trusted not to send huge bodies. Worth a cap if the client ever talks to a host other
+  than the store's own backend.
+- **For later tickets**: 06 and 07 branch on `BrightSkyHttpError.status` (0 = network)
+  and `.message`; the client raises `ValueError` for a bad slug, so 07 must validate the
+  slug first (as planned). Import `BrightSkyResponseError` from either module (same class).
