@@ -15,3 +15,4 @@ ticket number. Never edit or delete another line. Keep it short; a human prunes 
 - (05) Playwright's `timeout=0` means no timeout, so a computed "time left" timeout must be clamped to at least 1 ms.
 - (13) To unit-test PipelineExecutor without settings or a resolver, monkeypatch `stepper.main`'s `build_settings` and `build_resolver` too, not just the four pipeline functions; it reads them off the lazily imported module.
 (13) StepRunner's heal loop runs whatever replacement steps the healer returns with the full registry; wrap the healer (HealerStrategy) to restrict replies, since AiHealer._parse accepts any registered action.
+- (06) An EngineExecutor heal-loop test needs only a page with `url` + `goto` and locators with `scroll_into_view_if_needed/click/fill/press`; until ticket 07 lands, every acceptance test that goes through `run_cli` fails with argparse `invalid choice: 'brightsky'`.
