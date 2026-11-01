@@ -23,7 +23,7 @@ from stepper.brightsky.executor import (
 )
 from stepper.brightsky.mapping import MappedWorkflow, StepExpectation
 from stepper.engine.healer.dom_snapshot import DOMSnapshotCascade
-from stepper.engine.healer.interfaces import DomPayload
+from stepper.engine.healer.interfaces import DomPayload, HealerStrategy, HealingError
 from stepper.engine.healer.visual_bridge import VisualBridge
 from stepper.engine.interfaces import ResolveResult, StepConfig, StepResult
 
@@ -83,6 +83,40 @@ class RecordingAI:
         self.task_types.append(task_type)
         return json.dumps([{"action": "click", "description": DESCRIPTION,
                             "element": {"css": f"a.miss-{len(self.task_types)}"}}])
+
+
+class NavigatingAI:
+    """AIService double whose heal reply sends the run off-site."""
+
+    def __init__(self):
+        self.task_types: list[str] = []
+
+    async def chat(self, prompt, task_type="classify", system=""):
+        self.task_types.append(task_type)
+        return json.dumps([{"action": "navigate", "description": DESCRIPTION,
+                            "url": "https://evil.example/steal"}])
+
+
+class FoundAI:
+    """AIService double whose heal reply is the mapped click on the found element."""
+
+    def __init__(self, extra_steps=()):
+        self.task_types: list[str] = []
+        self._extra = list(extra_steps)
+
+    async def chat(self, prompt, task_type="classify", system=""):
+        self.task_types.append(task_type)
+        return json.dumps([{"action": "click", "description": DESCRIPTION,
+                            "element": dict(FOUND), "extra": {"strict": True}},
+                           *self._extra])
+
+
+class GotoPage(FakePage):
+    def __init__(self):
+        self.visited: list[str] = []
+
+    async def goto(self, url, **kwargs):
+        self.visited.append(url)
 
 
 class FakeCapture:
@@ -211,11 +245,68 @@ async def test_engine_attaches_the_expectation_hook(probes):
     assert steps[0].error.startswith("not on the expected page")
 
 
+async def test_engine_rejects_a_heal_reply_that_navigates_off_site(probes):
+    probes(None)
+    page = GotoPage()
+    resolver = FakeResolver(finds=[FOUND])
+    ai = NavigatingAI()
+
+    steps = await EngineExecutor(page, resolver, ai_service=ai).execute(
+        mapped(), headless=True)
+
+    assert ai.task_types == ["heal", "heal", "heal_big"]
+    assert page.visited == []
+    assert steps[0].outcome == "failed"
+    assert steps[0].healed is False
+
+
+async def test_engine_rejects_a_heal_reply_that_adds_steps(probes):
+    probes(None)
+    page = GotoPage()
+    resolver = FakeResolver(finds=[FOUND])
+    ai = FoundAI(extra_steps=[{"action": "screenshot", "description": "x",
+                               "extra": {"filename": "../../leak.png"}}])
+
+    steps = await EngineExecutor(page, resolver, ai_service=ai).execute(
+        mapped(), headless=True)
+
+    assert ai.task_types == ["heal", "heal", "heal_big"]
+    assert resolver.locator.clicks == 0
+    assert steps[0].healed is False
+
+
+async def test_engine_accepts_a_heal_reply_that_only_changes_the_element(probes):
+    probes(None)
+    resolver = FakeResolver(finds=[FOUND])
+    ai = FoundAI()
+
+    steps = await EngineExecutor(FakePage(), resolver, ai_service=ai).execute(
+        mapped(), headless=True)
+
+    assert ai.task_types == ["heal"]
+    assert steps[0].healed is True
+    assert steps[0].tier == "cheap"
+    assert resolver.locator.clicks == 1
+
+
 # ── PipelineExecutor ──────────────────────────────────────────────────────────
+
+class PassThroughHealer(HealerStrategy):
+    """The pipeline's own healer, as build_healer would give: returns `reply`."""
+
+    def __init__(self, reply):
+        self.reply = reply
+
+    async def heal(self, step, error, dom, **kwargs):
+        return list(self.reply)
+
 
 class FakeRunner:
     def __init__(self):
         self.hooks: list[tuple] = []
+        self._healer = PassThroughHealer(
+            [StepConfig(action="navigate", description=DESCRIPTION,
+                        url="https://evil.example/steal")])
 
     def add_hook(self, domain, hook):
         self.hooks.append((domain, hook))
@@ -345,6 +436,36 @@ async def test_pipeline_a_domain_that_is_not_ready_propagates_before_anything_op
     assert "build_session_set" not in pipeline.order
     assert pipeline.sessions.closed == 0
     assert not Path(pipeline.cfg.workflow_path).parent.exists()
+
+
+async def test_pipeline_limits_the_runners_healer_to_element_changes(pipeline):
+    workflow = mapped()
+
+    await PipelineExecutor().execute(workflow, headless=True)
+
+    healer = pipeline.runner._healer
+    assert not isinstance(healer, PassThroughHealer)
+    dom = DomPayload("scoped", "PAGE", None, 1)
+    with pytest.raises(HealingError):
+        await healer.heal(workflow.steps[0], "not found", dom)
+    found = StepConfig(action="click", description=DESCRIPTION,
+                       element=dict(FOUND), extra={"strict": True})
+    healer._inner.reply = [found]
+    assert await healer.heal(workflow.steps[0], "not found", dom) == [found]
+
+
+async def test_pipeline_refuses_a_temp_dir_that_names_a_site(pipeline, tmp_path, monkeypatch):
+    import tempfile
+
+    site_tmp = tmp_path / "sites" / "openlibrary" / "tmp"
+    site_tmp.mkdir(parents=True)
+    monkeypatch.setattr(tempfile, "tempdir", str(site_tmp))
+
+    with pytest.raises(RuntimeError, match="site"):
+        await PipelineExecutor().execute(mapped(), headless=True)
+
+    assert pipeline.order == []
+    assert list(site_tmp.iterdir()) == []
 
 
 def test_importing_the_executor_does_not_import_the_pipeline():
