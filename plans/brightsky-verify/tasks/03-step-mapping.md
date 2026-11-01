@@ -1,7 +1,7 @@
 # Map BrightSky steps to strict stepper steps
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: 02
 Test first: yes
 Level: 3
@@ -122,4 +122,73 @@ prints passed
   `/home/claude/bright-sky/backend/src/workflow-scenarios/url-match.utils.ts` (read only)
 
 ## Answer
+
+- **Built**: `stepper/brightsky/mapping.py` (new: `map_version`, `MappedWorkflow`,
+  `StepExpectation`, `UnmappableStep`, `url_matches`) and
+  `stepper/tests/unit/test_brightsky_mapping.py` (new). Test-only commit 3a589c1 first;
+  it failed at collection with `ModuleNotFoundError: No module named
+  'stepper.brightsky.mapping'`. Work started at 82d5593.
+- **Proof**:
+  - `python3 -m pytest stepper/tests/unit/test_brightsky_mapping.py -q` → `100 passed`.
+    Target kinds: role+name, text-only, css, xpath (`//` and `(/`), `#id` (to `id`
+    without `#`), `#a b` (stays css), role+name plus a selector (role, name and the
+    first selector), role without a name (selector only), blank name. Every
+    `UnmappableStep` reason: no target (missing, blank selectors, role only),
+    combobox/listbox/slider, no quoted value, unknown matchMode (step 1 and later),
+    unknown outcome kind, element outcome without target, `ENV:` / `${ENV:` / ` ENV:`
+    values, `{{` in a value, title, accessibleName, selector, URL path, urlContains
+    and outcome target, plus wrong field types. `str(error) == "step N: <reason>"`.
+  - Pilot fixture (copied from `pilot-workflows.ts`): `navigate, fill, click, click`;
+    navigate url `https://openlibrary.org/`, description
+    `Step 1: open https://openlibrary.org/`, step 1, no expectation; fill
+    `input_value == "The Hobbit"`, `press_enter` true, heal_assert
+    `{"url_contains": "/search"}`; every acting step `extra["strict"] is True`.
+    Role `textbox`, no name, selectors `['[placeholder="Search"]']` → `fill` with element
+    exactly `{"css": '[placeholder="Search"]'}`.
+  - Host guard: `evil.com`, `openlibrary.org.evil.com`, `user@openlibrary.org`,
+    `openlibrary.org:8080`, `127.0.0.1`, `openlibrary.org/..` (and `evilopenlibrary.org`,
+    backslash, space, `#`, `?`, leading dot, empty) each raise step 1 with
+    `navigate host <h> is not the workflow's site openlibrary.org`. Sites `127.0.0.1`,
+    `10.0.0.5`, `[::1]`, `::1`, `2130706433`, `0x7f000001`, `evil.com/x`,
+    `user@evil.com`, `com` are refused. A later step's bad `expectedDomain` names that
+    step. Titles quoting `'ENV:BRIGHTSKY_BRIDGE_TOKEN'` and `'{{token}}'` raise.
+  - `url_matches`: startsWith (explicit and None), includes, valid regex (anchored and
+    `re.search` substring), invalid regex `([` falling back to startsWith: 12 cases pass.
+  - `python3 -m pytest stepper/tests/unit/ -q` → `1860 passed`.
+  - Also: Build exit 0, Lint exit 0. Acceptance `test_accept_mapping.py`: 30 passed,
+    7 failed, all 7 `ModuleNotFoundError: No module named 'stepper.brightsky.targets'`
+    (ticket 11).
+- **Decisions**:
+  - Hosts must be lower-case DNS labels joined by dots (an allowlist), which refuses
+    `@ : / \`, whitespace, `#`, `?` and brackets in one rule. The site must also contain
+    a dot and its last label must not be numeric or `0x…` (what browsers parse as an
+    IPv4 number), which covers IP literals including `2130706433`. A single-label site
+    (`com`, `localhost`) is refused, since it would make every host under it pass.
+  - Hostile text in a reason (host, site, role, mode, kind) is shown through
+    `unicode_escape` and cut at 100 characters, so a reason printed by the CLI cannot
+    carry control characters.
+  - A later step's bad domain reads `expected domain <h> is not the workflow's site <s>`
+    (the ticket fixes the wording only for step 1).
+  - A single quote opens only when no word character precedes it and closes only when
+    none follows, so apostrophes ("the author's name, 'J.R.R. Tolkien'") are not quotes,
+    and `'Don't Panic'` is one value.
+  - The `ENV:` check uses `lstrip()`, so a leading space cannot slip past it.
+  - Unsupported roles are checked before the fill choice, so a combobox with a
+    `value_set` outcome is still unmappable.
+  - `StepExpectation` fields: `start_url`, `match_mode` (None means startsWith, and
+    `url_matches` accepts None), `outcome_kind`, `outcome_element`, `url_contains`.
+  - An acting step whose description equals the navigate's (title `open <url>` on
+    step 1) is unmappable, so `expectations` never keys the navigate.
+  - Wrong field types (target, outcome, domain, URL, matchMode, explanation, role, name,
+    selectors) are `UnmappableStep`, not a crash.
+- **Shortcuts taken**: `url_matches` uses Python `re`, not JS `RegExp`, so a pattern
+  that uses syntax only one engine has can match differently; worth a translation layer
+  only if a stored regex shows that. Fill values are not length-capped (titles are
+  ≤ 200 by the backend DTO).
+- **For later tickets**: ticket 05 reads `mapped.expectations[step.description]`; the
+  navigate has none. `start_url`/`match_mode` are None for step 1. Ticket 11's
+  `target_from_element` output maps back through `_element`: a role with no
+  accessibleName only chooses the action, and the first non-blank selector is taken
+  by kind (`//`/`(/` xpath, `#ident` id, else css), so a `placeholder` heal must become
+  a css selector such as `[placeholder="Search"]`.
 

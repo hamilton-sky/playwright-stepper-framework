@@ -40,6 +40,7 @@ cleanly while the secrets are unset.
 - 01 — Option A: a non-current `--all-unverified` entry is skipped (`<slug> v<N> skipped: not the current version (v<M>)`), nothing posted, exit code unchanged; `verify <slug> --version N` for a non-current N exits 3.
 - 02 — `stepper/brightsky/` config + wire models: `load_config` (https or loopback http only, token hidden from repr/messages), readers raise `BrightSkyResponseError` naming the field (never the value), writers raise `ValueError`; `SLUG_PATTERN` is matched with `fullmatch`.
 - 02 — round 2: token must be visible ASCII (no CR/LF), base URL refuses query/fragment/userinfo/bad port, `SLUG_PATTERN` ends in `\Z`, writers check every top-level DTO limit and raise `ValueError` (never `TypeError`).
+- 03 — `mapping.map_version`: navigate to `https://<host><path>` with an allowlist host guard (site or subdomain, DNS labels only, no IP/single-label site), strict click/fill with element cfg from role+name / text / first selector by kind (role alone never in cfg), quoted fill value, `{{` and `ENV:` refused; `url_matches` mirrors `matchUrl`.
 
 Outside facts the plan relies on, with their sources:
 
