@@ -1,7 +1,7 @@
 # Add the BrightSky config and the validated wire models
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: —
 Test first: yes
 Level: 3
@@ -84,3 +84,52 @@ prints passed
   `workflow-store-api.views.ts` (read only)
 
 ## Answer
+
+- **Built**: `stepper/brightsky/__init__.py` (docstring only), `stepper/brightsky/config.py`
+  (`load_config`, `BrightSkyConfig`, `BrightSkyConfigError`, `LOOPBACK_HOSTS`),
+  `stepper/brightsky/models.py` (`SLUG_PATTERN`, `BrightSkyResponseError`, `QueueItem`,
+  `WorkflowDetail`, `RunStep`, `RunReport`, `Proposal`, `new_idempotency_key`),
+  `stepper/tests/unit/test_brightsky_models.py`. Test-only commit 8756dd5 first (failed
+  at collection: `ModuleNotFoundError: No module named 'stepper.brightsky'`).
+- **Proof**:
+  - `python3 -m pytest stepper/tests/unit/test_brightsky_models.py -q` → `100 passed`.
+    Config tests: missing and blank (`""`, `"   "`, `"\t\n"`) for both variables raise
+    `^<NAME> is not set$`; `ftp://`, `file://`, `ws://` and a scheme-less URL, and http
+    to `bright-sky.example.com`, `10.0.0.5`, `localhost.example.com`, `127.0.0.2` raise
+    with "only sent over https" and "localhost, 127.0.0.1 and ::1", token absent; http to
+    `localhost`, `LOCALHOST`, `127.0.0.1`, `[::1]` and https are accepted; token in no
+    `repr`/`str`; frozen; trailing `/` stripped.
+  - Readers: missing/null `currentVersion` → `currentVersion`; non-int version
+    (0, "2", None, True, 2.0) → `currentVersion.version`; 51 steps → `currentSteps`;
+    non-str title → `currentSteps[1].title`; `QueueItem.from_json` with slug `../x`
+    (and 6 other bad slugs) → `slug`.
+  - Writers: `RunReport.to_json()` = `version, steps[].stepNumber|matched|tier|outcome,
+    result, client, idempotencyKey`; `Proposal.to_json()` = `steps, source, note`;
+    duplicate step number and source `claude` raise `ValueError`; a 1500-char note
+    becomes 1000 chars ending in `…`.
+  - `python3 -m pytest stepper/tests/unit/test_packaging.py -q` → `23 passed`.
+  - `python3 -m pytest stepper/tests/unit/ -q` → `1690 passed`.
+  - Also: Build (`compileall`) exit 0, Lint (`main.py validate`) exit 0, and the
+    acceptance config tests (`-k "load_config or https"`) `13 passed`.
+- **Decisions**:
+  - Reader messages name the field and the rule, never the value received, so a
+    response body cannot carry text into a log through an error.
+  - Slugs are checked with `SLUG_PATTERN.fullmatch` (a bare `$` accepts a trailing
+    newline). `WorkflowDetail.slug` is checked against it too, since later tickets put
+    it in URLs.
+  - `bool` is refused where an int is expected (`True` is not a version).
+  - Both env values are `.strip()`ped; `api_url` then loses trailing `/`. A URL with no
+    host (`https://`) raises `BRIGHTSKY_API_URL has no host`.
+  - Both errors subclass `Exception`, not `ValueError`, so the writers' `ValueError`
+    (a stepper bug) stays distinct from a bad backend body or bad env.
+  - `Proposal` truncates in `__post_init__` (via `object.__setattr__` on the frozen
+    dataclass), so `proposal.note` is the value sent and the propose retry check
+    (ticket 10) compares against what the backend stored.
+- **Shortcuts taken**: writers check only the limits the ticket lists. `RunReport.version`,
+  `RunStep.step_number` and `Proposal.steps` (1–50, title ≤ 200 ...) are not checked here;
+  the backend's 400 would catch them. Worth adding if a caller ever builds them from
+  untrusted data.
+- **For later tickets**: ticket 10 must re-export `BrightSkyResponseError` from
+  `stepper.brightsky.client` (the acceptance tests import it from there) and reuse
+  `SLUG_PATTERN` with `fullmatch`. `QueueItem.from_json` errors read like
+  `slug must match ^[a-z0-9-]{3,100}$`, ready for ticket 06's `entry <i>: <reason>`.
