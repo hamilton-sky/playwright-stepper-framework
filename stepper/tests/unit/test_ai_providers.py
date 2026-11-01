@@ -126,3 +126,67 @@ def test_a_single_groq_key_is_still_a_list_of_one(monkeypatch):
     monkeypatch.setenv("GROQ_API_KEY", "solo-key")
 
     assert GroqProvider()._keys == ["solo-key"]
+
+
+# ── Claude model choice ───────────────────────────────────────────────────────
+
+class _Response:
+    def __init__(self, text: str):
+        self.content = [type("_Block", (), {"text": text})()]
+
+
+def _stub_anthropic(monkeypatch) -> list[dict]:
+    """Replace anthropic.Anthropic with a client that records each request."""
+    import anthropic
+
+    sent: list[dict] = []
+
+    class _Messages:
+        def create(self, **kwargs):
+            sent.append(kwargs)
+            return _Response('```json\n{"ok": true}\n```')
+
+    class _Client:
+        def __init__(self, api_key: str):
+            self.api_key = api_key
+            self.messages = _Messages()
+
+    monkeypatch.setattr(anthropic, "Anthropic", _Client)
+    return sent
+
+
+def test_claude_provider_defaults_to_haiku():
+    assert ClaudeProvider()._model == "claude-haiku-4-5-20251001"
+
+
+async def test_claude_provider_sends_its_model_to_the_client(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-key")
+    sent = _stub_anthropic(monkeypatch)
+
+    result = await ClaudeProvider(model="m").chat("hello", system="be brief", max_tokens=77)
+
+    assert result == '{"ok": true}'
+    assert sent == [
+        {
+            "model": "m",
+            "max_tokens": 77,
+            "messages": [{"role": "user", "content": "hello"}],
+            "system": "be brief",
+        }
+    ]
+
+
+async def test_claude_provider_default_request_is_unchanged(monkeypatch):
+    """No system prompt means no system key, exactly as before the model became a parameter."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-key")
+    sent = _stub_anthropic(monkeypatch)
+
+    await ClaudeProvider().chat("hello")
+
+    assert sent == [
+        {
+            "model": "claude-haiku-4-5-20251001",
+            "max_tokens": 512,
+            "messages": [{"role": "user", "content": "hello"}],
+        }
+    ]

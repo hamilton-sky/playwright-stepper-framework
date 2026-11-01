@@ -40,7 +40,7 @@ def _service(**providers) -> tuple[AIService, dict[str, _Provider]]:
     """An AIService with every provider swapped for a double."""
     doubles = {
         name: providers.get(name) or _Provider(name)
-        for name in ("groq", "gemini", "claude")
+        for name in ("groq", "gemini", "claude", "claude_big")
     }
     service = AIService()
     service._providers = doubles          # type: ignore[assignment]
@@ -155,6 +155,52 @@ def test_the_cheap_chains_are_ordered_cheapest_first():
     assert _TASK_CHAINS["classify"] == ["groq", "gemini", "claude"]
     assert _TASK_CHAINS["heal"] == ["groq", "gemini", "claude"]
     assert _TASK_CHAINS["plan"] == ["claude"]
+
+
+# ── The big-model rung ────────────────────────────────────────────────────────
+
+def test_the_heal_big_chain_is_the_big_model_alone():
+    """
+    heal_big is the paid rung after the cheap tier has failed. A cheap provider
+    in this chain would quietly turn the last rung back into the first.
+    """
+    assert _TASK_CHAINS["heal_big"] == ["claude_big"]
+
+
+async def test_a_heal_big_chat_asks_only_the_big_model():
+    service, p = _service()
+
+    result = await service.chat("heal this", task_type="heal_big")
+
+    assert result == "answered by claude_big"
+    assert len(p["claude_big"].calls) == 1
+    assert p["groq"].calls == []
+    assert p["gemini"].calls == []
+    assert p["claude"].calls == []
+
+
+async def test_a_failing_big_model_does_not_fall_back_to_a_cheap_model():
+    service, p = _service(claude_big=_Provider("claude_big", fails=True))
+
+    with pytest.raises(RuntimeError, match="all providers failed"):
+        await service.chat("heal this", task_type="heal_big")
+
+    assert p["groq"].calls == []
+    assert p["gemini"].calls == []
+    assert p["claude"].calls == []
+
+
+def test_the_big_model_provider_uses_the_sonnet_5_5_id():
+    """claude-sonnet-4-20250514 was retired on 2026-06-15; requests to it fail."""
+    assert AIService()._providers["claude_big"]._model == "claude-sonnet-5-5"
+
+
+async def test_without_an_anthropic_key_heal_big_raises(monkeypatch):
+    """No key means the loop stops at this tier, without sending a request."""
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+    with pytest.raises(RuntimeError, match="all providers failed"):
+        await AIService().chat("x", task_type="heal_big")
 
 
 async def test_an_unknown_task_type_falls_back_to_the_classify_chain():
