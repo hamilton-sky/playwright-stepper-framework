@@ -1,7 +1,7 @@
 # Add the BrightSky HTTP client with its retry policy
 
 Type: task
-Status: resolved
+Status: open
 Blocked by: 02
 Test first: yes
 Level: 3
@@ -286,5 +286,64 @@ SPEC
 - test first: OK. 960a04f adds only the test file, and that test imports `stepper.brightsky.client`, which did not exist yet, so it fails without the production change; the conductor saw 960a04f fail. In round 2, b486975 adds tests for the three fixes before the fix commit. Two of them fail against the old code: the token-across-the-cut test fails on the old cut-then-scrub, and the body-cap test fails on the old unbounded read. I did not check whether the re-read test also fails against the old code.
 
 The ticket is already level 3, so no level raise is needed. git status was clean, and pytest left no files behind beyond `__pycache__` folders that were already there.
+
+REVIEW: PASS
+
+## Review findings (round 3, pair review)
+
+Quality pass, round 3, for `brightsky-verify 10 a5af20e85db090ed51c074acc7e38820553d80c3`. The review fails on one major finding: a backend that answers with an error status and a broken chunked body makes the client raise `http.client.IncompleteRead`. That is not one of the client's documented errors, and the 5xx is not retried.
+
+Range: a5af20e..f86efdc. f86efdc is the ticket's newest commit and also HEAD, so I left no later commits out. I read the ticket as it stood at a5af20e. I read the round 1 and round 2 review findings from their own headings onward. I did not read the Answer. The ticket's Status line goes from open to resolved.
+
+Round 2 findings, all fixed in f86efdc:
+- `RecursionError` is now caught in `_json` (raises `BrightSkyResponseError`) and in `_message` (falls back to the reason phrase), with tests.
+- Control characters in the backend's message are replaced, with a test.
+- `TIMEOUT` is now documented as a per-read limit.
+
+Done when, re-run by me:
+- `python3 -m pytest stepper/tests/unit/test_brightsky_client.py -q`: 58 passed.
+- `python3 -m pytest stepper/tests/unit/ -q`: 1942 passed.
+- I ran both with `-p no:cacheprovider`, and `git status` was clean afterwards.
+
+Inputs I probed as a hostile caller:
+- Slug: checked against `SLUG_PATTERN` and quoted before any request. No way through.
+- Token in headers, errors and logs: scrubbed before the cut, and log lines carry only the error type name. No way through.
+- Error message content: control characters are replaced. No way through.
+- Body nesting depth: now caught. No way through.
+- Body size: capped at 4 MB. No way through.
+- Redirects: a 3xx comes back as a response, so the Authorization header is not forwarded.
+- Proxies on loopback: skipped.
+- Propose re-read failure: raises the POST's error and does not post again.
+- Malformed response framing on an error status: this is the way through (finding 1).
+
+I ran the probes as inline stdin scripts against a raw socket server on 127.0.0.1. They wrote no files. The read-only hook blocked one call that included a `mkdir`; that call did not run.
+
+QUALITY
+1. major /home/claude/hamilton-sky/playwright-stepper-framework/stepper/brightsky/client.py (`UrllibTransport.send`): `_read_capped(err)` runs inside the `except urllib.error.HTTPError` handler. An exception raised inside one `except` clause is not caught by the next `except` clause of the same `try`, so the `except http.client.HTTPException` beside it never sees it. I reproduced it: a response of `HTTP/1.1 503 X`, `Transfer-Encoding: chunked`, then a bad chunk size (`zz`) made `BrightSkyClient.queue()` raise `http.client.IncompleteRead` on the first attempt. There was no retry, and the error was not a `BrightSkyHttpError`. A 400 with the same broken body behaves the same way. A 200 with the same body is converted to `OSError` correctly. This breaks the `Transport` contract (a network failure raises `OSError`) and the client's error contract at the trust boundary, and a CLI that catches only the documented types (ticket 07) would crash with a traceback. Fix: wrap the error-body read too, for example `try: body = _read_capped(err) except http.client.HTTPException as e: raise OSError(...) from e`, or move the `HTTPException` conversion to an outer `try`. Add a stub-server test for an error status with a broken chunked body.
+2. minor /home/claude/hamilton-sky/playwright-stepper-framework/stepper/brightsky/client.py (`_read_capped`): `read(MAX_BODY + 1)` on a response whose `Content-Length` is larger than the bytes actually sent returns the short body without an error. I reproduced it: a 200 that declared 100 bytes and sent 3 came back as `HttpResponse(200, b'abc')`. For JSON calls the parse then fails cleanly, but `report_run` takes a cut-off 2xx as success. Fix: compare the bytes read with `response.length` or the `Content-Length` header, and raise `OSError` when they differ.
+
+REVIEW: FAIL
+
+Review of `brightsky-verify 10 a5af20e85db090ed51c074acc7e38820553d80c3` (spec pass, round 3). Ticket: /home/claude/hamilton-sky/playwright-stepper-framework/plans/brightsky-verify/tasks/10-brightsky-client.md
+
+I read the ticket as it was at a5af20e, when its Answer was still empty. I also read the round 1 and round 2 Review findings, starting from their own headings, which come after the Answer. I did not read the Answer itself.
+
+The range ends at f86efdc, which is the ticket's newest commit and also HEAD, so no later commits were left out. The ticket's Status line goes from open to resolved.
+
+Round 3 is two commits:
+- 823eb2d adds tests for control characters in a backend message and for deeply nested JSON bodies.
+- f86efdc changes /home/claude/hamilton-sky/playwright-stepper-framework/stepper/brightsky/client.py. It catches `RecursionError` in `_json` and `_message`. It replaces characters that are not printable with spaces after scrubbing the token and before the 500-character cut. It also notes on `TIMEOUT` that the 20 s applies to each socket read, not the whole request.
+
+SPEC
+- test_brightsky_client.py passes, with the retry cases: 503 then 200, two 503s, 400/401/404/429, and a network OSError retried once: MET (conductor). I read the tests and the assertions match the ticket: `test_a_503_then_a_200_makes_two_calls_with_one_recorded_sleep`, `test_two_503s_raise_brightsky_http_error_503_after_two_calls`, `test_a_4xx_raises_after_exactly_one_call_with_no_sleep[400|401|404|429]` and `test_a_network_oserror_is_retried_once`.
+- A retried report_run sends a byte-identical body, and a propose whose 503 was stored returns that version after one versions POST: MET (conductor). The tests are `test_a_retried_report_run_sends_a_byte_identical_body` and `test_a_propose_whose_503_was_stored_returns_that_version_with_one_post`. The second asserts the calls were exactly [POST versions, GET detail].
+- Bearer token on every request, slug `../x` raises before any call, a queue body that is not an array raises BrightSkyResponseError, one valid entry plus one `../x` entry gives one item and one reason, and the token is in no caplog record: MET (conductor). The tests are `test_every_request_carries_the_bearer_token_json_headers_and_the_timeout`, `test_a_bad_slug_raises_before_any_call`, `test_a_queue_body_that_is_not_a_json_array_raises_a_response_error`, `test_a_queue_with_one_bad_slug_returns_one_item_and_one_reason` and `test_one_log_line_per_request_and_never_the_token_or_a_body`.
+- The UrllibTransport loopback test passes with HTTP_PROXY, HTTPS_PROXY and ALL_PROXY set to a dead proxy: MET (conductor). The `dead_proxy` fixture sets all three in upper and lower case and deletes NO_PROXY and no_proxy. A control test shows a plain urllib opener fails under the same settings.
+- All existing tests still pass (`python3 -m pytest stepper/tests/unit/ -q`): MET (conductor).
+- Acceptance: I ran `python3 -B -m pytest plans/brightsky-verify/acceptance/test_accept_config_client.py -q -p no:cacheprovider` myself, since that file covers this ticket. It printed "34 passed". Every failure the conductor reported is in test_accept_verify_cli.py, which tests ticket 07's CLI. Ticket 07 is not built yet, so those failures do not count against this ticket.
+- scope: OK. Over a5af20e..f86efdc the code changes are stepper/brightsky/client.py and stepper/tests/unit/test_brightsky_client.py, both named in Touches. The rest is bookkeeping: the ticket file, one appended line for ticket 10 in plans/brightsky-verify/map.md, and one appended line tagged (10) in plans/brightsky-verify/learnings.md. Nothing from ticket 02 (config, models) or ticket 07 (exit codes, stderr) was changed.
+- test first: OK. 960a04f adds only the test file, and its import of `stepper.brightsky.client` fails without the production change; the conductor saw it fail. In this round, 823eb2d adds tests before the fix in f86efdc. The deeply nested body and control-character tests fail on the previous code, which let `RecursionError` through and passed control characters unchanged.
+
+The ticket is already level 3, so there is no level raise. `git status` was clean afterwards and my commands left no files behind.
 
 REVIEW: PASS
