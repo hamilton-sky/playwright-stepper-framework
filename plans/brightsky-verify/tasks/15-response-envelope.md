@@ -1,7 +1,7 @@
 # Read bright-sky's response envelope and error bodies in the client
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: 10
 Test first: yes
 Level: 3
@@ -136,4 +136,44 @@ prints passed
 - learnings.md, the (09) line
 
 ## Answer
+
+- **Built**: `stepper/brightsky/client.py`: new module helper `_data(body)` (the 2xx
+  envelope reader), called on the parsed JSON in `queue()`, `get_workflow()` and
+  `propose_version()` (so `already_stored`'s re-read, which goes through
+  `get_workflow`, is covered too); `_message` now reads an object `message` one level
+  down. Tests in `stepper/tests/unit/test_brightsky_client.py` (new section "the
+  backend's envelope and error shape") and `stepper/tests/unit/test_brightsky_verify.py`
+  (`test_a_full_pass_against_enveloped_bodies_posts_one_passed_report`). Test-only commit
+  a82719d first: 13 failed, among them the enveloped queue with
+  `BrightSkyResponseError: the verification queue must be a list` and the nested 404 with
+  `(404, 'Not Found') == (404, 'Workflow not found: x')`.
+- **Proof** (all run after the last edit):
+  - `python3 -m pytest stepper/tests/unit/test_brightsky_client.py stepper/tests/unit/test_brightsky_verify.py -q`
+    → `111 passed`. Covers: enveloped queue → 1 item, 0 rejected; enveloped
+    `{"items": []}` → "must be a list"; enveloped detail → `current_version == 2`, steps
+    as sent; enveloped version view → 2; `success: false` / no `data` on queue,
+    get_workflow and propose_version → `BrightSkyResponseError` matching `success` /
+    `data`, `len(stub.sent) == 1`; nested 404 → `(404, "Workflow not found: x")`; nested
+    400 list → `"version must be >= 1; steps too long"`; 429 top-level string kept;
+    nested token → `"Invalid token <token>"`; verify full pass over enveloped queue,
+    detail and runs view → `passed`, one `POST /runs`, one key, three `passed` steps, no
+    proposal.
+  - `python3 -m pytest stepper/tests/unit/ -q` → `2177 passed`.
+  - `python3 -m pytest plans/brightsky-verify/acceptance -q` → `161 passed`.
+  - Also Build (`compileall`) exit 0, Lint (`stepper/main.py validate`) exit 0.
+- **Decisions**:
+  - Tolerant reading (option A of the ticket): a dict with a `success` key is unwrapped,
+    anything else is read as it is, so every bare-body stub and the acceptance harness
+    are unchanged.
+  - `success` must be exactly `True` (`is True`, so `1` or `"true"` is refused). Errors
+    name the field: "the response envelope's success must be true", "the response
+    envelope has no data". They are raised after `_request` returned, so never retried.
+  - `data: null` is present and passes through; the readers after it reject it with
+    their own field message.
+  - `_message`: an object `message` is replaced by its own `message` before the
+    existing list-join / string / reason-phrase logic, so scrub, printable pass and cut
+    are unchanged. Only one level is read (the filter nests exactly once).
+- **Shortcuts taken**: none.
+- **For later tickets**: 09's manual run can now go past the queue read. The `timestamp`
+  key of the envelope is ignored.
 

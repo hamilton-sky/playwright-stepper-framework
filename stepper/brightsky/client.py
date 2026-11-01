@@ -146,7 +146,7 @@ class BrightSkyClient:
     def queue(self) -> tuple[list[QueueItem], list[str]]:
         """The unverified versions in the backend's order, and one reason for
         each malformed entry, which is left out."""
-        raw = _json(self._request("GET", QUEUE_PATH))
+        raw = _data(_json(self._request("GET", QUEUE_PATH)))
         if not isinstance(raw, list):
             raise BrightSkyResponseError("the verification queue must be a list")
         items: list[QueueItem] = []
@@ -159,7 +159,8 @@ class BrightSkyClient:
         return items, rejected
 
     def get_workflow(self, slug: str) -> WorkflowDetail:
-        return WorkflowDetail.from_json(_json(self._request("GET", _workflow_path(slug))))
+        return WorkflowDetail.from_json(
+            _data(_json(self._request("GET", _workflow_path(slug)))))
 
     def report_run(self, slug: str, report: RunReport) -> None:
         # One encoded body for both attempts: the retry is byte-identical.
@@ -182,7 +183,7 @@ class BrightSkyClient:
                             before_retry=already_stored)
         if raw is None:
             return stored[0]
-        created = _json(raw)
+        created = _data(_json(raw))
         number = created.get("version") if isinstance(created, dict) else None
         if not isinstance(number, int) or isinstance(number, bool) or number < 1:
             raise BrightSkyResponseError("the new version's version must be an integer >= 1")
@@ -231,12 +232,16 @@ class BrightSkyClient:
         raise failure
 
     def _message(self, response: HttpResponse) -> str:
-        """The backend's JSON `message` (NestJS sends a string or a list of
-        strings), else the status's reason phrase."""
+        """The backend's JSON `message`, else the status's reason phrase.
+
+        NestJS sends a string, a list of strings, or (bright-sky's exception
+        filter, for a built-in HttpException) an object whose `message` is one."""
         try:
             message: Any = json.loads(response.body.decode("utf-8")).get("message")
         except (ValueError, UnicodeDecodeError, AttributeError, RecursionError):
             message = None
+        if isinstance(message, dict):
+            message = message.get("message")
         if isinstance(message, list) and all(isinstance(m, str) for m in message):
             message = "; ".join(message)
         if not isinstance(message, str) or not message.strip():
@@ -271,6 +276,18 @@ def _workflow_path(slug: str) -> str:
 
 def _encode(payload: dict) -> bytes:
     return json.dumps(payload, ensure_ascii=False).encode("utf-8")
+
+
+def _data(body: Any) -> Any:
+    """A 2xx body without bright-sky's `{"success", "data", "timestamp"}` envelope
+    (its global TransformInterceptor). A body with no `success` key is read as is."""
+    if not isinstance(body, dict) or "success" not in body:
+        return body
+    if body["success"] is not True:
+        raise BrightSkyResponseError("the response envelope's success must be true")
+    if "data" not in body:
+        raise BrightSkyResponseError("the response envelope has no data")
+    return body["data"]
 
 
 def _json(raw: bytes | None) -> Any:
