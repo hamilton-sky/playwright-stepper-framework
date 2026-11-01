@@ -24,6 +24,7 @@ from urllib.parse import urlsplit
 
 import pytest
 
+import stepper.brightsky.client as client_module
 from stepper.brightsky.client import (
     TIMEOUT,
     BrightSkyClient,
@@ -219,6 +220,17 @@ def test_a_backend_message_that_echoes_the_token_is_scrubbed():
     assert TOKEN not in caught.value.message
 
 
+def test_a_token_across_the_message_cut_is_scrubbed_whole():
+    message = "a" * 490 + TOKEN          # the 500-character cut falls inside the token
+    stub = StubTransport().on("GET", QUEUE, (400, _error(400, message)))
+
+    with pytest.raises(BrightSkyHttpError) as caught:
+        _client(stub).queue()
+
+    assert caught.value.message == "a" * 490 + "<token>"
+    assert TOKEN[:8] not in str(caught.value)
+
+
 def test_a_retried_report_run_sends_a_byte_identical_body():
     stub = StubTransport().on("POST", RUNS, (502, _error(502, "bad gateway")),
                               (201, {"id": "run-1"}))
@@ -268,6 +280,24 @@ def test_a_propose_whose_503_was_not_stored_posts_once_more():
     assert number == 3
     assert stub.calls() == [("POST", VERSIONS), ("GET", DETAIL), ("POST", VERSIONS)]
     assert stub.sent[0].body == stub.sent[2].body
+
+
+@pytest.mark.parametrize("detail", [(500, _error(500, "db down")), (200, {"slug": SLUG})],
+                         ids=["re-read-5xx", "re-read-malformed"])
+def test_a_propose_whose_re_read_fails_raises_the_post_error_and_does_not_re_post(detail):
+    sleeps: list = []
+    stub = (StubTransport()
+            .on("POST", VERSIONS, (503, _error(503, "upstream timeout")))
+            .on("GET", DETAIL, detail))
+
+    with pytest.raises(BrightSkyHttpError) as caught:
+        _client(stub, sleeps).propose_version(SLUG, _proposal())
+
+    assert caught.value.status == 503
+    assert caught.value.message == "upstream timeout"
+    assert isinstance(caught.value.__cause__, (BrightSkyHttpError, BrightSkyResponseError))
+    assert stub.calls().count(("POST", VERSIONS)) == 1
+    assert stub.calls()[0] == ("POST", VERSIONS)
 
 
 def test_a_propose_4xx_is_not_retried_and_does_not_re_read():
@@ -401,6 +431,15 @@ class _Backend(BaseHTTPRequestHandler):
             self.send_header("Location", "http://198.51.100.1/steal")
             self.end_headers()
             return
+        if self.path.startswith("/sized"):
+            # /sized?n=<bytes>&status=<code>: a body of exactly n bytes.
+            query = dict(part.split("=") for part in urlsplit(self.path).query.split("&"))
+            payload = b"x" * int(query["n"])
+            self.send_response(int(query.get("status", "200")))
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            return
         status = 404 if self.path == "/missing" else 200
         payload = json.dumps({"ok": status == 200, "echo": body.decode()}).encode()
         self.send_response(status)
@@ -480,3 +519,17 @@ def test_urllib_transport_does_not_follow_a_redirect(loopback_server, dead_proxy
 def test_urllib_transport_raises_oserror_on_a_network_failure(dead_proxy):
     with pytest.raises(OSError):
         UrllibTransport().send("GET", "http://127.0.0.1:9/api/x", {}, None, 5.0)
+
+
+@pytest.mark.parametrize("status", [200, 500])
+def test_urllib_transport_refuses_a_body_over_the_cap(loopback_server, dead_proxy,
+                                                      monkeypatch, status):
+    monkeypatch.setattr(client_module, "MAX_BODY", 64)
+    transport = UrllibTransport()
+
+    exact = transport.send("GET", f"{loopback_server}/sized?n=64&status={status}",
+                           {}, None, 5.0)
+    assert (exact.status, len(exact.body)) == (status, 64)
+
+    with pytest.raises(OSError, match="64"):
+        transport.send("GET", f"{loopback_server}/sized?n=65&status={status}", {}, None, 5.0)
