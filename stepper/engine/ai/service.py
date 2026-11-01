@@ -8,6 +8,7 @@ Task chains (cheapest → most capable):
     classify  Groq → Gemini → Claude   (short JSON, ~150 tokens out)
     plan      Claude only               (complex multi-step reasoning)
     heal      Groq → Gemini → Claude   (short JSON, ~1024 tokens out)
+    heal_big  Claude big model only     (paid rung after the cheap tier, ~1024 tokens out)
 """
 
 from __future__ import annotations
@@ -18,11 +19,15 @@ from stepper.engine.ai.providers import ClaudeProvider, GeminiProvider, GroqProv
 
 logger = logging.getLogger(__name__)
 
+# The big-model rung's model id (claude-sonnet-4-20250514 was retired 2026-06-15)
+_BIG_MODEL = "claude-sonnet-5-5"
+
 # Provider names ordered cheapest-first per task type
 _TASK_CHAINS: dict[str, list[str]] = {
     "classify": ["groq", "gemini", "claude"],
     "plan":     ["claude"],
     "heal":     ["groq", "gemini", "claude"],
+    "heal_big": ["claude_big"],
 }
 
 # Max output tokens per task type
@@ -30,6 +35,7 @@ _MAX_TOKENS: dict[str, int] = {
     "classify": 150,
     "plan":     2000,
     "heal":     1024,
+    "heal_big": 1024,
 }
 
 
@@ -48,6 +54,7 @@ class AIService:
             "groq":   GroqProvider(),
             "gemini": GeminiProvider(),
             "claude": ClaudeProvider(),
+            "claude_big": ClaudeProvider(model=_BIG_MODEL),
         }
 
     async def chat(

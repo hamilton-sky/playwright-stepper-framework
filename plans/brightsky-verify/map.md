@@ -42,6 +42,7 @@ cleanly while the secrets are unset.
 - 02 — round 2: token must be visible ASCII (no CR/LF), base URL refuses query/fragment/userinfo/bad port, `SLUG_PATTERN` ends in `\Z`, writers check every top-level DTO limit and raise `ValueError` (never `TypeError`).
 - 03 — `mapping.map_version`: navigate to `https://<host><path>` with an allowlist host guard (site or subdomain, DNS labels only, no IP/single-label site), strict click/fill with element cfg from role+name / text / first selector by kind (role alone never in cfg), quoted fill value, `{{` and `ENV:` refused; `url_matches` mirrors `matchUrl`.
 - 03 — round 1: `matchMode` and outcome `kind` are type-checked before the set lookup, so unhashable stored values are `UnmappableStep`, not `TypeError`.
+- 04 — `heal_big` chain = `["claude_big"]` (1024 tokens), `claude_big` = `ClaudeProvider(model="claude-sonnet-5-5")`; `ClaudeProvider(model=...)` defaults to Haiku and stores it as `_model`; no key means heal_big raises RuntimeError with no request.
 
 Outside facts the plan relies on, with their sources:
 
