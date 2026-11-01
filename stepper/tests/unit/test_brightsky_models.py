@@ -111,7 +111,7 @@ def test_the_config_is_frozen():
     config = load_config(_env())
 
     with pytest.raises(dataclasses.FrozenInstanceError):
-        config.token = "other"  # type: ignore[misc]
+        setattr(config, "token", "other")
 
 
 def test_the_token_is_not_in_the_repr_or_str():
@@ -192,7 +192,7 @@ def test_the_slug_pattern_is_the_backend_one():
 
 # ── readers: WorkflowDetail ───────────────────────────────────────────────────
 
-def _step(title: str = "Search for 'The Hobbit'") -> dict:
+def _step(title: object = "Search for 'The Hobbit'") -> dict:
     return {
         "title": title,
         "explanation": "Type it and press Enter.",
@@ -298,7 +298,7 @@ def test_a_step_that_is_not_an_object_names_its_index():
 @pytest.mark.parametrize("title", [42, None, ["a"]])
 def test_a_step_with_a_non_str_title_names_the_field(title):
     with pytest.raises(BrightSkyResponseError, match=r"currentSteps\[1\]\.title"):
-        WorkflowDetail.from_json(_detail(currentSteps=[_step(), _step(title)]))  # type: ignore[arg-type]
+        WorkflowDetail.from_json(_detail(currentSteps=[_step(), _step(title)]))
 
 
 def test_a_step_with_no_title_names_the_field():

@@ -1,7 +1,7 @@
 # Add the BrightSky config and the validated wire models
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: —
 Test first: yes
 Level: 3
@@ -129,6 +129,13 @@ prints passed
   `RunStep.step_number` and `Proposal.steps` (1–50, title ≤ 200 ...) are not checked here;
   the backend's 400 would catch them. Worth adding if a caller ever builds them from
   untrusted data.
+- **Review fixes** (round 1, floor guard): removed both `# type: ignore` comments from
+  `stepper/tests/unit/test_brightsky_models.py`, without weakening either test.
+  The frozen test now assigns through `setattr(config, "token", "other")` and still expects
+  `FrozenInstanceError`. The `_step` helper's `title` parameter is typed `object`, because
+  the tests deliberately pass non-str titles, so no ignore is needed. Re-proved: the
+  models file `100 passed`, packaging `23 passed`, unit suite `1690 passed`, Build and
+  Lint exit 0. `git diff 555d159` shows no `type: ignore`/`noqa`/skip in code.
 - **For later tickets**: ticket 10 must re-export `BrightSkyResponseError` from
   `stepper.brightsky.client` (the acceptance tests import it from there) and reuse
   `SLUG_PATTERN` with `fullmatch`. `QueueItem.from_json` errors read like
