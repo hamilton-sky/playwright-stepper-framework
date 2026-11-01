@@ -1,7 +1,7 @@
 # Add the BrightSky HTTP client with its retry policy
 
 Type: task
-Status: resolved
+Status: open
 Blocked by: 02
 Test first: yes
 Level: 3
@@ -208,5 +208,64 @@ SPEC
 - test first: OK. Commit 960a04f adds only stepper/tests/unit/test_brightsky_client.py. That test imports `stepper.brightsky.client`, which did not exist before 13d014b, so it fails without the production change. The conductor saw 960a04f fail before the code landed.
 
 The ticket is already level 3, so no level raise is needed. My pytest run may have refreshed `__pycache__` files under plans/brightsky-verify/acceptance/; I left them as they were.
+
+REVIEW: PASS
+
+## Review findings (round 2, pair review)
+
+Quality pass for ticket 10 of brightsky-verify (`brightsky-verify 10 a5af20e85db090ed51c074acc7e38820553d80c3`). The review fails on one major finding: a hostile backend can make the client raise `RecursionError`, which is not one of its documented errors.
+
+**Scope**
+- Range: a5af20e..3778ff9. The ticket's newest commit (3778ff9) is also HEAD, so no later commits were left out.
+- I read the ticket as it stood at a5af20e, with the Answer still empty.
+- I read the round-1 review findings, which sit after the Answer, from their own heading onward. I did not read the Answer itself.
+- The ticket's Status line goes from open to resolved.
+- Round 1's three findings are fixed in 3778ff9:
+  - The message is now scrubbed before it is cut to 500 characters.
+  - Response bodies are capped at 4 MB.
+  - A failed re-read now raises the error from the versions POST, with the re-read's error chained to it.
+
+**Commands run**
+- `python3 -m pytest stepper/tests/unit/test_brightsky_client.py -q`: 54 passed.
+- `python3 -m pytest stepper/tests/unit/ -q`: 1938 passed.
+- `plans/brightsky-verify/acceptance/test_accept_config_client.py`: 34 passed.
+- The acceptance failures the conductor saw are all in `test_accept_verify_cli.py`, which tests ticket 07's CLI. That ticket is not built yet.
+- I used `-p no:cacheprovider` and `-B`, and `git status` was clean afterwards.
+
+**Inputs probed as a hostile caller**
+- Slug: checked against `SLUG_PATTERN` and quoted before any request. No way through.
+- Token in headers: `load_config` only accepts visible ASCII. No way through.
+- Token in errors and logs: scrubbed before the cut; log lines carry only the error type name. No way through.
+- Redirects: `_NoRedirect` returns a 3xx as an error response, so the Authorization header is not forwarded.
+- Proxies on loopback: skipped, and the test covers both spellings of each variable.
+- Response size: capped at 4 MB.
+- Propose re-read failure: raises without posting again.
+- Proposal note: always a string, so matching an older version on a null note cannot happen.
+- Response body nesting depth: this is the way through (finding 1).
+- Error message content: control characters pass through (finding 2).
+- Slow responses: the timeout is per read, not per request (finding 3).
+
+QUALITY
+1. major /home/claude/hamilton-sky/playwright-stepper-framework/stepper/brightsky/client.py (`_json`, `_message`): a deeply nested JSON body well under `MAX_BODY` makes `json.loads` raise `RecursionError`, and neither function catches it. I reproduced it: a 200 queue body of `b"[" * 200000` made `queue()` raise `RecursionError`, not `BrightSkyResponseError`. A 400 with the same body also raised `RecursionError`, not `BrightSkyHttpError(400, ...)`. That breaks the ticket's error contract at the trust boundary, and a CLI that catches only the documented types (ticket 07) will crash with a traceback. Change: catch `RecursionError` in `_json` and raise `BrightSkyResponseError`; in `_message`, fall back to the reason phrase. Add a test for each.
+2. minor /home/claude/hamilton-sky/playwright-stepper-framework/stepper/brightsky/client.py (`_message`): the backend's message is passed through with newlines, ESC and other control characters. A body of `{"message":"x\n::error::pwn\u001b[31m"}` produced `HTTP 400: x\n::error::pwn\x1b[31m`. Once that is printed to stderr in CI, it can inject GitHub Actions workflow-command lines and terminal escape codes. Change: replace control characters (or anything that is not printable) in the message before the cut.
+3. minor /home/claude/hamilton-sky/playwright-stepper-framework/stepper/brightsky/client.py (`UrllibTransport.send`): the 20 s timeout applies to each socket read, not to the whole request, so a backend that sends a byte every few seconds can hold a request open well past 20 s. Only the 30-minute CI job timeout stops it. Change: either enforce a total deadline, or record that `TIMEOUT` is per read.
+
+REVIEW: FAIL
+
+Review of `brightsky-verify 10 a5af20e85db090ed51c074acc7e38820553d80c3` (spec pass, round 2). Ticket: /home/claude/hamilton-sky/playwright-stepper-framework/plans/brightsky-verify/tasks/10-brightsky-client.md. I read it as it stood at a5af20e, so its Answer was still empty. I read the round 1 Review findings from the f869664 hunk, stopping before `## Answer`. I did not read the Answer.
+
+END is 3778ff9, which is also HEAD, so no later commits were left out of the review. The ticket's Status line went from open to resolved. Round 1 had three quality findings: the token was cut before it was scrubbed, response bodies had no size cap, and an error on the propose re-read hid the POST's error. b486975 adds tests for all three and 3778ff9 fixes all three in /home/claude/hamilton-sky/playwright-stepper-framework/stepper/brightsky/client.py: `_message` now scrubs before it cuts, `_read_capped` caps bodies at MAX_BODY (4 MiB), and a failed re-read now raises the POST's error with the re-read's error chained to it.
+
+SPEC
+- test_brightsky_client.py passes, with retry tests for 503 then 200 (two calls, one sleep), two 503s (BrightSkyHttpError 503 after two calls), 400/401/404/429 (one call, no sleep) and a network OSError retried once: MET (conductor). I read the tests and found matching assertions in each of `test_a_503_then_a_200_makes_two_calls_with_one_recorded_sleep`, `test_two_503s_raise_brightsky_http_error_503_after_two_calls`, `test_a_4xx_raises_after_exactly_one_call_with_no_sleep[400,401,404,429]` and `test_a_network_oserror_is_retried_once`.
+- A retried report_run sends a byte-identical body, and a propose whose 503 was stored returns that version after one versions POST: MET (conductor). The tests are `test_a_retried_report_run_sends_a_byte_identical_body` and `test_a_propose_whose_503_was_stored_returns_that_version_with_one_post`; the second asserts the calls were exactly [POST versions, GET detail].
+- Every request carries the Bearer token, slug `../x` raises before any call, a queue body that is not an array raises BrightSkyResponseError, one good entry plus one `../x` entry gives one item and one reason, and the token is in no caplog record: MET (conductor). The tests are `test_every_request_carries_the_bearer_token_json_headers_and_the_timeout`, `test_a_bad_slug_raises_before_any_call` (which includes `../x`), `test_a_queue_body_that_is_not_a_json_array_raises_a_response_error`, `test_a_queue_with_one_bad_slug_returns_one_item_and_one_reason` and `test_one_log_line_per_request_and_never_the_token_or_a_body`.
+- The UrllibTransport loopback test passes with HTTP_PROXY, HTTPS_PROXY and ALL_PROXY set to an unreachable proxy: MET (conductor). The `dead_proxy` fixture sets all three, in upper and lower case, to http://127.0.0.1:9 and removes NO_PROXY and no_proxy.
+- All existing tests still pass (`python3 -m pytest stepper/tests/unit/ -q`): MET (conductor).
+- Acceptance: I ran `python3 -m pytest plans/brightsky-verify/acceptance/test_accept_config_client.py -q -p no:cacheprovider` myself, since it covers this ticket. It printed "34 passed". Every failure the conductor reported is in test_accept_verify_cli.py, which belongs to ticket 07, and ticket 07 is not built yet, so those failures do not count against this ticket.
+- scope: OK. Over a5af20e..3778ff9 the code changes are stepper/brightsky/client.py and stepper/tests/unit/test_brightsky_client.py, both named in Touches. The other changes are bookkeeping: the ticket file, one appended line in plans/brightsky-verify/map.md, and one appended line tagged (10) in plans/brightsky-verify/learnings.md. Nothing from ticket 02 (config, models) or ticket 07 (exit codes, stderr) was changed.
+- test first: OK. 960a04f adds only the test file, and that test imports `stepper.brightsky.client`, which did not exist yet, so it fails without the production change; the conductor saw 960a04f fail. In round 2, b486975 adds tests for the three fixes before the fix commit. Two of them fail against the old code: the token-across-the-cut test fails on the old cut-then-scrub, and the body-cap test fails on the old unbounded read. I did not check whether the re-read test also fails against the old code.
+
+The ticket is already level 3, so no level raise is needed. git status was clean, and pytest left no files behind beyond `__pycache__` folders that were already there.
 
 REVIEW: PASS
