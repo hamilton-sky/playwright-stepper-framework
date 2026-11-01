@@ -1,7 +1,7 @@
 # Add the BrightSky config and the validated wire models
 
 Type: task
-Status: resolved
+Status: open
 Blocked by: —
 Test first: yes
 Level: 3
@@ -133,3 +133,10 @@ prints passed
   `stepper.brightsky.client` (the acceptance tests import it from there) and reuse
   `SLUG_PATTERN` with `fullmatch`. `QueueItem.from_json` errors read like
   `slug must match ^[a-z0-9-]{3,100}$`, ready for ticket 06's `entry <i>: <reason>`.
+
+## Review findings (round 1, floor guard)
+
+floor guard: the diff weakens the bar instead of meeting it
+suppress: stepper/tests/unit/test_brightsky_models.py: config.token = "other"  # type: ignore[misc]
+suppress: stepper/tests/unit/test_brightsky_models.py: WorkflowDetail.from_json(_detail(currentSteps=[_step(), _step(title)]))  # type: ignore[arg-type]
+if a finding is intended, the ticket needs a line like: Floor: allow <category>
