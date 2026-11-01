@@ -10,7 +10,8 @@ A passed report auto-verifies a version, so "passed" is decided here:
 - `ExpectationHook` is the per-step gate, attached with `StepRunner.add_hook`.
   Before a step acts, the page must be on the step's expected URL; after it
   passed (or healed), its expected outcome must hold within a timeout. A check
-  that raises counts as not met.
+  that raises counts as not met. A `url_change` needs the URL to differ from
+  the one `before` read, as bright-sky's own outcome check does.
 - `executed_steps` turns StepRunner's results into one `ExecutedStep` per
   BrightSky step. A healed step is `failed`: a version only verifies when its
   stored steps work as stored.
@@ -95,6 +96,11 @@ class ExpectationHook(StepHook):
     `before` fails a step whose page is not on its expected URL, so it never
     acts. `after` fails a passed or healed step whose outcome does not hold
     within `timeout_s`, polled every `poll_s`.
+
+    For a `url_change`, `before` records the page URL per description. A heal
+    replacement runner calls `before` again for the same description; the
+    first URL is kept, so the check compares with the page before the step
+    first acted. One hook serves one run.
     """
 
     def __init__(self, expectations: dict[str, StepExpectation],
@@ -102,10 +108,20 @@ class ExpectationHook(StepHook):
         self._expectations = expectations
         self._timeout_s = timeout_s
         self._poll_s = poll_s
+        self._urls_before: dict[str, str] = {}
 
     async def before(self, session, step: StepConfig, idx: int) -> StepResult | None:
         exp = self._expectations.get(step.description)
-        if exp is None or exp.start_url is None:
+        if exp is None:
+            return None
+        if exp.outcome_kind == "url_change" and step.description not in self._urls_before:
+            try:
+                self._urls_before[step.description] = session.url
+            except Exception as exc:
+                # Nothing recorded, so `after` counts the outcome as not met.
+                logger.warning("[ExpectationHook] step %d: cannot read the URL "
+                               "before the step: %s", idx + 1, exc)
+        if exp.start_url is None:
             return None
         mode = exp.match_mode or "startsWith"
         try:
@@ -139,8 +155,14 @@ class ExpectationHook(StepHook):
         deadline = time.monotonic() + self._timeout_s
         while True:
             try:
-                if await _check(session, step, exp):
+                if await self._check(session, step, exp, deadline):
                     return True
+            except ValueError as exc:
+                # A check that cannot be made (no locator fields, an unknown
+                # kind, no URL from before the step) never starts to hold.
+                logger.warning("[ExpectationHook] step %d: %s check cannot be made, "
+                               "not met: %s", idx + 1, exp.outcome_kind, exc)
+                return False
             except Exception as exc:
                 logger.warning("[ExpectationHook] step %d: %s check raised, not met: %s",
                                idx + 1, exp.outcome_kind, exc)
@@ -148,19 +170,25 @@ class ExpectationHook(StepHook):
                 return False
             await asyncio.sleep(self._poll_s)
 
-
-async def _check(session, step: StepConfig, exp: StepExpectation) -> bool:
-    kind = exp.outcome_kind
-    if kind == "url_change":
-        return exp.url_contains is None or exp.url_contains in session.url
-    locator = _locator(session, exp.outcome_element or {})
-    if kind == "element_appears":
-        return await locator.count() > 0
-    if kind == "element_gone":
-        return await locator.count() == 0
-    if kind == "value_set":
-        return await locator.input_value() == step.input_value
-    raise ValueError(f"unknown outcome kind {kind!r}")
+    async def _check(self, session, step: StepConfig, exp: StepExpectation,
+                     deadline: float) -> bool:
+        kind = exp.outcome_kind
+        if kind == "url_change":
+            before = self._urls_before.get(step.description)
+            if before is None:
+                raise ValueError("the URL before the step was not recorded")
+            url = session.url
+            return url != before and (exp.url_contains is None or exp.url_contains in url)
+        if kind not in ("element_appears", "element_gone", "value_set"):
+            raise ValueError(f"unknown outcome kind {kind!r}")
+        locator = _locator(session, exp.outcome_element or {})
+        if kind == "element_appears":
+            return await locator.count() > 0
+        if kind == "element_gone":
+            return await locator.count() == 0
+        # Playwright's timeout is in ms, and 0 means none: keep it at least 1.
+        left_ms = max(1.0, (deadline - time.monotonic()) * 1000)
+        return await locator.input_value(timeout=left_ms) == step.input_value
 
 
 def _locator(session, element: dict):
@@ -180,7 +208,9 @@ def _locator(session, element: dict):
 def _describe(step: StepConfig, exp: StepExpectation) -> str:
     kind = exp.outcome_kind
     if kind == "url_change":
-        return f"URL contains {exp.url_contains!r}"
+        if exp.url_contains is None:
+            return "URL changes"
+        return f"URL changes to contain {exp.url_contains!r}"
     element = exp.outcome_element
     if kind == "element_appears":
         return f"element {element} appears"

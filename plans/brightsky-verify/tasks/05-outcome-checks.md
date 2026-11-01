@@ -1,7 +1,7 @@
 # Add the per-step outcome checks and the conversion to BrightSky step outcomes
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: 03, 12
 Test first: yes
 Level: 3
@@ -107,6 +107,12 @@ prints passed
   collection with `ModuleNotFoundError: No module named 'stepper.brightsky.executor'`, and
   4 hook tests failed with `AttributeError` (no `add_hook`).
 - **Proof**:
+  - Round 2 (after the review fixes, run fresh): `test_brightsky_executor.py` printed
+    `56 passed`, `test_step_hooks.py` `21 passed`, `stepper/tests/unit/` `2077 passed`
+    (exit 0), build and lint exit 0, acceptance unchanged at 82 passed / 79 failed (tickets
+    06, 07, 13). The round-2 test-only commit c435ae4 failed 7 new tests for the right
+    reasons (bare/unchanged url_change passed, input_value got no timeout, ValueError
+    polled for the full timeout). The round-1 numbers follow.
   - `python3 -m pytest stepper/tests/unit/test_brightsky_executor.py -q` printed `46 passed`.
     The hook tests use fake pages with `timeout_s=0.05, poll_s=0.01`. They cover:
     `url_change` met, not met, and met after polling;
@@ -146,21 +152,30 @@ prints passed
     (`not on the expected page: cannot read the page URL (...)`) instead of raising. The
     runner logs a hook that raises and then runs the step anyway, which would bypass the
     gate.
-  - A `url_change` with no `urlContains` counts as met. The ticket only defines the
-    urlContains check, and mapping stores None when there is none.
+  - (Round 2, replaces round 1's "bare `url_change` = met".) A `url_change` holds only when
+    `session.url` differs from the URL `before` read for that description, and also
+    contains `urlContains` when one is set. This mirrors bright-sky's
+    `checkUrlChangeOutcome` ("url_change: URL unchanged" fails). `before` records the URL
+    for every `url_change` step, start_url or not; the first URL per description is kept,
+    so a heal replacement's `before` does not move it. No recorded URL (unreadable, or
+    `before` never ran) counts as not met.
+  - A check that cannot be made (`ValueError`: no locator fields, unknown kind, no URL
+    from before) is not met at once instead of polling to the timeout. `input_value()`
+    gets `timeout=` the ms left before the deadline, at least 1 (0 means no timeout in
+    Playwright).
   - The outcome locator takes the first present key, in the order the ticket lists:
     role+name, text, css, xpath, id. An element cfg with none of these raises inside the
     check, so the outcome is not met.
-  - The `<what>` text in the outcome error: `URL contains '/search'`,
+  - The `<what>` text in the outcome error: `URL changes`, `URL changes to contain '/search'`,
     `element {...} appears`, `element {...} is gone`, `element {...} has value 'X'`.
   - `ExecutedStep`'s `healed`, `healed_element` and `error` default to False, None and "".
     Callers can still pass all seven fields by keyword (bs_harness does).
   - `StepExecutor` is `runtime_checkable`.
   - A healed step's `error` is the result's error, which is normally "".
-- **Shortcuts taken**: a `url_change` with no `urlContains` is not compared with the URL
-  from before the step. This stops working if BrightSky stores bare `url_change` outcomes
-  that mean "the URL must change". Recording the URL in `before` and comparing in `after`
-  would fix it.
+- **Shortcuts taken**: the URL from before a step is kept for the hook's life, keyed by
+  description, so one `ExpectationHook` serves one run; reusing it for a second run of the
+  same workflow would compare with the first run's URL. Building a hook per run (ticket
+  13) avoids it.
 - **Review fixes**:
   - Round 1, floor guard (`# type: ignore[misc]` in `test_executed_step_is_frozen`): the
     assignment is now `setattr(executed, "outcome", "failed")` inside the same
@@ -168,8 +183,39 @@ prints passed
     without a suppression. Re-run after the fix: `test_brightsky_executor.py` 46 passed,
     `test_step_hooks.py` 21 passed, `stepper/tests/unit/` 2067 passed, build and lint exit 0,
     and `git diff 7d099e7 -- stepper` has no `type: ignore`, `noqa`, skip or xfail lines.
+  - Round 2, pair review finding 1 (major, bare/unchanged `url_change` counted as met):
+    fixed as the reviewer proposed. `before` records the URL; `_check` requires a changed
+    URL plus `urlContains`. New tests: bare url_change with unchanged URL (not met, error
+    `expected outcome not met: URL changes`) and changed URL (met); `urlContains` already in
+    an unchanged URL (not met); no `before` (not met); `before` URL read raising (not met);
+    a second `before` (heal replacement) keeps the first URL. The existing url_change tests
+    now call `before` first.
+  - Finding 2 (minor, unbounded `input_value`, deterministic errors polled): fixed.
+    `input_value(timeout=<ms left>)`, and a `ValueError` is not met at once. Tests:
+    `test_value_set_bounds_input_value_by_the_time_left` (0 < timeout <= 2000 for a 2 s
+    hook), and an element cfg with no locator fields and an unknown kind both fail in
+    under 1 s with a 5 s timeout.
+  - Finding 3 (minor, passed with `tier=None` after a retry): kept the ticket's rule
+    ("Later resolves (retries, heal replacements) do not overwrite it"; "passed -> tier from
+    `tiers`"), because the case cannot arise for a mapped step. `map_version` gives every
+    step a target and never sets `retry` (StepConfig default 0), and click/fill resolve
+    once, so the first resolve is the one the step acts on: a miss fails the step (or sends
+    it to the heal loop, which reports `healed` -> failed). Pinned by
+    `test_a_passed_mapped_step_always_has_its_first_resolves_tier`: a real StepRunner with
+    RecordingResolver whose inner misses then would find, gives one resolve and step 1
+    `failed`, `matched=False`, `tier=None`. Downgrading or letting a retry fill the tier
+    would contradict the ticket text; if a later ticket adds retries to mapped steps, it
+    must decide this.
+  - Finding 4 (minor, unbounded regex in `url_matches`): not changed here. spec.md § Risks
+    accepts it ("Catastrophic backtracking from a stored `regex` matchMode ... The
+    scheduled job's `timeout-minutes` bounds a hang"), and the ticket says `before` must use
+    ticket 03's `url_matches`, which lives in `stepper/brightsky/mapping.py`, outside this
+    ticket's Touches and on the Sensitive list. A length cap would not help either: `(a+)+$`
+    is short. If the bound should be tighter than the job timeout, that is a change to
+    ticket 03's function and the spec.
 - **For later tickets**:
-  - Ticket 13: attach the hook with `runner.add_hook("web", ExpectationHook(mapped.expectations))`
+  - Ticket 13: build one `ExpectationHook` per run (it keeps each url_change step's
+    URL from before the step). Attach the hook with `runner.add_hook("web", ExpectationHook(mapped.expectations))`
     and pass `RecordingResolver(resolver)` as the runner's resolver. Then call
     `executed_steps(mapped, results, recording.tiers)`.
   - Replacement runners also run `before`, with the replacement step's description. A heal
