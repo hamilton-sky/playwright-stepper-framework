@@ -19,7 +19,7 @@ on:
 jobs:
   verify:
     name: Verify the BrightSky queue
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # Playwright 1.56 has no chromium build for ubuntu-latest (26.04)
     timeout-minutes: 30
     permissions:
       contents: read
