@@ -31,7 +31,7 @@ from stepper.engine.runner.hooks import StepHook
 from stepper.engine.resolvers.null_resolver import NullResolver
 from stepper.engine.session import SessionSet
 from stepper.engine.browser.human_behaviour import HumanBehaviour
-from stepper.engine.healer.interfaces import HealerStrategy
+from stepper.engine.healer.interfaces import FREE_TIER, HealerStrategy
 from stepper.engine.healer.dom_snapshot import DOMSnapshotCascade
 from stepper.engine.healer.annotator import HealAnnotator
 from stepper.engine.healer.visual_bridge import VisualBridge
@@ -108,6 +108,7 @@ class StepRunner:
         session=None,
         sessions: SessionSet | None = None,
         conditions: ConditionRegistry | None = None,
+        strict_heal_order: bool = False,
     ):
         """
         page / session / sessions
@@ -141,6 +142,15 @@ class StepRunner:
             default; the web domain adds url_contains and element_exists
             through the same route as its hooks. An unregistered condition
             raises rather than quietly running the step it was meant to guard.
+
+        strict_heal_order
+            Off by default, which keeps the heal loop as it always was. On, each
+            step's healing climbs the healer's rungs in order (a free
+            embed_direct try, then the cheap tier twice, then the big model): the
+            loop passes the failed rungs as `tried`, recaptures the page without
+            the embed_direct shortcut once it has been tried, does not count the
+            free try against max_heal_attempts, and records the rung that healed
+            in healed_element["tier"]. Only the BrightSky executors turn it on.
         """
         if action_factory is None:
             raise TypeError("StepRunner requires action_factory=")
@@ -157,6 +167,7 @@ class StepRunner:
         self._healer          = healer
         self._max_heal_attempts = min(max_heal_attempts, 3)  # hard cap
         self._cache           = cache
+        self._strict_heal_order = strict_heal_order
         self._observers: list[StepObserver] = []
         if screenshots_dir is not None:
             self._screenshots_dir: Path | None = Path(screenshots_dir)
@@ -195,6 +206,17 @@ class StepRunner:
 
     def add_observer(self, observer: StepObserver):
         self._observers.append(observer)
+        return self
+
+    def add_hook(self, domain: str | None, hook: StepHook) -> "StepRunner":
+        """
+        Attach one more hook for `domain`, after any it was built with.
+
+        Replacement runners in the heal loop are built with hooks=self._hooks,
+        so they run it too: a heal whose replacement misses a hook's check is
+        not a heal.
+        """
+        self._hooks.setdefault(domain, []).append(hook)
         return self
 
     async def run(self, steps: list[StepConfig],
@@ -374,9 +396,15 @@ class StepRunner:
         result: StepResult, ctx: ExecutionContext
     ) -> tuple[StepResult, list[dict], ExecutionContext]:
         new_suggestions: list[dict] = []
-        heal_attempt = 0
-        while heal_attempt < self._max_heal_attempts:
+        strict = self._strict_heal_order
+        heal_attempt = 0      # every iteration, what StepResult.heal_attempts reports
+        counted = 0           # iterations that use up one of max_heal_attempts
+        free_used = False     # strict: the first FREE_TIER try is not counted
+        tried: list[str] = [] # strict: rungs tried for this step that did not heal
+        while counted < self._max_heal_attempts:
             heal_attempt += 1
+            counted += 1
+            tier: str | None = None
             self._notify_log(
                 f"⚕ Healing step {idx+1} (attempt {heal_attempt}/{self._max_heal_attempts})",
                 "warning",
@@ -417,7 +445,8 @@ class StepRunner:
                             result, status="healed", error="",
                             confidence=healed_confidence,
                             heal_attempts=heal_attempt,
-                            healed_element={"original": step.element, "healed": cached_cfg},
+                            healed_element={"original": step.element, "healed": cached_cfg,
+                                            **({"tier": "heal_cache"} if strict else {})},
                         )
                         new_suggestions.append({
                             "step": idx + 1,
@@ -469,14 +498,34 @@ class StepRunner:
                     )
                     break
 
-                dom = await DOMSnapshotCascade.capture(self._page, step)
-                assert self._healer is not None
-                replacement_steps = await self._healer.heal(
-                    step, result.error, dom,
-                    all_steps=steps,
-                    current_index=idx,
-                    context_vars=dict(ctx.counts) if ctx.counts else None,
-                )
+                if not strict:
+                    dom = await DOMSnapshotCascade.capture(self._page, step)
+                    assert self._healer is not None
+                    replacement_steps = await self._healer.heal(
+                        step, result.error, dom,
+                        all_steps=steps,
+                        current_index=idx,
+                        context_vars=dict(ctx.counts) if ctx.counts else None,
+                    )
+                else:
+                    if FREE_TIER in tried:
+                        dom = await DOMSnapshotCascade.capture(
+                            self._page, step, skip_direct=True
+                        )
+                    else:
+                        dom = await DOMSnapshotCascade.capture(self._page, step)
+                    assert self._healer is not None
+                    tier = self._healer.tier_for(dom, tuple(tried))
+                    if tier == FREE_TIER and not free_used:
+                        free_used = True
+                        counted -= 1
+                    replacement_steps = await self._healer.heal(
+                        step, result.error, dom,
+                        all_steps=steps,
+                        current_index=idx,
+                        context_vars=dict(ctx.counts) if ctx.counts else None,
+                        tried=tuple(tried),
+                    )
 
                 # Run replacements without healer to prevent infinite recursion
                 replacement_runner = StepRunner(
@@ -504,6 +553,8 @@ class StepRunner:
                             f"⚕ Heal attempt {heal_attempt} ran but assertion failed — retrying",
                             "warning",
                         )
+                        if tier is not None:
+                            tried.append(tier)
                         continue
 
                     healed_cfg = replacement_steps[0].element if replacement_steps else {}
@@ -525,6 +576,7 @@ class StepRunner:
                             "original": step.element,
                             "healed":   healed_cfg,
                             "annotated_screenshot": annotated_path,
+                            **({"tier": tier} if strict else {}),
                         },
                     )
                     new_suggestions.append({
@@ -542,8 +594,13 @@ class StepRunner:
                     )
                     break
 
+                if tier is not None:
+                    tried.append(tier)
+
             except Exception as heal_exc:
                 logger.warning(f"[StepRunner] heal attempt {heal_attempt} failed: {heal_exc}")
+                if tier is not None:
+                    tried.append(tier)
 
         return result, new_suggestions, ctx
 

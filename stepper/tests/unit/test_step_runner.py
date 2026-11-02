@@ -458,3 +458,202 @@ async def test_max_heal_attempts_is_capped_at_three(make_runner):
                          healer=MagicMock(), max_heal_attempts=99)
 
     assert runner._max_heal_attempts == 3
+
+
+# ── Heal order: strict (opt-in) and default ───────────────────────────────────
+
+class ElementAction(ActionStrategy):
+    """Passes only when the step's element is one of `works`; records every element."""
+
+    action_name = "scripted"
+    domain      = "web"
+
+    def __init__(self, works=()):
+        self._works = [dict(w) for w in works]
+        self.elements: list = []
+
+    async def _execute(self, page, step, resolver, context, behaviour=None):
+        self.elements.append(step.element)
+        ok = step.element in self._works
+        return StepResult(step=step, status="passed" if ok else "failed",
+                          error="" if ok else "element not found")
+
+
+class _TierAI:
+    """AIService double: records each task_type and prompt, replies per call."""
+
+    def __init__(self, raise_for=()):
+        self.calls: list[dict] = []
+        self._raise_for = set(raise_for)
+
+    @property
+    def task_types(self):
+        return [c["task_type"] for c in self.calls]
+
+    async def chat(self, prompt, task_type="classify", system=""):
+        self.calls.append({"prompt": prompt, "task_type": task_type})
+        if task_type in self._raise_for:
+            raise RuntimeError(f"{task_type}: all providers failed")
+        return json.dumps([{"action": "scripted", "description": "a step",
+                            "element": {"text": f"fix-{len(self.calls)}"}}])
+
+
+class _FakeCapture:
+    """Stands in for DOMSnapshotCascade.capture and records how it was called."""
+
+    def __init__(self, cfg):
+        self._cfg = cfg
+        self.calls: list[tuple] = []
+
+    async def __call__(self, *args, **kwargs):
+        from stepper.engine.healer.interfaces import DomPayload
+        self.calls.append((args, kwargs))
+        if self._cfg is not None and not kwargs.get("skip_direct", False):
+            return DomPayload("embed_direct", "", dict(self._cfg), 0)
+        return DomPayload("scoped", '{"best_match": "PAGE-CONTENT-7"}', None, 40)
+
+
+@pytest.fixture
+def heal_world(monkeypatch, make_runner):
+    """A runner over a real AiHealer, with the DOM capture and visual bridge faked."""
+    from stepper.engine.ai.service import AIService
+    from stepper.engine.healer.ai_healer import AiHealer
+    from stepper.engine.healer.dom_snapshot import DOMSnapshotCascade
+    from stepper.engine.healer.visual_bridge import VisualBridge
+    from typing import cast
+
+    async def _no_bridge(page, s):
+        return None
+
+    monkeypatch.setattr(VisualBridge, "check", _no_bridge)
+
+    def _build(*, cfg=None, works=(), raise_for=(), **runner_kw):
+        capture = _FakeCapture(cfg)
+        monkeypatch.setattr(DOMSnapshotCascade, "capture", capture)
+        ai = _TierAI(raise_for)
+        action = ElementAction(works)
+        healer = AiHealer({"scripted": {"description": "scripted"}},
+                          ai_service=cast(AIService, ai))
+        runner = make_runner({"scripted": action}, healer=healer, **runner_kw)
+        return runner, ai, capture, action
+    return _build
+
+
+_MISSING = {"css": ".gone"}
+_STALE   = {"text": "stale-cfg"}
+
+
+async def test_strict_an_embed_direct_miss_is_free_then_cheap_cheap_big(heal_world, page):
+    runner, ai, capture, action = heal_world(cfg=_STALE, strict_heal_order=True,
+                                             max_heal_attempts=3)
+
+    results, _ = await runner.run([step(element=_MISSING)])
+
+    assert ai.task_types == ["heal", "heal", "heal_big"]
+    assert all("PAGE-CONTENT-7" in c["prompt"] for c in ai.calls)
+    assert capture.calls[0][1].get("skip_direct", False) is False
+    assert len(capture.calls) == 4
+    assert all(kw.get("skip_direct") is True for _, kw in capture.calls[1:])
+    assert action.elements[1] == _STALE          # the free try ran the stale cfg
+    assert results[0].status == "failed"
+
+
+async def test_strict_the_third_ai_reply_heals_on_the_big_tier(heal_world):
+    runner, ai, _, _ = heal_world(cfg=_STALE, works=[{"text": "fix-3"}],
+                                  strict_heal_order=True, max_heal_attempts=3)
+
+    results, _ = await runner.run([step(element=_MISSING)])
+
+    assert ai.task_types == ["heal", "heal", "heal_big"]
+    assert results[0].status == "healed"
+    assert results[0].healed_element["tier"] == "big"
+    assert results[0].heal_attempts == 4         # every iteration, the free one too
+    assert results[0].healed_element["healed"] == {"text": "fix-3"}
+
+
+async def test_strict_no_cfg_goes_cheap_cheap_big(heal_world):
+    runner, ai, capture, _ = heal_world(cfg=None, strict_heal_order=True,
+                                        max_heal_attempts=3)
+
+    results, _ = await runner.run([step(element=_MISSING)])
+
+    assert ai.task_types == ["heal", "heal", "heal_big"]
+    assert len(capture.calls) == 3
+    assert results[0].status == "failed"
+
+
+async def test_strict_a_cfg_that_works_heals_first_with_no_ai_call(heal_world):
+    runner, ai, _, _ = heal_world(cfg=_STALE, works=[_STALE],
+                                  strict_heal_order=True, max_heal_attempts=3)
+
+    results, _ = await runner.run([step(element=_MISSING)])
+
+    assert ai.task_types == []
+    assert results[0].status == "healed"
+    assert results[0].heal_attempts == 1
+    assert results[0].healed_element["tier"] == "embed_direct"
+
+
+async def test_strict_a_big_model_that_raises_leaves_the_step_failed(heal_world):
+    runner, ai, _, _ = heal_world(cfg=None, raise_for=("heal_big",),
+                                  strict_heal_order=True, max_heal_attempts=3)
+
+    results, _ = await runner.run([step(element=_MISSING)])
+
+    assert ai.task_types.count("heal") == 2
+    assert ai.task_types == ["heal", "heal", "heal_big"]
+    assert results[0].status == "failed"
+
+
+async def test_strict_a_heal_cache_hit_is_named_heal_cache(heal_world):
+    cache = MagicMock()
+    cache.get.return_value = {"text": "cached"}
+    runner, ai, capture, _ = heal_world(cfg=None, works=[{"text": "cached"}],
+                                        strict_heal_order=True, max_heal_attempts=3,
+                                        cache=cache)
+
+    results, _ = await runner.run([step(element=_MISSING)])
+
+    assert ai.task_types == []
+    assert capture.calls == []
+    assert results[0].status == "healed"
+    assert results[0].healed_element["tier"] == "heal_cache"
+
+
+async def test_default_an_embed_direct_miss_retries_it_and_never_asks_the_ai(heal_world, page):
+    runner, ai, capture, action = heal_world(cfg=_STALE, max_heal_attempts=2)
+
+    results, _ = await runner.run([step(element=_MISSING)])
+
+    assert ai.task_types == []
+    assert action.elements == [_MISSING, _STALE, _STALE]
+    assert len(capture.calls) == 2
+    for args, kwargs in capture.calls:
+        assert kwargs == {}
+        assert len(args) == 2 and args[0] is page and args[1].element == _MISSING
+    assert results[0].status == "failed"
+
+
+async def test_default_no_cfg_asks_heal_three_times_and_never_heal_big(heal_world):
+    runner, ai, _, _ = heal_world(cfg=None, max_heal_attempts=3)
+
+    results, _ = await runner.run([step(element=_MISSING)])
+
+    assert ai.task_types == ["heal", "heal", "heal"]
+    assert results[0].status == "failed"
+
+
+async def test_default_a_heal_records_no_tier(heal_world):
+    runner, ai, _, _ = heal_world(cfg=None, works=[{"text": "fix-2"}],
+                                  max_heal_attempts=3)
+
+    results, _ = await runner.run([step(element=_MISSING)])
+
+    assert ai.task_types == ["heal", "heal"]
+    assert results[0].status == "healed"
+    assert "tier" not in results[0].healed_element
+
+
+def test_strict_heal_order_is_off_by_default(make_runner):
+    runner = make_runner({"scripted": ScriptedAction(["passed"])})
+    assert runner._strict_heal_order is False

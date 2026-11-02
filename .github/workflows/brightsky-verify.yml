@@ -1,0 +1,96 @@
+# Walks the BrightSky verification queue once a day: every unverified workflow
+# version is fetched, run headless through stepper, and reported back.
+#
+# GitHub runs `schedule` (and offers `workflow_dispatch`) only once this file is
+# on the default branch. In a public repository the schedule is disabled
+# automatically after 60 days without repository activity; re-enable it from the
+# Actions tab, or start a run by hand with workflow_dispatch.
+#
+# Needs the repo secrets BRIGHTSKY_API_URL and BRIGHTSKY_BRIDGE_TOKEN. Until both
+# are set, the first step emits a notice and every later step is skipped, so the
+# job stays green.
+name: BrightSky verify
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  verify:
+    name: Verify the BrightSky queue
+    runs-on: ubuntu-24.04  # Playwright 1.56 has no chromium build for ubuntu-latest (26.04)
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    # At most one run at a time; a newly queued run replaces a pending one.
+    concurrency:
+      group: brightsky-verify
+
+    # Secrets cannot be tested in `if:` directly, so they are mapped here and the
+    # first step tests the env. The AI keys are optional, as in ci.yml.
+    env:
+      BRIGHTSKY_API_URL: ${{ secrets.BRIGHTSKY_API_URL }}
+      BRIGHTSKY_BRIDGE_TOKEN: ${{ secrets.BRIGHTSKY_BRIDGE_TOKEN }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+    steps:
+      # Reads the values from the job env rather than interpolating ${{ secrets.* }}
+      # into the shell, so nothing secret is ever expanded into a command line.
+      - name: Detect BrightSky secrets
+        id: secrets
+        run: |
+          if [ -n "$BRIGHTSKY_API_URL" ] && [ -n "$BRIGHTSKY_BRIDGE_TOKEN" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=BrightSky verification skipped::BRIGHTSKY_API_URL / BRIGHTSKY_BRIDGE_TOKEN are not set, so the verification queue was not run. Set them in Settings → Secrets and variables → Actions."
+            echo "BrightSky verification skipped: \`BRIGHTSKY_API_URL\` / \`BRIGHTSKY_BRIDGE_TOKEN\` are not set." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.secrets.outputs.available == 'true'
+
+      - name: Set up Python
+        if: steps.secrets.outputs.available == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip
+        if: steps.secrets.outputs.available == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: pip-
+
+      - name: Install dependencies
+        if: steps.secrets.outputs.available == 'true'
+        run: pip install -r requirements.txt
+
+      - name: Install the package
+        if: steps.secrets.outputs.available == 'true'
+        run: pip install -e .
+
+      - name: Install Playwright browsers
+        if: steps.secrets.outputs.available == 'true'
+        run: playwright install chromium --with-deps
+
+      - name: Cache ML models
+        if: steps.secrets.outputs.available == 'true'
+        uses: actions/cache@v4
+        with:
+          path: stepper/models
+          key: models-${{ hashFiles('stepper/download_models.py') }}
+
+      - name: Download ML models
+        if: steps.secrets.outputs.available == 'true'
+        run: python stepper/download_models.py
+
+      # Headless by default (no --show).
+      - name: Verify the queue
+        if: steps.secrets.outputs.available == 'true'
+        run: python -m stepper brightsky verify --all-unverified

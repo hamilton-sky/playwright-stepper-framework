@@ -236,3 +236,7 @@ def test_a_keyless_healer_reports_a_failed_heal_when_it_needs_the_ai(monkeypatch
 
     with pytest.raises(RuntimeError, match="all providers failed"):
         asyncio.run(healer.heal(step, "not found", dom))
+
+
+def test_the_strict_heal_order_is_off_by_default():
+    assert RunConfig(task="anything").strict_heal_order is False

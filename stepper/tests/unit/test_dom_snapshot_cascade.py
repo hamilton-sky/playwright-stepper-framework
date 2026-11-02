@@ -898,3 +898,53 @@ def test_an_off_screen_element_counts_as_covered():
     from stepper.engine.healer.dom_snapshot import _ELEMENT_QUERY_JS as js
 
     assert "x > innerWidth || y > innerHeight) return true" in js
+
+
+# ── skip_direct: the page for the AI rungs after a direct heal missed ────────
+#
+# Once the free embed_direct cfg has been tried and missed, the AI rungs must
+# see the page. capture(..., skip_direct=True) turns both embed_direct returns
+# into the candidates payload; the default call is unchanged.
+
+def _without_score(candidate: dict) -> dict:
+    return {k: v for k, v in candidate.items() if k != "_score"}
+
+
+def _lone_high_page():
+    return _page([
+        _element(text="Log in", id="login-btn"),
+        _element(text="Register", id="register-btn"),
+    ])
+
+
+async def test_skip_direct_turns_a_lone_high_scorer_into_candidates(fixed_scores):
+    fixed_scores({"Log in": 0.93, "Register": 0.20})
+
+    default = await DOMSnapshotCascade.capture(_lone_high_page(), _step())
+    payload = await DOMSnapshotCascade.capture(_lone_high_page(), _step(), skip_direct=True)
+
+    assert default.strategy_used == "embed_direct"
+    assert default.content == ""
+    assert payload.strategy_used == "embed_candidates"
+    assert payload.healed_cfg is None
+    assert payload.token_estimate > 0
+    candidates = json.loads(payload.content)["candidates"]
+    assert candidates
+    assert default.healed_cfg in [_without_score(c) for c in candidates]
+
+
+async def test_skip_direct_turns_a_clear_winner_into_candidates(fixed_scores):
+    fixed_scores({"Login": 0.73, "Username": 0.30, "Password": 0.42})
+    step = _step(action="click", description="Click the Login button to submit credentials")
+
+    default = await DOMSnapshotCascade.capture(_page(_login_form()), step)
+    payload = await DOMSnapshotCascade.capture(_page(_login_form()), step, skip_direct=True)
+
+    assert default.strategy_used == "embed_direct"
+    assert default.content == ""
+    assert payload.strategy_used == "embed_candidates"
+    assert payload.healed_cfg is None
+    assert payload.token_estimate > 0
+    candidates = json.loads(payload.content)["candidates"]
+    assert candidates
+    assert default.healed_cfg in [_without_score(c) for c in candidates]

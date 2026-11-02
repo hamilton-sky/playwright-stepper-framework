@@ -16,6 +16,10 @@ if TYPE_CHECKING:
     from stepper.engine.interfaces import StepConfig
 
 
+#: The free rung of the strict heal order: an exact-match cfg, no AI call.
+FREE_TIER = "embed_direct"
+
+
 # ──────────────────────────────────────────────────────────
 # VALUE OBJECTS
 # ──────────────────────────────────────────────────────────
@@ -54,13 +58,22 @@ class HealerStrategy(ABC):
     steps when a workflow step fails after all retries.
 
     Contract:
-      heal(step, error, dom) -> list[StepConfig]
+      heal(step, error, dom, *, tried=()) -> list[StepConfig]
         Returns one or more replacement StepConfig objects.
         Raises HealingError if healing is not possible.
+        `tried` names the rungs already tried for this step and failed, oldest
+        first; the empty tuple (the default) means "heal as you always do".
+      tier_for(dom, tried) -> str
+        Names the rung heal() would use for these inputs. The heal loop records
+        it and passes it back in `tried` when that rung fails. Default "healer".
 
     Implementations must be stateless across calls (thread-safe for concurrent
-    workflow runs).
+    workflow runs): the caller owns `tried`.
     """
+
+    def tier_for(self, dom: DomPayload, tried: tuple[str, ...]) -> str:
+        """The rung heal() would use for this payload after `tried` has failed."""
+        return "healer"
 
     @abstractmethod
     async def heal(
@@ -72,6 +85,7 @@ class HealerStrategy(ABC):
         all_steps: list | None = None,
         current_index: int | None = None,
         context_vars: dict | None = None,
+        tried: tuple[str, ...] = (),
     ) -> list["StepConfig"]:
         """
         Produce replacement steps for a failed step.
@@ -79,6 +93,7 @@ class HealerStrategy(ABC):
         step   the StepConfig that failed
         error  the error message / traceback string
         dom    DOM context captured by DOMSnapshotCascade
+        tried  rungs already tried for this step and failed, oldest first
 
         Returns a non-empty list of StepConfig replacements.
         Raises HealingError if no replacement can be produced.

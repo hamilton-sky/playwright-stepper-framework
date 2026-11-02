@@ -1,11 +1,14 @@
 """
 healer/ai_healer.py — LLM-powered replacement step generator.
 
-Provider cascade (via AIService): Groq → Gemini → Claude Haiku.
+Rungs (named by tier_for, given the rungs already `tried` for the step):
+  embed_direct  free: DOMSnapshotCascade resolved a healed_cfg (unique
+                high-confidence match), applied with no AI call
+  cheap         AIService "heal" chain: Groq → Gemini → Claude Haiku
+  big           AIService "heal_big" chain, only after two cheap rungs failed
 
-Fast path: when DOMSnapshotCascade already resolved a healed_cfg via
-embed_direct (unique high-confidence match), no AI call is made — the
-healed cfg is applied directly to the failed step. Only ambiguous or
+With no `tried` (the default) the routing is the old one: a healed_cfg is
+applied directly, anything else goes to the cheap chain. Only ambiguous or
 low-confidence DOM snapshots reach the network.
 """
 
@@ -15,7 +18,8 @@ import json
 import logging
 
 from stepper.engine.ai.service import AIService
-from stepper.engine.healer.interfaces import DomPayload, HealerStrategy, HealingError
+from stepper.engine.healer.interfaces import (FREE_TIER, DomPayload, HealerStrategy,
+                                              HealingError)
 from stepper.engine.interfaces import StepConfig
 from stepper.engine.planner.schema_extractor import ActionSchemaExtractor
 from stepper.engine.utils import dict_to_step_config
@@ -70,6 +74,14 @@ class AiHealer(HealerStrategy):
 
     # ── HealerStrategy contract ───────────────────────────────────────────────
 
+    def tier_for(self, dom: DomPayload, tried: tuple[str, ...]) -> str:
+        """embed_direct while its cfg is untried; big after two cheap misses; else cheap."""
+        if dom.healed_cfg is not None and FREE_TIER not in tried:
+            return FREE_TIER
+        if tried.count("cheap") >= 2:
+            return "big"
+        return "cheap"
+
     async def heal(
         self,
         step: StepConfig,
@@ -79,9 +91,13 @@ class AiHealer(HealerStrategy):
         all_steps: list | None = None,
         current_index: int | None = None,
         context_vars: dict | None = None,
+        tried: tuple[str, ...] = (),
     ) -> list[StepConfig]:
+        tier = self.tier_for(dom, tried)
+
         # Fast path: embed resolved uniquely — zero AI tokens
-        if dom.healed_cfg is not None:
+        if tier == FREE_TIER:
+            assert dom.healed_cfg is not None
             logger.info(
                 f"[AiHealer] embed_direct heal for '{step.action}' (0 tokens)"
             )
@@ -130,7 +146,8 @@ class AiHealer(HealerStrategy):
         user_msg = json.dumps(payload, ensure_ascii=False)
 
         logger.debug(f"[AiHealer] prompt sent to AI:\n{user_msg}")
-        raw = await self._ai.chat(user_msg, task_type="heal", system=self._system)
+        task_type = "heal_big" if tier == "big" else "heal"
+        raw = await self._ai.chat(user_msg, task_type=task_type, system=self._system)
         logger.debug(f"[AiHealer] raw AI reply: {raw}")
         return self._parse(raw, step.action)
 

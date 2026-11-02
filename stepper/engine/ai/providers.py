@@ -114,8 +114,9 @@ class GeminiProvider:
 class ClaudeProvider:
     """Claude Haiku provider (cheapest Claude). Reads ANTHROPIC_API_KEY."""
 
-    def __init__(self) -> None:
+    def __init__(self, model: str = "claude-haiku-4-5-20251001") -> None:
         self._key = os.getenv("ANTHROPIC_API_KEY", "")
+        self._model = model
 
     @property
     def is_configured(self) -> bool:
@@ -126,7 +127,7 @@ class ClaudeProvider:
 
         client = anthropic.Anthropic(api_key=self._key)
         kwargs: dict = dict(
-            model="claude-haiku-4-5-20251001",
+            model=self._model,
             max_tokens=max_tokens,
             messages=[{"role": "user", "content": prompt}],
         )

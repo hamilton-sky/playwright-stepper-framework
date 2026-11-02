@@ -14,6 +14,7 @@ Commands
     actions     List every registered action and what it does
     validate    Check a workflow without launching a browser
     heal        Review and apply self-healing suggestions
+    brightsky   Verify BrightSky workflows and report the runs back
 
 The pre-subcommand syntax (`main.py --workflow X`) still works — see
 normalize_argv.
@@ -31,7 +32,7 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-_COMMANDS = ("run", "list", "actions", "validate", "heal")
+_COMMANDS = ("run", "list", "actions", "validate", "heal", "brightsky")
 
 
 class CommandError(Exception):
@@ -360,6 +361,113 @@ def _exit_code(results) -> int:
     return 1 if any(r.status == "failed" for r in results or []) else 0
 
 
+#: `brightsky verify`'s exit code for bad input or config (env, URL, slug,
+#: usage, a 404 on the fetch, a rejected token). It returns this itself:
+#: run_cli maps a CommandError to 1.
+_BRIGHTSKY_BAD_INPUT = 3
+
+
+def _err(text: str) -> None:
+    print(f"error: {text}", file=sys.stderr)
+
+
+def _outcome_line(outcome) -> str:
+    """`<slug> v<N> <status>[: <reason>][ -> proposed v<M>]`."""
+    line = outcome.slug if outcome.version is None else f"{outcome.slug} v{outcome.version}"
+    line += f" {outcome.status}"
+    if outcome.reason:
+        line += f": {outcome.reason}"
+    if outcome.proposed_version is not None:
+        line += f" -> proposed v{outcome.proposed_version}"
+    return line
+
+
+def cmd_brightsky_verify(args, pipeline) -> int:
+    """
+    Verify one BrightSky workflow, or walk the verification queue.
+
+    Returns 0 when every outcome passed (or the queue was empty), 1 when any
+    failed or healed, 3 for bad input or config. Every message comes from an
+    exception's text or an outcome's reason, never from the config or the env,
+    so the bridge token is never printed.
+    """
+    import os
+
+    from stepper.brightsky import verify
+    from stepper.brightsky.client import BrightSkyHttpError
+    from stepper.brightsky.config import BrightSkyConfigError, load_config
+    from stepper.brightsky.models import SLUG_PATTERN, BrightSkyResponseError
+
+    if bool(args.slug) == bool(args.all_unverified):
+        _err("give exactly one of a workflow slug or --all-unverified")
+        return _BRIGHTSKY_BAD_INPUT
+    version: int | None = None
+    if args.version is not None:
+        if args.all_unverified:
+            _err("--version needs a workflow slug, not --all-unverified")
+            return _BRIGHTSKY_BAD_INPUT
+        if not args.version.isascii() or not args.version.isdigit() \
+                or int(args.version) < 1:
+            _err("--version must be a positive integer")
+            return _BRIGHTSKY_BAD_INPUT
+        version = int(args.version)
+    if args.slug and not SLUG_PATTERN.fullmatch(args.slug):
+        _err(f"the slug must match {SLUG_PATTERN.pattern}")
+        return _BRIGHTSKY_BAD_INPUT
+
+    try:
+        config = load_config(os.environ)
+    except BrightSkyConfigError as exc:
+        _err(str(exc))
+        return _BRIGHTSKY_BAD_INPUT
+
+    headless = not args.show
+    try:
+        client = verify.make_client(config)
+        # The executor is built only when a run starts, after the token check
+        # and the fetch have passed, so a bad token builds nothing.
+        executor = _LazyExecutor(verify.make_executor)
+        if args.all_unverified:
+            outcomes = asyncio.run(verify.verify_all_unverified(
+                client, executor, headless=headless)).outcomes
+        else:
+            outcomes = [asyncio.run(verify.verify_slug(
+                client, executor, args.slug, version=version, headless=headless))]
+    except BrightSkyHttpError as exc:
+        if exc.status in (401, 403):
+            _err(f"bridge token rejected (HTTP {exc.status}): {exc.message}")
+            return _BRIGHTSKY_BAD_INPUT
+        _err(str(exc))
+        return _BRIGHTSKY_BAD_INPUT if exc.status == 404 else 1
+    except BrightSkyResponseError as exc:
+        _err(str(exc))
+        return 1
+
+    if not args.all_unverified and outcomes[0].status == "skipped":
+        # Ticket 01: the backend serves only the current version's steps.
+        _err(f"{args.slug} v{version} is {outcomes[0].reason}; "
+             "the backend serves only the current version's steps")
+        return _BRIGHTSKY_BAD_INPUT
+
+    for outcome in outcomes:
+        _out(_outcome_line(outcome))
+    # A skipped queue entry leaves the exit code alone (ticket 01, option A).
+    return 1 if any(o.status in ("failed", "healed") for o in outcomes) else 0
+
+
+class _LazyExecutor:
+    """A StepExecutor that builds the real one on its first execute, once."""
+
+    def __init__(self, factory) -> None:
+        self._factory = factory
+        self._executor = None
+
+    async def execute(self, mapped, *, headless: bool):
+        if self._executor is None:
+            self._executor = self._factory()
+        return await self._executor.execute(mapped, headless=headless)
+
+
 # ── Parser ────────────────────────────────────────────────────────────────────
 
 _EPILOG = """\
@@ -370,6 +478,8 @@ Examples
   validate                         check every workflow, no browser
   actions --site sd                what SauceDemo can do
   heal apply sd_full_heal_flow     review and apply heal suggestions
+  brightsky verify <slug>          verify one BrightSky workflow's current version
+  brightsky verify --all-unverified  verify the whole BrightSky queue, oldest first
 
 Workflows are named, not pathed: 'sd_happy_path' resolves across all sites.
 Full paths still work everywhere a name is accepted.
@@ -490,6 +600,40 @@ def build_parser() -> argparse.ArgumentParser:
                          help="Skip the confirmation prompt")
     apply_p.set_defaults(func=cmd_heal_apply, quiet=True)
     heal_p.set_defaults(func=lambda a, p: (heal_p.print_help(), 0)[1])
+
+    # ── brightsky ─────────────────────────────────────────────────────────────
+    brightsky_p = sub.add_parser(
+        "brightsky", help="Verify BrightSky workflows and report the runs back",
+        description="Run BrightSky workflow versions headless and report each run "
+                    "to the backend. Needs BRIGHTSKY_API_URL and "
+                    "BRIGHTSKY_BRIDGE_TOKEN (from the environment or .env).",
+    )
+    brightsky_sub = brightsky_p.add_subparsers(title="Subcommands", metavar="<subcommand>",
+                                               dest="brightsky_command")
+    verify_p = brightsky_sub.add_parser(
+        "verify", help="Verify one workflow, or every version in the queue",
+        description="Fetch a workflow's current version, run it, and report the run. "
+                    "A healed step is reported failed and proposed as a new version. "
+                    "Exits 0 when every run passed, 1 when any failed or healed, "
+                    "3 for bad input or config, or a rejected token.",
+        epilog="Examples\n"
+               "  brightsky verify openlibrary-find-author\n"
+               "  brightsky verify openlibrary-find-author --version 2 --show\n"
+               "  brightsky verify --all-unverified\n",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    verify_p.add_argument("slug", nargs="?", metavar="SLUG",
+                          help="The workflow's slug, e.g. openlibrary-find-author")
+    verify_p.add_argument("--all-unverified", action="store_true",
+                          help="Verify every version in the verification queue, "
+                               "oldest first, with no cap")
+    verify_p.add_argument("--version", metavar="N",
+                          help="Only verify if N is the workflow's current version "
+                               "(the backend serves no other)")
+    verify_p.add_argument("--show", action="store_true",
+                          help="Show the browser window (default: headless)")
+    verify_p.set_defaults(func=cmd_brightsky_verify, quiet=False)
+    brightsky_p.set_defaults(func=lambda a, p: (brightsky_p.print_help(), 0)[1])
 
     return parser
 
